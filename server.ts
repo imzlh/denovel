@@ -26,7 +26,10 @@ const router = new Router();
 const wss = new WebSocketServer(8080);
 
 // 新增：处理host队列
+let processing = false;
 async function processHostQueue(host: string) {
+    if(processing) return;
+    processing = true;
     const hostQueue = hostQueues.get(host);
     if (!hostQueue || hostQueue.length === 0) return;
 
@@ -52,6 +55,7 @@ async function processHostQueue(host: string) {
             hostQueue.shift();
         }
     }
+    processing = false;
 }
 
 // WebSocket处理

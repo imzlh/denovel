@@ -37,16 +37,16 @@ const chapters = (bookid: string) =>
             return Object.fromEntries(volume.map((c, i) => [c, data[i]]));
         });
 
-// const content = async (chapId: string) => 
-//     fetch2(`${URL_base}/content.php?item_id=${chapId}`).then(r => r.json())
-//         .then(__ => {
-//             if(__.code != 0) throw new Error(`Failed to fetch chapter content: ${__.msg}`);
+const content = async (chapId: string) => 
+    fetch2(`${URL_base}/content.php?item_id=${chapId}`).then(r => r.json())
+        .then(__ => {
+            if(__.code != 0) throw new Error(`Failed to fetch chapter content: ${__.msg}`);
 
-//             const data = __.data.content as string;
-//             return data;
-//         });
+            const data = __.data.content as string;
+            return data;
+        });
 
-const content = (chapId: string) => 
+const content2 = (chapId: string) => 
     fetch2(`${URL_get}/content?item_id=${chapId}`).then(r => r.json())
         .then(__ => {
             if(__.code != 0) throw new Error(`Failed to fetch chapter content: ${__.msg}`);
@@ -65,11 +65,20 @@ export default (function () {
             if(i >= chapter.length) return null;
 
             // 强制sleep防止被封
-            await delay(5000 * Math.random() + 8000);
+            await delay(5000 * Math.random() + 3000);
+
+            let ctx;
+            try{
+                ctx = await content2(chapter[i].itemId);
+                if(!ctx) throw new Error('Failed to fetch chapter content');
+            }catch(e){
+                ctx = await content(chapter[i].itemId);
+                if(!ctx) throw new Error('Failed to fetch chapter content');
+            }
 
             return {
-                title: chapter[i].title,
-                content: await content(chapter[i++].itemId),
+                title: chapter[i++].title,
+                content: ctx,
                 next_link: INTERNAL_NEXT
             };
         }else if(urlPreg.test(url)){
