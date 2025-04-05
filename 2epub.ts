@@ -1,6 +1,7 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
-import { basename } from "jsr:@std/path";
+import { basename, dirname } from "jsr:@std/path";
 import { EPub, EpubContentOptions } from "./genepub.ts";
+import { exists } from "./main.ts";
 
 // deno-lint-ignore no-control-regex
 const rep = /[\x00-\x1F\x7F-\x9F\u200B-\u200F\uFEFF]/g;
@@ -15,7 +16,11 @@ export async function toEpub(data: string, input: string, output: string) {
     // 分卷
     const chaps: Array<EpubContentOptions> = [];
 
-    const matches = Array.from(data.matchAll(/第\s*[一二三四五六七八九十百千万亿0-9]+\s*[章节]\s+(.+)[\r\n]+/g));
+    let matches = Array.from(data.matchAll(/[\r\n]+\s*第\s*[一二三四五六七八九十百千万亿0-9]+\s*[章节]\s*(.+)[\r\n]+/g));
+    if(matches.length === 0) {
+        // 尝试第二种: 2、...
+        matches = Array.from(data.matchAll(/[\r\n]+\s*\d+\s*、\s*(.+)[\r\n]+/g));
+    }
     for (let i = 1; i <= matches.length; i++) {
         const content = data.substring(matches[i - 1].index, matches[i]?.index),
             title = matches[i - 1][1];
@@ -62,7 +67,7 @@ if (import.meta.main) {
       deno run 2epub.ts [options] <input>
     
     Options:
-        -o, --output <output>  Output file name (default: input.epub)
+        -o, --output <output>  Output dir (default: auto-generated)
         -h, --help             Show help
     
     Example:
@@ -71,12 +76,34 @@ if (import.meta.main) {
     }
 
     const input = args._[0];
-    const output = args._[1] || args.output || (input + '.epub');
+    const output = dirname(args.output || input as string);
     if (typeof input !== 'string')
         throw new Error('Input file is required');
+    const finfo = await Deno.stat(input);
+    let files = [] as string[];
+    if(finfo.isDirectory) {
+        files = await Array.fromAsync(Deno.readDir(input)).then(data => 
+            data.filter(item => item.isFile && item.name.endsWith('.txt')).map(item => item.name)
+        );
+    } else {
+        files = [input];
+    }
 
-    console.log(`Converting "${input}" to "${output}" successfully...`);
+    console.time('convert');
+    for(const file of files) try{
+        if(await exists(basename(file) + '.epub')){
+            console.log(`"${file}.epub" already exists, skip`);
+            continue;
+        }
+        
+        const data = Deno.readTextFileSync(file);
+        await toEpub(data, file, output + '/' + basename(file) + '.epub');
+        console.log(`"${file}" has been converted to "${basename(file)}.epub"`);
+        console.timeLog('convert');
+    }catch(e) {
+        console.error(`Error converting "${file}": ${(e as Error).message}`);
+    }
+    console.timeEnd('convert');
 
-    const data = Deno.readTextFileSync(input);
-    await toEpub(data, input, output);
+    console.log('Done!');
 }

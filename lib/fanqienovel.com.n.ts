@@ -65,7 +65,7 @@ export default (function () {
             if(i >= chapter.length) return null;
 
             // 强制sleep防止被封
-            await delay(5000 * Math.random() + 2000);
+            await delay(5000 * Math.random() + 8000);
 
             return {
                 title: chapter[i].title,

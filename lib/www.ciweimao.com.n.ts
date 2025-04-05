@@ -1,7 +1,9 @@
-import { md5 } from "jsr:@takker/md5";
+// import { md5 } from "jsr:@takker/md5";
 import { getSetCookies, type Cookie } from "jsr:@std/http/cookie";
 import { DOMParser, Text } from "jsr:@b-fuze/deno-dom";
-
+// @ts-ignore npm package
+import CryptoJS from "npm:crypto-js";
+import { fetch2, NoRetryError, setRawCookie } from "../main.ts";
 
 export default (function(){
     function XOR(strV: string, strPass: string) {
@@ -25,91 +27,74 @@ export default (function(){
         let c1, c2, c3, c4;
         let i = 0;
         buf = buf.replace(/[^A-Za-z0-9\+\/\=]/g, '');
+
+        // 确保长度是4的倍数
+        while (buf.length % 4 !== 0) {
+            buf += '=';
+        }
+
         do {
             c1 = b64chs.indexOf(buf.charAt(i++));
             c2 = b64chs.indexOf(buf.charAt(i++));
             c3 = b64chs.indexOf(buf.charAt(i++));
             c4 = b64chs.indexOf(buf.charAt(i++));
+
+            // 处理每个字节
             str += String.fromCharCode((c1 << 2) | (c2 >> 4));
-            if (c3 != 64) {
+            if (c3 !== 64) {
                 str += String.fromCharCode(((c2 & 15) << 4) | (c3 >> 2));
-                if (c4 != 64)
+                if (c4 !== 64) {
                     str += String.fromCharCode(((c3 & 3) << 6) | c4);
+                }
             }
         } while (i < buf.length);
+
         return str;
     }
 
-    async function import_openssl(encryptedData: string): Promise<string> {
-        // 解析 Base64 编码的 OpenSSL 数据
-        const parts = encryptedData.split(':');
-        if (parts.length !== 3) {
-            throw new Error("Invalid OpenSSL format. Expected format: key:iv:encryptedData");
+    function decrypt(g: { content: string; keys: string[]; accessKey: string }){
+        var l = {
+            content: "",
+            keys: [],
+            accessKey: ""
+        };
+        var s = g;
+        var n = s.content;
+        var r = s.keys;
+        var t = s.keys.length;
+        var q = s.accessKey;
+        var o = q.split("");
+        var m = o.length;
+        var k = new Array<string>();
+        k.push(r[(o[m - 1].charCodeAt(0)) % t]);
+        k.push(r[(o[0].charCodeAt(0)) % t]);
+        for (i = 0; i < k.length; i++) {
+            n = base64_decode(n);
+            var p = k[i];
+            var j = btoa(n.substring(0, 16));
+            var f = btoa(n.substring(16));
+            var h = CryptoJS.format.OpenSSL.parse(f);
+            const nb = CryptoJS.AES.decrypt(h, CryptoJS.enc.Base64.parse(p), {
+                iv: CryptoJS.enc.Base64.parse(j),
+                format: CryptoJS.format.OpenSSL
+            });
+            if (i < k.length - 1) {
+                n = nb.toString(CryptoJS.enc.Base64);
+                n = base64_decode(n)
+            }
         }
-    
-        const [base64Key, base64IV, base64EncryptedData] = parts;
-    
-        // 将 Base64 编码的密钥、IV 和密文解码为 ArrayBuffer
-        const keyBuffer = base64_decode(base64Key);
-        const ivBuffer = base64_decode(base64IV);
-        const encryptedBuffer = base64_decode(base64EncryptedData);
-    
-        // 导入密钥
-        const aesKey = await crypto.subtle.importKey("raw", keyBuffer, { name: "AES-CBC" }, false, ["decrypt"]);
-    
-        // 解密数据
-        const decryptedBuffer = await crypto.subtle.decrypt(
-            { name: "AES-CBC", iv: new TextEncoder().encode(ivBuffer) },
-            aesKey,
-            encryptedBuffer
-        );
-    
-        // 将解密结果转换为字符串
-        return new TextDecoder().decode(decryptedBuffer);
-    }
-    
-    async function decrypt(encryptedData: { content: string; keys: string[]; accessKey: string }): Promise<string> {
-        const { content, keys, accessKey } = encryptedData;
-
-        const keyIndex1 = accessKey[accessKey.length - 1].charCodeAt(0) % keys.length;
-        const keyIndex2 = accessKey[0].charCodeAt(0) % keys.length;
-
-        let decryptedContent = content;
-        await dec(keys[keyIndex1]);
-        await dec(keys[keyIndex2]);
-
-        async function dec(key: string){
-            decryptedContent = base64_decode(decryptedContent);
-            const prekey = base64_decode(decryptedContent.substring(0, 16)),
-                data = decryptedContent.substring(16);
-
-            // CryptoJS.format.OpenSSL.parse
-            const data2 =  await import_openssl(data);
-            const aesKey = await crypto.subtle.importKey("raw", key, { name: "AES-CBC" }, false, ["decrypt"]);
-
-            decryptedContent = new TextDecoder().decode(
-                await crypto.subtle.decrypt(
-                    { name: "AES-CBC", iv: new TextEncoder().encode(prekey) },
-                    aesKey,
-                    data2
-                )
-            );
-        }
-
-        return decryptedContent;
+        return n;
     }
     
     const API_CHAPINFO = 'https://www.ciweimao.com/chapter/get_book_chapter_detail_info';
     const API_SESSION = 'https://www.ciweimao.com/chapter/ajax_get_session_code';
     async function getSession(chapid: string): Promise<string>{
-        const fe = await fetch(API_SESSION, {
+        const fe = await fetch2(API_SESSION, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-Requested-With': 'XMLHttpRequest',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
-                'Referer': 'https://www.ciweimao.com/chapter/' + chapid,
-                'Cookie': buildCookie()
+                'Referer': 'https://www.ciweimao.com/chapter/' + chapid
             },
             body: `chapter_id=${chapid}`
         });
@@ -119,21 +104,20 @@ export default (function(){
         return resjson.chapter_access_key;
     }
     async function getChapInfo(cid: string, sessionID: string){
-        const fe = await fetch(API_CHAPINFO, {
+        const fe = await fetch2(API_CHAPINFO, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-Requested-With': 'XMLHttpRequest',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
                 'Referer': 'https://www.ciweimao.com/chapter/' + cid,
-                'Cookie': buildCookie()
+                'Accept': 'application/json, text/javascript, */*; q=0.01'
             },
             body: `chapter_id=${cid}&chapter_access_key=${sessionID}`
         });
         const resjson = await fe.json();
-        if(resjson.code != 100000 || fe.status !== 200)
-            throw new Error('Failed to get chapter info' + resjson.rad);
-        return await decrypt({
+        if(resjson. code != 100000 || fe.status !== 200)
+            throw new NoRetryError('Failed to get chapter info' + resjson.tip);
+        return decrypt({
             content: resjson.chapter_content,
             keys: resjson.encryt_keys,
             accessKey: sessionID
@@ -142,29 +126,20 @@ export default (function(){
 
     let inited = false;
     // 初始化列表和Cookie
-    let cookies: Cookie[];
     const chaps = {} as Record<string, URL>;
-    const buildCookie = () => cookies.map(c => `${c.name}=${c.value}`).join('; ');
     async function initial(url: string | URL){
         url = url instanceof URL ? url.href : url;
         if(!url.includes('/chapter-list/'))
-            throw new Error('Invalid chapter list URL');
-        const fe = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36',
-            }
-        });
+            throw new Error('请输入章节列表链接，如https://www.ciweimao.com/chapter-list/100431696/book_detail');
+        const fe = await fetch2(url);
         if(fe.status !== 200)
             throw new Error('Failed to fetch chapter list');
 
-        // 保存Cookie
-        cookies = getSetCookies(fe.headers);
-
         // 解析DOM
         const dom = new DOMParser().parseFromString(await fe.text(), 'text/html');
-        for(const aTag of dom.querySelectorAll('div.book-detail div.bd ul > li > a[href]'))
+        for(const aTag of dom.querySelectorAll('body > div.container > div > div.book-detail > div.ly-main > div > div.bd > div > div > ul > li > a[href]'))
             if(aTag.innerText && aTag.getAttribute('href')?.includes('/chapter/'))
-            chaps[aTag.innerText] = new URL(aTag.getAttribute('href')!, url);
+            chaps[aTag.innerText.trim()] = new URL(aTag.getAttribute('href')!.trim(), url);
     }
 
     async function getChap(url: string){
@@ -176,7 +151,8 @@ export default (function(){
     }
     
     let i = 0;
-    return async function(url){
+    return async function __main__(url){
+        setRawCookie("www.ciweimao.com", "readPage_visits=1;");
         url = url instanceof URL ? url.href : url;
         if(!inited){
             await initial(url);

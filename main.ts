@@ -2,6 +2,8 @@ import { DOMParser, HTMLDocument } from "jsr:@b-fuze/deno-dom";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { toEpub } from "./2epub.ts";
 
+export class NoRetryError extends Error {}
+
 const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
     args = parseArgs(Deno.args, {
@@ -35,7 +37,8 @@ function timeout(sec: number, abort?: AbortSignal) {
 export const removeNonVisibleChars = String;
 
 // 用于存储 Cookie 的全局对象
-const cookieStore: Record<string, Record<string, string>> = {};
+const cookieStore: Record<string, Record<string, string>> = 
+    await exists('cookie.json') ? JSON.parse(Deno.readTextFileSync('cookie.json')) : {};
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0';
 
 // cookie from browser cookie header
@@ -52,6 +55,19 @@ export function setRawCookie(site: string, cookie: string){
     }
 }
 
+export function getSiteCookie(site: string, cookie_name: string) {
+    const obj = cookieStore[site] || {};
+    for (const key in obj) {
+        if (key.toLowerCase() == cookie_name.toLowerCase()) {
+            return obj[key];
+        }
+    }
+}
+
+globalThis.onbeforeunload = function() {
+    Deno.writeTextFileSync('cookie.json', JSON.stringify(cookieStore, null, 4));
+}
+
 export async function fetch2(url: string | URL, options: RequestInit = {}): Promise<Response> {
     // 将存储的 Cookie 添加到请求头中
     url = typeof url === 'string' ? new URL(url) : url;
@@ -62,9 +78,15 @@ export async function fetch2(url: string | URL, options: RequestInit = {}): Prom
     if (cookies) {
         options.headers = {
             ...options.headers,
-            'Cookie': cookies,
-            'User-Agent': UA
+            'Cookie': cookies + ';',
+            'User-Agent': UA,
+            'Origin': url.protocol + '//' + url.host,
         };
+    }
+
+    // fix: Request with GET/HEAD method cannot have body
+    if(options.body && (!options.method ||  options.method?.toLowerCase() == 'get')){
+        options.method = 'POST';
     }
 
     // 发起请求
@@ -77,14 +99,15 @@ export async function fetch2(url: string | URL, options: RequestInit = {}): Prom
     if(!response) throw new Error('Fetch failed for ' + url.toString());
 
     // 从响应头中提取 Set-Cookie 并更新 cookieStore
-    const setCookieHeader = response.headers.get('Set-Cookie');
-    if (setCookieHeader) {
-        setCookieHeader.split(';').forEach(cookie => {
-            const [key, value] = cookie.split('=');
-            if (key && value) {
-                cookieStore[url.hostname][key.trim()] = value.trim();
-            }
-        });
+    const setCookieHeader = response.headers.getSetCookie();
+    for (const setCookie of setCookieHeader) {
+        const obj = cookieStore[url.hostname] || {};
+        const cookie = setCookie.split(';')[0]
+        const [key, value] = cookie.split('=');
+        if (key && value) {
+            obj[key.trim()] = value.trim();
+        }
+        cookieStore[url.hostname] = obj;
     }
 
     return response;
@@ -98,6 +121,8 @@ export const removeHTMLTags = (str: string) => str.replace(/<\/?[a-z]+(?:\s+[^>]
    .replace(/&quot;/g, '"')
    .replace(/&apos;/g, '\'')
    .replaceAll(/&#([0-9a-f]+)/gi, (match, p1) => String.fromCharCode(parseInt(p1, 16)));
+
+export const removeIllegalPath = (path: string) => path.replaceAll(/[\/:*?"<>|]/ig, '_');
 
 let charsetRaw = args.charset || 'utf-8';
 const t_timeout = parseInt(args.timeout || '10');
@@ -199,6 +224,10 @@ async function downloadNovel(
                 }
                 break;
             } catch(e) {
+                if(e instanceof NoRetryError){
+                    report_status(Status.DOWNLOADING, `获取页面 ${retry ++ } 次尝试重新获取`, e as Error);
+                    continue loop;
+                }
                 if(retry > MAX_RETRY) {
                     report_status(Status.ERROR, `获取页面失败，重试次数过多，终止程序`);
                     break loop;
@@ -234,7 +263,7 @@ async function downloadNovel(
         }
 
         if(!content || !content.trim())
-            report_status(Status.ERROR, `ID: ${chapter_id} 内未找到内容`);
+            report_status(Status.DONE, `ID: ${chapter_id} 内未找到内容`);
 
         const text = (args.parted ? '' : (`第${chapter_id++}章 ${title || ''}\r\n`))
             + (removeNonVisibleChars(content || '[ERROR: 内容获取失败]') + '\r\n\r\n');
