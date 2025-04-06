@@ -1,7 +1,7 @@
 import { setRawCookie } from "../main.ts";
 
 const cookie = prompt('输入esjzone.one的cookie > ');
-if(cookie) setRawCookie('www.esjzone.one', cookie);
+if(cookie) setRawCookie('esjzone.one', cookie);
 
 export default {
     title: 'body > div.offcanvas-wrapper > section > div > div.col-xl-9.col-lg-8.p-r-30 > h2',

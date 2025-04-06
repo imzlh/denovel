@@ -1,19 +1,8 @@
-// import { md5 } from "jsr:@takker/md5";
-import { getSetCookies, type Cookie } from "jsr:@std/http/cookie";
-import { DOMParser, Text } from "jsr:@b-fuze/deno-dom";
 // @ts-ignore npm package
 import CryptoJS from "npm:crypto-js";
-import { fetch2, NoRetryError, setRawCookie } from "../main.ts";
+import { fetch2, getDocument, NoRetryError, setRawCookie } from "../main.ts";
 
 export default (function(){
-    function XOR(strV: string, strPass: string) {
-        const intPassLength = strPass.length;
-        let re = "";
-        for (let i = 0; i < strV.length; i++)
-            re += String.fromCharCode(strV.charCodeAt(i) ^ strPass.charCodeAt(i % intPassLength))
-        return re
-    }
-    
     const b64ch = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
     const b64chs = Array.prototype.slice.call(b64ch);
 
@@ -88,15 +77,17 @@ export default (function(){
     
     const API_CHAPINFO = 'https://www.ciweimao.com/chapter/get_book_chapter_detail_info';
     const API_SESSION = 'https://www.ciweimao.com/chapter/ajax_get_session_code';
+    const CHAP_HTML = 'https://www.ciweimao.com/chapter/';
     async function getSession(chapid: string): Promise<string>{
         const fe = await fetch2(API_SESSION, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-                'Referer': 'https://www.ciweimao.com/chapter/' + chapid
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest'
             },
-            body: `chapter_id=${chapid}`
+            body: `chapter_id=${chapid}`,
+            referrer: 'https://www.ciweimao.com/chapter/' + chapid,
+            referrerPolicy: 'same-origin'
         });
         const resjson = await fe.json();
         if(resjson.code != 100000 || fe.status !== 200)
@@ -107,12 +98,13 @@ export default (function(){
         const fe = await fetch2(API_CHAPINFO, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'X-Requested-With': 'XMLHttpRequest',
-                'Referer': 'https://www.ciweimao.com/chapter/' + cid,
                 'Accept': 'application/json, text/javascript, */*; q=0.01'
             },
-            body: `chapter_id=${cid}&chapter_access_key=${sessionID}`
+            body: `chapter_id=${cid}&chapter_access_key=${sessionID}`,
+            referrer: 'https://www.ciweimao.com/chapter/' + cid,
+            referrerPolicy: 'same-origin'
         });
         const resjson = await fe.json();
         if(resjson. code != 100000 || fe.status !== 200)
@@ -125,18 +117,15 @@ export default (function(){
     }
 
     let inited = false;
-    // 初始化列表和Cookie
+    // 初始化列表
     const chaps = {} as Record<string, URL>;
     async function initial(url: string | URL){
         url = url instanceof URL ? url.href : url;
         if(!url.includes('/chapter-list/'))
             throw new Error('请输入章节列表链接，如https://www.ciweimao.com/chapter-list/100431696/book_detail');
-        const fe = await fetch2(url);
-        if(fe.status !== 200)
-            throw new Error('Failed to fetch chapter list');
+        const dom = await getDocument(url);
 
         // 解析DOM
-        const dom = new DOMParser().parseFromString(await fe.text(), 'text/html');
         for(const aTag of dom.querySelectorAll('body > div.container > div > div.book-detail > div.ly-main > div > div.bd > div > div > ul > li > a[href]'))
             if(aTag.innerText && aTag.getAttribute('href')?.includes('/chapter/'))
             chaps[aTag.innerText.trim()] = new URL(aTag.getAttribute('href')!.trim(), url);
@@ -144,6 +133,7 @@ export default (function(){
 
     async function getChap(url: string){
         const cid = url.match(/\/chapter\/(\d+)/)?.[1];
+        await fetch2(url);  // get cookie
         if(!cid)
             throw new Error('Invalid chapter URL');
         const sessionID = await getSession(cid);
@@ -152,7 +142,7 @@ export default (function(){
     
     let i = 0;
     return async function __main__(url){
-        setRawCookie("www.ciweimao.com", "readPage_visits=1;");
+        setRawCookie("ciweimao.com", "readPage_visits=1");
         url = url instanceof URL ? url.href : url;
         if(!inited){
             await initial(url);

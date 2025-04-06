@@ -65,7 +65,7 @@ export default (function () {
             if(i >= chapter.length) return null;
 
             // 强制sleep防止被封
-            await delay(5000 * Math.random() + 3000);
+            await delay(2000 * Math.random() + 1000);
 
             let ctx;
             try{

@@ -377,7 +377,7 @@ export class EPub {
         if (this.author.length === 0) {
             this.author = ["anonymous"];
         }
-        this.tocTitle = options.tocTitle ?? "Table Of Contents";
+        this.tocTitle = options.tocTitle ?? "目录";
         this.appendChapterTitles = options.appendChapterTitles ?? true;
         this.showToC = options.hideToC !== true;
         this.date = options.date ?? new Date().toISOString();

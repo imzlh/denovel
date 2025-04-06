@@ -30,7 +30,7 @@
     <h2>Guide</h2>
     <ol>
         <% if (locals.cover) { %><li><a epub:type="cover" href="cover.xhtml">Cover</a></li><% } %>
-        <% if (locals.showToC) { %><li><a epub:type="toc" href="#toc">Table of Contents</a></li><% } %>
+        <% if (locals.showToC) { %><li><a epub:type="toc" href="#toc">目录</a></li><% } %>
         <li><a epub:type="bodymatter" href="<%= locals.startOfContentHref %>">Start of Content</a></li>
     </ol>
 </nav>

@@ -1,14 +1,15 @@
 import { DOMParser, HTMLDocument } from "jsr:@b-fuze/deno-dom";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { toEpub } from "./2epub.ts";
+import { Converter } from './t2cn.js';
 
-export class NoRetryError extends Error {}
+class NoRetryError extends Error {}
 
 const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
     args = parseArgs(Deno.args, {
         string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'url', 'timeout'],
-        boolean: ['help', 'epub', 'parted'],
+        boolean: ['help', 'epub', 'parted', 'translate'],
         alias: {
             h: 'help',
             n: 'name',
@@ -19,7 +20,8 @@ const parser = new DOMParser(),
             u: 'url',
             t: 'timeout',
             e: 'epub',
-            p: 'parted'
+            p: 'parted',
+            l: 'translate'
         }
     }),
     SLEEP_INTERVAL = parseInt(args.sleep || '0'), // 间隔时间防止DDOS护盾deny
@@ -34,15 +36,15 @@ function timeout(sec: number, abort?: AbortSignal) {
     return sig.signal;
 }
 
-export const removeNonVisibleChars = String;
+const removeNonVisibleChars = String;
 
 // 用于存储 Cookie 的全局对象
 const cookieStore: Record<string, Record<string, string>> = 
     await exists('cookie.json') ? JSON.parse(Deno.readTextFileSync('cookie.json')) : {};
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0';
 
 // cookie from browser cookie header
-export function setRawCookie(site: string, cookie: string){
+function setRawCookie(site: string, cookie: string){
     cookieStore[site] = {
         ...cookieStore[site],
         ...cookie.split(';').reduce((acc, cur) => {
@@ -55,7 +57,7 @@ export function setRawCookie(site: string, cookie: string){
     }
 }
 
-export function getSiteCookie(site: string, cookie_name: string) {
+function getSiteCookie(site: string, cookie_name: string) {
     const obj = cookieStore[site] || {};
     for (const key in obj) {
         if (key.toLowerCase() == cookie_name.toLowerCase()) {
@@ -68,17 +70,18 @@ globalThis.onbeforeunload = function() {
     Deno.writeTextFileSync('cookie.json', JSON.stringify(cookieStore, null, 4));
 }
 
-export async function fetch2(url: string | URL, options: RequestInit = {}): Promise<Response> {
+async function fetch2(url: string | URL, options: RequestInit = {}): Promise<Response> {
     // 将存储的 Cookie 添加到请求头中
     url = typeof url === 'string' ? new URL(url) : url;
-    const cookies = Object.entries(cookieStore[url.hostname] || {})
+    const host = url.hostname.split('.').slice(-2).join('.');
+    const cookies = Object.entries(cookieStore[host] || {})
         .map(([key, value]) => `${key}=${value}`)
         .join('; ');
 
     if (cookies) {
         options.headers = {
             ...options.headers,
-            'Cookie': cookies + ';',
+            'Cookie': cookies,
             'User-Agent': UA,
             'Origin': url.protocol + '//' + url.host,
         };
@@ -90,6 +93,7 @@ export async function fetch2(url: string | URL, options: RequestInit = {}): Prom
     }
 
     // 发起请求
+    options.keepalive = true;
     let response;
     for( let i = 0 ; i < 3 ; i ++ ) try{
         response = await fetch(url, options);
@@ -100,29 +104,29 @@ export async function fetch2(url: string | URL, options: RequestInit = {}): Prom
 
     // 从响应头中提取 Set-Cookie 并更新 cookieStore
     const setCookieHeader = response.headers.getSetCookie();
+    const obj = cookieStore[host] || {};
     for (const setCookie of setCookieHeader) {
-        const obj = cookieStore[url.hostname] || {};
         const cookie = setCookie.split(';')[0]
         const [key, value] = cookie.split('=');
         if (key && value) {
             obj[key.trim()] = value.trim();
         }
-        cookieStore[url.hostname] = obj;
     }
+    cookieStore[host] = obj;
 
     return response;
 }
 
-export const removeHTMLTags = (str: string) => str.replace(/<\/?[a-z]+(?:\s+[^>]+)?>/gi, '\n')
+const removeHTMLTags = (str: string) => str.replace(/<\/?[a-z]+(?:\s+[^>]+)?>/gi, '\n')
    .replace(/&nbsp;/g,'')
    .replace(/&lt;/g, '<')
    .replace(/&gt;/g, '>')
    .replace(/&amp;/g, '&')
    .replace(/&quot;/g, '"')
    .replace(/&apos;/g, '\'')
-   .replaceAll(/&#([0-9a-f]+)/gi, (match, p1) => String.fromCharCode(parseInt(p1, 16)));
+   .replaceAll(/&#([0-9a-f]+)/gi, (_match, p1) => String.fromCharCode(parseInt(p1, 16)));
 
-export const removeIllegalPath = (path: string) => path.replaceAll(/[\/:*?"<>|]/ig, '_');
+const removeIllegalPath = (path: string) => path.replaceAll(/[\/:*?"<>|]/ig, '_');
 
 let charsetRaw = args.charset || 'utf-8';
 const t_timeout = parseInt(args.timeout || '10');
@@ -131,15 +135,15 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
     const response = await fetch2(url, {
         headers: {
             'Accept-Language': "zh-CN,zh;q=0.9",
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36 Edg/133.0.0.0',
             'Accept': 'text/html,application/xhtml+xml',
-            'Referer': url.protocol + '://' + url.host + '/',
             ... additionalHeaders
         },
         keepalive: true,
         signal: timeout(t_timeout, abort),
         redirect: 'follow',
-        credentials: 'include'
+        credentials: 'include',
+        referrer: url.protocol + '://' + url.host + '/',
+        referrerPolicy: 'unsafe-url'
     });
     if(!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status}) \n${await response.text()}`);
     const data = new Uint8Array(await response.arrayBuffer());
@@ -172,7 +176,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
     return doc;
 }
 
-export enum Status{
+enum Status{
     QUEUED,
     DOWNLOADING,
     CONVERTING,
@@ -182,6 +186,7 @@ export enum Status{
     CANCELLED
 }
 
+const convert = Converter({ from: 'tw', to: 'cn' });
 /**
  * 下载并转换小说
  * @param start_url 起始URL
@@ -197,7 +202,7 @@ async function downloadNovel(
     sig_abort?: AbortSignal
 ) {
     book_name || (book_name = prompt("请输入书名 >> ") || '');
-    const fpath = (args.outdir || 'out') + '/' + book_name + '.txt';
+    const fpath = (args.outdir || 'out') + '/' + removeIllegalPath(book_name) + '.txt';
     const file = await Deno.open(fpath, { 
         create: true, write: true, truncate: true
     });
@@ -241,9 +246,14 @@ async function downloadNovel(
 
         if (isTraditional) {
             const document = documentOrData as HTMLDocument;
+            const ctx = document.querySelector((config as TraditionalConfig).content);
+
+            // image（for epub）
+            const imgs = ctx ? Array.from(ctx?.querySelectorAll('img')).map(img => `<img src="${img.getAttribute('src')}" />`) : [];
+
             const data: Data & { url: URL } = {
                 title: document.querySelector((config as TraditionalConfig).title)?.innerText!,
-                content: document.querySelector((config as TraditionalConfig).content)?.innerText!,
+                content: ctx?.innerText ? ctx.innerText! + imgs.join('\n') : '',
                 next_link: document.querySelector((config as TraditionalConfig).next_link)?.getAttribute('href') || '',
                 url: next_url
             }
@@ -265,8 +275,19 @@ async function downloadNovel(
         if(!content || !content.trim())
             report_status(Status.DONE, `ID: ${chapter_id} 内未找到内容`);
 
+        if(content){
+            // 移除HTML标签
+            content = removeHTMLTags(content);
+            // 移除不可见字符
+            // content = removeNonVisibleChars(content);
+            // 翻译
+            if(args.translate) content = convert(content);
+            // 移除空格
+            content = content.trim();
+        }
+
         const text = (args.parted ? '' : (`第${chapter_id++}章 ${title || ''}\r\n`))
-            + (removeNonVisibleChars(content || '[ERROR: 内容获取失败]') + '\r\n\r\n');
+            + (content || '[ERROR: 内容获取失败]') + '\r\n\r\n';
 
         report_status(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
@@ -320,20 +341,23 @@ if(import.meta.main){
     -o, --outdir        输出目录，默认为当前目录
     -s, --sleep         间隔时间防止DDOS护盾deny，单位秒，默认0
     -r, --retry         最大重试次数，默认10
-    -c, --charset       网页编码，默认utf-8
+    -c, --charset       网页编码，默认从网站中获取
     -u, --url           网页地址，默认https://www.baidu.com
     -t, --timeout       超时时间，单位秒，默认30
     -p, --parted        指定输入源为分完页的文本，这时不会输出自动生成的标题
     -e, --epub          输出epub文件
+    -t, --translate     翻译模式，将输出的繁体翻译为简体中文
 
 示例:
-    main.ts -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -u https://www.baidu.com -t 60
+    main.ts -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -t -u https://www.baidu.com -t 60
 `);
         Deno.exit(0);
     }
 
     let start_url;
     if(args.epub) console.log('epub模式');
+    if(args.translate) console.log('翻译模式');
+    if(!args.parted) console.log('分页模式');
     if(Deno.stdin.isTerminal())
         start_url = args.url || prompt("请输入起始URL >> ") || '';
     else{
@@ -351,4 +375,4 @@ if(import.meta.main){
         console.error('未找到' + host + '的配置，站点不受支持');
 }
 
-export { sleep, timeout, getDocument, exists, args, downloadNovel };
+export { NoRetryError, timeout, getDocument, exists, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };
