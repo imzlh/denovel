@@ -19,8 +19,9 @@ export async function toEpub(data: string, input: string, output: string) {
     let matches = Array.from(data.matchAll(/[\r\n]+\s*第\s*[一二三四五六七八九十百千万亿0-9]+\s*[章节]\s*(.+)[\r\n]+/g));
     if(matches.length === 0) {
         // 尝试第二种: 2、...
-        matches = Array.from(data.matchAll(/[\r\n]+\s*\d+\s*、\s*(.+)[\r\n]+/g));
+        matches = Array.from(data.matchAll(/[\r\n]+\s*[一二三四五六七八九十百千万亿0-9]+\s*[、.]\s*(.+)[\r\n]+/g));
     }
+    let start = matches[0].index;
     for (let i = 1; i <= matches.length; i++) {
         const content = data.substring(matches[i - 1].index, matches[i]?.index),
             title = matches[i - 1][1];
@@ -28,6 +29,13 @@ export async function toEpub(data: string, input: string, output: string) {
         chaps.push({
             title,
             data: encodeContent(content)
+        });
+    }
+
+    if(start > 0){
+        chaps.unshift({
+            title: "前言",
+            data: encodeContent(data.substring(0, start))
         });
     }
 
@@ -47,7 +55,8 @@ const encodeContent = (str: string) => {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;')
         .replace(/\s*[\r\n]+\s*/g, '<br />')
-        .replace(rep, '');
+        .replace(rep, '')
+        .replaceAll(/\&lt\;img\s+src\s*=\s*["']([^"']+)["']\s*\/?\&gt;/g, '<img src="$1" />');
 }
 
 if (import.meta.main) {

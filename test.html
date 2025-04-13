@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>目录索引选择器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>目录索引选择器</h1>
+    
+    <div class="controls">
+        <input type="text" id="directoryUrl" placeholder="输入目录URL (例如: https://example.com/directory/)">
+        <button id="fetchBtn">获取目录</button>
+    </div>
+    
+    <div id="loading" class="loading" style="display: none;">
+        <p>正在加载目录内容...</p>
+    </div>
+    
+    <div id="directoryTable" style="display: none;">
+        <table>
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="selectAll"></th>
+                    <th>名称</th>
+                    <th>类型</th>
+                    <th>大小</th>
+                    <th>修改日期</th>
+                </tr>
+            </thead>
+            <tbody id="directoryContent">
+                <!-- 目录内容将在这里动态生成 -->
+            </tbody>
+        </table>
+        
+        <div class="controls">
+            <button id="submitBtn">提交选中项</button>
+        </div>
+    </div>
+    
+    <div id="statusMessage" class="status" style="display: none;"></div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const directoryUrlInput = document.getElementById('directoryUrl');
+            const fetchBtn = document.getElementById('fetchBtn');
+            const directoryTable = document.getElementById('directoryTable');
+            const directoryContent = document.getElementById('directoryContent');
+            const loading = document.getElementById('loading');
+            const submitBtn = document.getElementById('submitBtn');
+            const selectAll = document.getElementById('selectAll');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            // 获取目录内容
+            fetchBtn.addEventListener('click', async function() {
+                const directoryUrlStr = directoryUrlInput.value.trim();
+                
+                if (!directoryUrlStr) {
+                    showStatus('请输入有效的目录URL', 'error');
+                    return;
+                }
+
+                const directoryUrl = new URL(directoryUrlStr, location.href);
+                
+                try {
+                    loading.style.display = 'block';
+                    directoryTable.style.display = 'none';
+                    statusMessage.style.display = 'none';
+                    
+                    // 使用PROPFIND方法获取目录内容
+                    const response = await fetch(directoryUrl, {
+                        method: 'PROPFIND',
+                        headers: {
+                            'Depth': '1',
+                            'Content-Type': 'application/xml'
+                        },
+                        body: `<?xml version="1.0" encoding="utf-8" ?>
+                            <D:propfind xmlns:D="DAV:">
+                                <D:prop>
+                                    <D:displayname/>
+                                    <D:resourcetype/>
+                                    <D:getcontentlength/>
+                                    <D:getlastmodified/>
+                                </D:prop>
+                            </D:propfind>`
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP错误: ${response.status}`);
+                    }
+                    
+                    const xmlData = await response.text();
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(xmlData, "text/xml");
+                    
+                    // 解析XML响应
+                    const responses = xmlDoc.getElementsByTagName('D:response');
+                    directoryContent.innerHTML = '';
+                    
+                    for (let i = 0; i < responses.length; i++) {
+                        const response = responses[i];
+                        const href = response.getElementsByTagName('D:href')[0].textContent;
+                        
+                        // 跳过当前目录本身
+                        if (href.endsWith('/') && new URL(href, directoryUrl).pathname === new URL(directoryUrl).pathname) {
+                            continue;
+                        }
+                        
+                        const propstat = response.getElementsByTagName('D:propstat')[0];
+                        const prop = propstat.getElementsByTagName('D:prop')[0];
+                        
+                        const displayName = prop.getElementsByTagName('D:displayname')[0]?.textContent || '';
+                        const resourceType = prop.getElementsByTagName('D:resourcetype')[0]?.innerHTML.includes('collection') ? '目录' : '文件';
+                        const contentLength = prop.getElementsByTagName('D:getcontentlength')[0]?.textContent || '0';
+                        const lastModified = prop.getElementsByTagName('D:getlastmodified')[0]?.textContent || '';
+                        
+                        // 创建表格行
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><input type="checkbox" class="item-checkbox" data-href="${href}"></td>
+                            <td>${displayName || href.split('/').pop()}</td>
+                            <td>${resourceType}</td>
+                            <td>${formatFileSize(contentLength)}</td>
+                            <td>${formatDate(lastModified)}</td>
+                        `;
+                        directoryContent.appendChild(row);
+                    }
+                    
+                    loading.style.display = 'none';
+                    directoryTable.style.display = 'block';
+                    
+                } catch (error) {
+                    loading.style.display = 'none';
+                    showStatus(`获取目录失败: ${error.message}`, 'error');
+                    console.error('获取目录失败:', error);
+                }
+            });
+            
+            // 全选/取消全选
+            selectAll.addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('.item-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = selectAll.checked;
+                });
+            });
+            
+            // 提交选中的项目
+            submitBtn.addEventListener('click', async function() {
+                const selectedItems = [];
+                const checkboxes = document.querySelectorAll('.item-checkbox:checked');
+                
+                checkboxes.forEach(checkbox => {
+                    selectedItems.push({
+                        href: checkbox.dataset.href,
+                        name: checkbox.parentNode.parentNode.querySelector('td:nth-child(2)').textContent,
+                        type: checkbox.parentNode.parentNode.querySelector('td:nth-child(3)').textContent,
+                        size: checkbox.parentNode.parentNode.querySelector('td:nth-child(4)').textContent,
+                        modified: checkbox.parentNode.parentNode.querySelector('td:nth-child(5)').textContent
+                    });
+                });
+                
+                if (selectedItems.length === 0) {
+                    showStatus('请至少选择一项', 'error');
+                    return;
+                }
+                
+                try {
+                    // 在实际应用中，这里应该发送到服务器端保存
+                    // 这里我们模拟保存到selected.json的过程
+                    const jsonData = JSON.stringify(selectedItems, null, 2);
+                    
+                    // 创建下载链接（模拟保存）
+                    const blob = new Blob([jsonData], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'selected.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showStatus(`成功保存 ${selectedItems.length} 个选中项目到 selected.json`, 'success');
+                    
+                } catch (error) {
+                    showStatus(`保存失败: ${error.message}`, 'error');
+                    console.error('保存失败:', error);
+                }
+            });
+            
+            // 辅助函数：格式化文件大小
+            function formatFileSize(bytes) {
+                if (bytes === '0' || !bytes) return '-';
+                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+                return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+            }
+            
+            // 辅助函数：格式化日期
+            function formatDate(dateString) {
+                if (!dateString) return '-';
+                const date = new Date(dateString);
+                return date.toLocaleString();
+            }
+            
+            // 显示状态消息
+            function showStatus(message, type) {
+                statusMessage.textContent = message;
+                statusMessage.className = `status ${type}`;
+                statusMessage.style.display = 'block';
+            }
+
+            // auto load directory if hash is present
+            if(document.location.hash){
+                directoryUrlInput.value = document.location.hash.slice(1);
+                fetchBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
