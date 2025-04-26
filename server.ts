@@ -1,6 +1,7 @@
 import { Application, Router } from "https://deno.land/x/oak@v17.1.4/mod.ts";
 import { WebSocketServer, WebSocketClient } from "https://deno.land/x/websocket@v0.1.4/mod.ts";
 import { downloadNovel, Status, exists } from "./main.ts";
+import { ensureDirSync } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // 任务状态存储
 interface ITask {
@@ -57,6 +58,8 @@ async function processHostQueue(host: string) {
     }
     processing = false;
 }
+
+ensureDirSync("out");
 
 // WebSocket处理
 wss.on("connection", (ws) => {

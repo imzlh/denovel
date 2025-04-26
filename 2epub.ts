@@ -24,11 +24,13 @@ export async function toEpub(data: string, input: string, output: string) {
     let start = matches[0].index;
     for (let i = 1; i <= matches.length; i++) {
         const content = data.substring(matches[i - 1].index, matches[i]?.index),
-            title = matches[i - 1][1];
+            title = matches[i - 1][1].substring(0, 50) + (matches[i-1][1].length > 50 ? '...' : '');
 
         chaps.push({
             title,
-            data: encodeContent(content)
+            data: encodeContent(content).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_,it) =>
+                it ? `<img src="${it}" />` : ''
+            ),
         });
     }
 
