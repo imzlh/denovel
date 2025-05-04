@@ -21,6 +21,9 @@ export async function toEpub(data: string, input: string, output: string) {
         // 尝试第二种: 2、...
         matches = Array.from(data.matchAll(/[\r\n]+\s*[一二三四五六七八九十百千万亿0-9]+\s*[、.]\s*(.+)[\r\n]+/g));
     }
+    if(matches.length === 0){
+        throw new Error('没找到章节分隔符，确保章节数 >= 1且遵循 “第x章 ....”');
+    }
     let start = matches[0].index;
     for (let i = 1; i <= matches.length; i++) {
         const content = data.substring(matches[i - 1].index, matches[i]?.index),

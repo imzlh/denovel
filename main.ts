@@ -145,7 +145,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         referrer: url.protocol + '://' + url.host + '/',
         referrerPolicy: 'unsafe-url'
     });
-    if(!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status}) \n${await response.text()}`);
+    if(!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
     const data = new Uint8Array(await response.arrayBuffer());
 
     // 编码检查
