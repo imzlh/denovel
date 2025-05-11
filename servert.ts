@@ -13,3 +13,19 @@ for await (const conn of Deno.listen({ port: 8000 }))(async function(){
     }
     conn.close();
 });
+// const server = Deno.serve({
+//     port: 8000,
+//     transport: "tcp"
+// }, req => {
+//     console.log('new connection');
+//     const { socket, response } = Deno.upgradeWebSocket(req);
+//     socket.onmessage = (event) => {
+//         console.log(`message: ${event.data}`);
+//         socket.send(`Hello, ${event.data}!`);
+//     };
+//     socket.onclose = () => {
+//         console.log('connection closed');
+//     };
+//     socket.send('Welcome to the WebSocket server');
+//     return response;
+// })

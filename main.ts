@@ -375,4 +375,4 @@ if(import.meta.main){
         console.error('未找到' + host + '的配置，站点不受支持');
 }
 
-export { NoRetryError, timeout, getDocument, exists, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };
+export { NoRetryError, timeout, getDocument, removeIllegalPath, exists, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };
