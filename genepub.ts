@@ -2,28 +2,19 @@ import archiver from "npm:archiver";
 import { remove as diacritics } from "npm:diacritics";
 import { renderFile } from "npm:ejs";
 import { encodeXML } from "npm:entities";
-import {
-    createReadStream,
-    createWriteStream,
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    unlinkSync,
-    writeFileSync,
-} from "node:fs";
-import fsExtra from "npm:fs-extra";
 import { Element } from "npm:hast";
 import { imageSize } from "npm:image-size";
 import mime from "npm:mime";
-import { basename, dirname, resolve } from "node:path";
 import rehypeParse from "npm:rehype-parse";
 import rehypeStringify from "npm:rehype-stringify";
 import { Plugin, unified } from "npm:unified";
 import { visit } from "npm:unist-util-visit";
-import { fileURLToPath } from "node:url";
 import uslug from "npm:uslug";
 import { promisify } from "npm:util";
-import axios from "npm:axios";
+import { createWriteStream } from "node:fs";
+import { existsSync, fetch2 } from "./main.ts";
+import { exists } from "./main.ts";
+import { basename, dirname, resolve } from "jsr:@std/path@^1.0.8";
 
 // Allowed HTML attributes & tags
 export const defaultAllowedAttributes = [
@@ -253,7 +244,7 @@ function uuid() {
 }
 
 // Current directory
-const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const __dirname = import.meta.dirname!;
 
 export interface EpubContentOptions {
     title: string;
@@ -433,7 +424,9 @@ export class EPub {
         if (this.cover) {
             const templatePath =
                 this.customHtmlCoverTemplatePath || resolve(__dirname, `./templates/epub${this.version}/cover.xhtml.ejs`);
-            if (!existsSync(templatePath)) {
+            try {
+                Deno.statSync(templatePath);
+            }catch{
                 throw new Error("Could not resolve path to cover template HTML.");
             }
 
@@ -577,10 +570,13 @@ export class EPub {
         mediaArray: Array<EpubMedia>,
         subfolder: string
     ): void {
-        const url = node.properties!.src as string | null | undefined;
+        let url = node.properties!.src as string | null | undefined;
         if (url === undefined || url === null) {
             return;
         }
+
+        if(url.length > 1000) url = url.substring(0, url.indexOf(":"));
+        if(url.length > 1000) return;
 
         let extension, id;
         const media = mediaArray.find((element) => element.url === url);
@@ -591,16 +587,14 @@ export class EPub {
             id = uuid();
             const mediaType = mime.getType(url.replace(/\?.*/, ""));
             if (mediaType === null) {
-                if (this.verbose) {
-                    console.error(
-                        `[Media Error] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
-                    );
-                }
+                console.error(
+                   `[Media Error] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
+                );
                 return;
             }
             extension = mime.getExtension(mediaType);
             if (extension === null) {
-                if (this.verbose) {
+                if (true) {
                     console.error(
                         `[Media Error] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
                     );
@@ -614,11 +608,11 @@ export class EPub {
 
     async render(): Promise<{ result: string }> {
         // Create directories
-        if (!existsSync(this.tempDir)) {
-            mkdirSync(this.tempDir);
+        if (!await exists(this.tempDir)) {
+            await Deno.mkdir(this.tempDir, { recursive: true });
         }
-        mkdirSync(this.tempEpubDir);
-        mkdirSync(resolve(this.tempEpubDir, "./OEBPS"));
+        await Deno.mkdir(this.tempEpubDir, { recursive: true });
+        await Deno.mkdir(resolve(this.tempEpubDir, "./OEBPS"), { recursive: true });
 
         if (this.verbose) {
             console.log("Downloading Media...");
@@ -661,19 +655,19 @@ export class EPub {
 
         // Copy the CSS style
         if (!this.css) {
-            this.css = readFileSync(resolve(__dirname, "./templates/template.css"), { encoding: "utf8" });
+            this.css = await Deno.readTextFile(resolve(__dirname, "./templates/template.css"));
         }
-        writeFileSync(resolve(this.tempEpubDir, "./OEBPS/style.css"), this.css);
+        await Deno.writeTextFile(resolve(this.tempEpubDir, "./OEBPS/style.css"), this.css);
 
         // Copy fonts
         if (this.fonts.length) {
-            mkdirSync(resolve(this.tempEpubDir, "./OEBPS/fonts"));
+            await Deno.mkdir(resolve(this.tempEpubDir, "./OEBPS/fonts"), { recursive: true });
             this.fonts = this.fonts.map((font) => {
                 if (!existsSync(font)) {
                     throw new Error(`Custom font not found at ${font}.`);
                 }
                 const filename = basename(font);
-                fsExtra.copySync(font, resolve(this.tempEpubDir, `./OEBPS/fonts/${filename}`));
+                Deno.copyFileSync(font, resolve(this.tempEpubDir, `./OEBPS/fonts/${filename}`));
                 return filename;
             });
         }
@@ -693,19 +687,19 @@ export class EPub {
                     escape: (markup) => markup,
                 }
             );
-            writeFileSync(content.filePath, result);
+            await Deno.writeTextFile(content.filePath, result);
         }
 
         // write meta-inf/container.xml
-        mkdirSync(`${this.tempEpubDir}/META-INF`);
-        writeFileSync(
+        await Deno.mkdir(`${this.tempEpubDir}/META-INF`, { recursive: true });
+        await Deno.writeTextFile(
             `${this.tempEpubDir}/META-INF/container.xml`,
             '<?xml version="1.0" encoding="UTF-8" ?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'
         );
 
         if (this.version === 2) {
             // write meta-inf/com.apple.ibooks.display-options.xml [from pedrosanta:xhtml#6]
-            writeFileSync(
+            await Deno.writeTextFile(
                 `${this.tempEpubDir}/META-INF/com.apple.ibooks.display-options.xml`,
                 `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <display_options>
@@ -719,23 +713,23 @@ export class EPub {
 
         const opfPath =
             this.customOpfTemplatePath || resolve(__dirname, `./templates/epub${this.version}/content.opf.ejs`);
-        if (!existsSync(opfPath)) {
+        if (!await exists(opfPath)) {
             throw new Error("Custom file to OPF template not found.");
         }
-        writeFileSync(resolve(this.tempEpubDir, "./OEBPS/content.opf"), await renderFile(opfPath, this));
+        await Deno.writeTextFile(resolve(this.tempEpubDir, "./OEBPS/content.opf"), await renderFile(opfPath, this));
 
         const ncxTocPath = this.customNcxTocTemplatePath || resolve(__dirname, "./templates/toc.ncx.ejs");
-        if (!existsSync(ncxTocPath)) {
+        if (!await exists(ncxTocPath)) {
             throw new Error("Custom file the NCX toc template not found.");
         }
-        writeFileSync(resolve(this.tempEpubDir, "./OEBPS/toc.ncx"), await renderFile(ncxTocPath, this));
+        await Deno.writeTextFile(resolve(this.tempEpubDir, "./OEBPS/toc.ncx"), await renderFile(ncxTocPath, this));
 
         const htmlTocPath =
             this.customHtmlTocTemplatePath || resolve(__dirname, `./templates/epub${this.version}/toc.xhtml.ejs`);
-        if (!existsSync(htmlTocPath)) {
+        if (!await exists(htmlTocPath)) {
             throw new Error("Custom file to HTML toc template not found.");
         }
-        writeFileSync(resolve(this.tempEpubDir, "./OEBPS/toc.xhtml"), await renderFile(htmlTocPath, this));
+        await Deno.writeTextFile(resolve(this.tempEpubDir, "./OEBPS/toc.xhtml"), await renderFile(htmlTocPath, this));
     }
 
     private async makeCover(): Promise<void> {
@@ -745,36 +739,27 @@ export class EPub {
 
         const destPath = resolve(this.tempEpubDir, `./OEBPS/cover.${this.coverExtension}`);
 
-        let writeStream: fsExtra.ReadStream;
         if (this.cover.slice(0, 4) === "http" || this.cover.slice(0, 2) === "//") {
             try {
-                const httpRequest = await axios.get(this.cover, {
-                    responseType: "stream",
+                const httpRequest = await fetch2(this.cover, {
                     headers: { "User-Agent": this.userAgent },
                 });
-                writeStream = httpRequest.data;
-                writeStream.pipe(createWriteStream(destPath));
+                if(!httpRequest.ok || !httpRequest.body)
+                    throw new Error("Failed to fetch cover image(status code: " + httpRequest.status + ")");
+                await Deno.writeFile(destPath, httpRequest.body);
+                console.log('成功下载封面：', this.cover);
             } catch (err) {
-                if (this.verbose) {
+                if (true) {
                     console.error(`The cover image can't be processed : ${this.cover}, ${err}`);
                 }
+                try{
+                    await Deno.remove(destPath);
+                }catch{}
                 return;
             }
         } else {
-            writeStream = createReadStream(this.cover);
-            writeStream.pipe(createWriteStream(destPath));
+            await Deno.copyFile(this.cover, destPath);
         }
-
-        const promiseStream = new Promise<void>((resolve, reject) => {
-            writeStream.on("end", () => resolve());
-            writeStream.on("error", (err: unknown) => {
-                console.error("Error", err);
-                unlinkSync(destPath);
-                reject(err);
-            });
-        });
-
-        await promiseStream;
 
         if (this.verbose) {
             console.log("[Success] cover image downloaded successfully!");
@@ -800,60 +785,39 @@ export class EPub {
         const filename = resolve(this.tempEpubDir, `./OEBPS/${subfolder}/${media.id}.${media.extension}`);
 
         if (media.url.indexOf("file://") === 0) {
-            const auxpath = media.url.substr(7);
-            fsExtra.copySync(auxpath, filename);
+            const auxpath = media.url.substring(7);
+            await Deno.copyFile(auxpath, filename);
             return;
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let requestAction: any;
         if (media.url.indexOf("http") === 0 || media.url.indexOf("//") === 0) {
             try {
-                const httpRequest = await axios.get(media.url, {
-                    responseType: "stream",
+                const httpRequest = await fetch2(media.url, {
                     headers: { "User-Agent": this.userAgent },
                 });
-                requestAction = httpRequest.data;
-                requestAction.pipe(createWriteStream(filename));
+                if(!httpRequest.ok || !httpRequest.body)
+                    throw new Error("Failed to fetch media(status code: " + httpRequest.status + ")");
+                await Deno.writeFile(filename, httpRequest.body);
+                console.log('成功下载：', media.url);
             } catch (err) {
-                if (this.verbose) {
+                if (true) {
                     console.error(`The media can't be processed : ${media.url}, ${err}`);
                 }
                 return;
             }
-        } else {
-            requestAction = createReadStream(resolve(media.dir, media.url));
-            requestAction.pipe(createWriteStream(filename));
         }
-
-        return new Promise((resolve, reject) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            requestAction.on("error", (err: any) => {
-                if (this.verbose) {
-                    console.error("[Download Error]", "Error while downloading", media.url, err);
-                }
-                unlinkSync(filename);
-                reject(err);
-            });
-
-            requestAction.on("end", () => {
-                if (this.verbose) {
-                    console.log("[Download Success]", media.url);
-                }
-                resolve();
-            });
-        });
     }
 
     private async downloadAllMedia(): Promise<void> {
         if (this.images.length > 0) {
-            mkdirSync(resolve(this.tempEpubDir, "./OEBPS/images"));
+            await Deno.mkdir(resolve(this.tempEpubDir, "./OEBPS/images"), { recursive: true });
             for (let index = 0; index < this.images.length; index++) {
                 await this.downloadMedia(this.images[index], "images");
             }
         }
         if (this.audioVideo.length > 0) {
-            mkdirSync(resolve(this.tempEpubDir, "./OEBPS/audiovideo"));
+            await Deno.mkdir(resolve(this.tempEpubDir, "./OEBPS/audiovideo"), { recursive: true });
             for (let index = 0; index < this.audioVideo.length; index++) {
                 await this.downloadMedia(this.audioVideo[index], "audiovideo");
             }
@@ -885,7 +849,7 @@ export class EPub {
                     if (this.verbose) {
                         console.log("Done zipping, clearing temp dir...");
                     }
-                    fsExtra.removeSync(cwd);
+                    Deno.removeSync(cwd, { recursive: true });
                     resolve();
                 });
             });

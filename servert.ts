@@ -7,9 +7,10 @@ for await (const conn of Deno.listen({ port: 8000 }))(async function(){
     console.log('new connection');
     const buf = new Uint8Array(100);
     let len: number | null;
-    while((len = await conn.read(buf))!== null){
-        if(buf)
-            file.writeSync(buf.subarray(0, len));
+    while(true){
+        if((len = await conn.read(buf)) === null) continue;
+        file.writeSync(buf.subarray(0, len));
+        console.log(new TextDecoder().decode(buf.subarray(0, len)));
     }
     conn.close();
 });

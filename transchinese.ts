@@ -1,5 +1,5 @@
 import { basename, dirname } from "jsr:@std/path@^1.0";
-import { getDocument } from "./main.ts";
+import { getDocument, removeIllegalPath } from "./main.ts";
 import { fetch2 } from "./main.ts";
 import { toEpub } from "./2epub.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
@@ -9,6 +9,9 @@ let _url = prompt(" >> ");
 if(!_url) _url = 'https://unovel.transchinese.org/epub%E5%B0%8F%E8%AF%B4%E4%B8%8B%E8%BD%BD%EF%BC%88%E6%9B%B4%E6%96%B0%EF%BC%89/';
 
 const items: Record<string, URL> = {};
+
+await ensureDir('./transout');
+Deno.chdir('./transout');
 
 // const parseHTML = (url: URL | string) => getDocument(url).then(async doc => {
 //     const path = (id: number) => `body > div.md-container > main > div > div.md-content > article > p:nth-child(${5 + num})`;
@@ -44,29 +47,49 @@ const getNovelByUrl = async (url: URL | string) => {
     const doc = await getDocument(url);
     const path = 'body > div.md-container > main > div > div.md-content > article > p:nth-child(2) > a';
     const title = doc.querySelector(path)!.textContent!;
-    const content = await fetch2(new URL(doc.querySelector(path)!.getAttribute('href')!, url));
-    console.log('Got', title, 'from', url);
-    return [title, await content.bytes()] as [string, Uint8Array];
+    let bytes: Uint8Array;
+
+    for(let i = 0; i < 3; i++) try{
+        const content = await fetch2(new URL(doc.querySelector(path)!.getAttribute('href')!, url));
+        console.log('Got', title);
+        bytes = await content.bytes();
+        break;
+    }catch(e){
+        if(i < 2)
+            console.log('Retrying', i+1, '...', (e as Error).message);
+        else
+            throw e;
+    }
+    // @ts-ignore ?
+    return [removeIllegalPath(title), bytes] as [string, Uint8Array];
 }
 
 async function* getIndex (url: URL | string){
-    const path = 'body > div.md-container > main > div > div.md-content > article > div.md-typeset__scrollwrap > div > table > tbody';
     const doc = await getDocument(url);
-    console.log('Got index from', url);
-    for(const item of doc.querySelectorAll(path + ' > tr')){
+    for(const item of doc.querySelectorAll(
+        'body > div.md-container > main > div > div.md-content > article > table > tbody > tr > td:nth-child(1) > a'
+    )){
         //  > tr:nth-child(1) > td:nth-child(1) > a
-        const title = item.querySelector('td > a')!.textContent!;
-        const url2 = new URL(item.querySelector('td > a')!.getAttribute('href')!, url);
+        const title = item.textContent!;
+        let _url = item.getAttribute('href')!;
+        _url.endsWith('/') || (_url += '/');
+        const url2 = new URL(_url, url);
         yield [title, url2];
     }
 }
 
 // main
-for await(const [title, url] of getIndex(_url)){
+for await(const [title, url] of getIndex(_url)) try{
     const [title2, content] = await getNovelByUrl(url);
     ensureDir(dirname(title2));
     if(title2.endsWith('.txt'))
-        toEpub(new TextDecoder().decode(content), title2, title2.replace('.txt', '.epub'));
+        toEpub(new TextDecoder().decode(content), title2, title2.replace('.txt', '.epub'))
+            .catch((function(this: [string, Uint8Array], e: Error){
+                console.error(e);
+                Deno.writeFile(this[0], this[1]);
+            }).bind([title2, content]));
     else
         Deno.writeFile(title2, content);
+}catch(e){
+    console.error(e);
 }

@@ -318,11 +318,21 @@ async function downloadNovel(
     }
 }
 
-
-
 async function exists(file: string): Promise<boolean> {
     try {
         await Deno.stat(file);
+        return true;
+    } catch (e) {
+        if (e instanceof Deno.errors.NotFound) {
+            return false;
+        }
+        throw e;
+    }
+}
+
+function existsSync(file: string): boolean {
+    try {
+        Deno.statSync(file);
         return true;
     } catch (e) {
         if (e instanceof Deno.errors.NotFound) {
@@ -375,4 +385,4 @@ if(import.meta.main){
         console.error('未找到' + host + '的配置，站点不受支持');
 }
 
-export { NoRetryError, timeout, getDocument, removeIllegalPath, exists, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };
+export { NoRetryError, timeout, getDocument, removeIllegalPath, exists, existsSync, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };
