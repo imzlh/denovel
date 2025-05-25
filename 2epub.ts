@@ -7,12 +7,19 @@ import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 // deno-lint-ignore no-control-regex
 const rep = /[\x00-\x1F\x7F-\x9F\u200B-\u200F\uFEFF]/g;
 
+// 1~奇怪的传单
+// chapter 1~偷吃？不，没有
+// No、001姬的时代
+// 倒仙初淋夏时雨 : 001 无家可归的夏大小姐
+//  1~猎魔人？求爱？
 const regexp = [
-    /[\r\n]+(?:\s*第[-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[-一二三四五六七八九十百千万亿0-9]+\s*[章]\s*(.+)[\r\n]+/g,
-    /[\r\n]+\s*[零一二三四五六七八九十百千万亿0-9]+\s*[、. ：:]\s*(.+)[\r\n]+/g,
-    /[\r\n]+\s*\d+＜(.+)＞\s*[\r\n]+/g,
-    /[\r\n]+\s*No[、.]\d+ (.+)\s*[\r\n]+/g,
+    /[\r\n]+(?:\s*第[-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[-一二三四五六七八九十百千万亿0-9]+\s*[章话]\s*(.+)[\r\n]+/g,
+    /[\r\n]+\s*(chapter\s*)[零一二三四五六七八九十百千万亿0-9]+\s*[、. ：:~，]\s*(.+)[\r\n]+/g,
+    /[\r\n]+\s*\d+＜(.+)＞\s*[\r\n]+/gi,
+    /[\r\n]+\s*No[、.]\d+\s*(.+)\s*[\r\n]+/g,
+    /[\r\n]+.+\s*[：:]\s*\d+\s*(.+)\s*[\r\n]+/g,
     /第\s*[-零一二三四五六七八九十百千万亿0-9]+\s*章\s*(.+)/g,
+    /[\r\n]\s*\d+\s*[、. ：:~，]\s*(.+)\s*[\r\n]+/g,
 ];
 
 /**
@@ -21,7 +28,7 @@ const regexp = [
  * @param input 输入的文件名
  * @param output 输出位置
  */
-export function toEpub(data: string, input: string, output: string): boolean {
+export function toEpub(data: string, input: string, output: string, thenCB?: () => any): boolean {
     input = input ? input.replace('.txt', '') : '<inmemory>';
 
     // 分卷
@@ -98,6 +105,7 @@ export function toEpub(data: string, input: string, output: string): boolean {
     console.log('Generating EPub file to ', output, '...');
     new EPub(options, output).render().then(a => {
         console.log('EPub has been generated to ',output, a.result);
+        if(thenCB) thenCB();
     });
 
     return true;
@@ -111,7 +119,7 @@ export const encodeContent = (str: string) => {
         .replace(/'/g, '&apos;')
         .replace(/\s*[\r\n]+\s*/g, '</p><p>')
         .replace(rep, '')
-        .replaceAll(/\&lt\;img.+src=\&(?:quot|apos)\;([^"']+)\&(?:quot|apos)\;.*\/?\&gt;/g, '<img src="$1" />')
+        .replaceAll(/\&lt\;img.+src=\&(?:quot|apos)\;(.+?)\&(?:quot|apos)\;.*\/?\&gt;/g, '<img src="$1" />')
         + '</p>';
     return str2.replaceAll(/\<p\> *\<\/p\>/g, '');
 }
