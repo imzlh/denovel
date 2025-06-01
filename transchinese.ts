@@ -108,3 +108,7 @@ export async function getTBooks(_url: URL | string){
 }
 
 if(import.meta.main) getTBooks(_url);
+globalThis.addEventListener('unhandledrejection', (e) => {
+    e.preventDefault();
+    console.error(e);
+});

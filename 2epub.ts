@@ -6,21 +6,120 @@ import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // deno-lint-ignore no-control-regex
 const rep = /[\x00-\x1F\x7F-\x9F\u200B-\u200F\uFEFF]/g;
+const MAX_CHARS_PER_CHAPTER = 1e5 * 2;  // 2w字
 
 // 1~奇怪的传单
 // chapter 1~偷吃？不，没有
 // No、001姬的时代
 // 倒仙初淋夏时雨 : 001 无家可归的夏大小姐
 //  1~猎魔人？求爱？
+// 第一季 一	我，消失了
+// [第一卷  01、文艺委员]
+// [1] 人生出了点小小的意外
+// \n远去\n==============
+// 第一节 重生
+// 一，被害，重生
+// 第一卷：我变成女孩子了？ 男孩子就应该喜欢女装！
+//     二 归来的女仆
+// 1～长的很可爱的大哥哥( ´･ω･)
 const regexp = [
-    /[\r\n]+(?:\s*第[-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[-一二三四五六七八九十百千万亿0-9]+\s*[章话]\s*(.+)[\r\n]+/g,
-    /[\r\n]+\s*(chapter\s*)[零一二三四五六七八九十百千万亿0-9]+\s*[、. ：:~，]\s*(.+)[\r\n]+/g,
-    /[\r\n]+\s*\d+＜(.+)＞\s*[\r\n]+/gi,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[-一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/g,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[-一二三四五六七八九十百千万亿0-9]+\s(.*)\]?[\r\n]+/g,
+    /[\r\n]+\s*(?:chapter\s*)[零一二三四五六七八九十百千万亿0-9]+\s*[、. ：:~，·～]\s*(.*)[\r\n]+/g,
+    /[\r\n]+\s*(?:正文\s*)?\d+＜(.+)＞\s*[\r\n]+/gi,
+    /[\r\n]+\s*第[-零一二三四五六七八九十百千万亿0-9]+卷\s*(?:.+)\s+(.+)\s*[\r\n]+/g,
     /[\r\n]+\s*No[、.]\d+\s*(.+)\s*[\r\n]+/g,
-    /[\r\n]+.+\s*[：:]\s*\d+\s*(.+)\s*[\r\n]+/g,
-    /第\s*[-零一二三四五六七八九十百千万亿0-9]+\s*章\s*(.+)/g,
-    /[\r\n]\s*\d+\s*[、. ：:~，]\s*(.+)\s*[\r\n]+/g,
+    /[\r\n]+.+\s*[：:]\s*\d+\s*(.*)\s*[\r\n]+/g,
+    /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，·～]\s*(.+)\s*[\r\n]+/g,
+    /[\r\n]+\s*[-零一二三四五六七八九十百千万亿0-9]+[、. ：:~，·～]\s*(.+)\s*[\r\n]+/g,
+    /[\r\n]+(.+)[\r\n]+([=\-])\2{2,}[\r\n]+/g,
+    /\s+第\s*[-零一二三四五六七八九十百千万亿0-9]+\s*[章集季]\s*(.+)\s+/g,
+    /[\r\n]+\s*[-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/g
 ];
+
+function splitByIndent(text: string): {title: string, data: string}[] {
+    const result: {title: string, data: string}[] = [];
+    let lines = text.split(/\r?\n/);
+    
+    // 原函数的备用分割逻辑
+    if(lines.length == 0) lines = text.split('\r');
+    if(lines.length == 0) lines = text.replaceAll(/\s{2,}/, t => '\n' + t.substring(1)).split('\n');
+    if(lines.length == 0) return [{title: "前言", data: text}];
+    
+    let currentTitle: string = "";
+    let currentData: string[] = [];
+    let pendingTitles: string[] = [];
+    let isFirstSection = true;
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === "") continue; // 跳过空行
+        
+        const indent = line.match(/^\s*/)?.[0].length || 0;
+        
+        if (indent === 0) {
+            // 无缩进行为标题
+            if (isFirstSection) {
+                pendingTitles.push(trimmed);
+            } else {
+                pendingTitles.push(trimmed);
+            }
+        } else {
+            // 有缩进行为内容
+            if (isFirstSection && pendingTitles.length > 0) {
+                currentTitle = pendingTitles.pop() || "";
+                if (pendingTitles.length > 0) {
+                    currentData.push(...pendingTitles);
+                }
+                pendingTitles = [];
+                isFirstSection = false;
+            }
+            
+            if (!isFirstSection && pendingTitles.length > 0) {
+                if (currentTitle !== "") {
+                    result.push({
+                        title: currentTitle.slice(0, 50), 
+                        data: currentData.join('\n')
+                    });
+                }
+                currentTitle = pendingTitles.pop() || "";
+                currentData = [];
+                pendingTitles = [];
+            }
+            
+            currentData.push(line);
+        }
+    }
+    
+    // 处理最后的pendingTitles
+    if (pendingTitles.length > 0) {
+        if (isFirstSection) {
+            currentTitle = pendingTitles.pop() || "";
+            currentData = pendingTitles;
+        } else {
+            if (currentTitle !== "") {
+                result.push({
+                    title: currentTitle.slice(0, 50),
+                    data: currentData.join('\n')
+                });
+            }
+            currentTitle = pendingTitles.pop() || "";
+            currentData = [];
+        }
+    }
+    
+    // 添加最后一个章节
+    if (currentTitle !== "" || currentData.length > 0) {
+        result.push({
+            title: currentTitle.slice(0, 50),
+            data: currentData.join('\n')
+        });
+    }
+    
+    return result;
+}
+
+
 
 /**
  * TXT转换成EPUB
@@ -30,42 +129,11 @@ const regexp = [
  */
 export function toEpub(data: string, input: string, output: string, thenCB?: () => any): boolean {
     input = input ? input.replace('.txt', '') : '<inmemory>';
+    data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
 
     // 分卷
     const chaps: Array<EpubContentOptions> = [];
     let max: number = 0;
-
-    let matches: Array<RegExpExecArray> = [];
-    for(const reg of regexp){
-        matches = Array.from(data.matchAll(reg));
-        max = Math.max(max, matches.length);
-        if(matches.length * 1e5 >= data.length) break;
-    }
-    // 每章1w字峰值，阈值10w
-    if(matches.length * 1e5 < data.length){
-        console.error(`章节数过少，疑似分片错误，请确保章节数 >= 1且遵循 “第x章 ....”`);
-        console.error(input, '生成失败', 'count: ', max, 'length: ', data.length, 'adv: ', data.length / max);
-        return false;
-    }
-    let start = matches[0].index;
-
-    // debug
-    if(output == undefined){
-        console.log(matches.map(m => m[1]).join('\n'));
-        return false;
-    }
-
-    for (let i = 1; i <= matches.length; i++) {
-        const content = data.substring(matches[i - 1].index, matches[i]?.index),
-            title = matches[i - 1][1].substring(0, 50) + (matches[i-1][1].length > 50 ? '...' : '');
-
-        chaps.push({
-            title,
-            data: encodeContent(content).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_,it) =>
-                it ? `<img src="${it}" />` : ''
-            ),
-        });
-    }
 
     const options: EpubOptions = {
         title: basename(input),
@@ -74,30 +142,68 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
         // verbose: true,
         downloadAudioVideoFiles: true,
         lang: "zh-CN",
+    };
+
+    let matches: Array<RegExpExecArray> = [];
+    for(const reg of regexp){
+        matches = Array.from(data.matchAll(reg));
+        max = Math.max(max, matches.length);
+        if(matches.length * MAX_CHARS_PER_CHAPTER >= data.length) break;
     }
+    if(matches.length * MAX_CHARS_PER_CHAPTER < data.length){
+        const idParsed = splitByIndent(data);
+        if(idParsed.length * MAX_CHARS_PER_CHAPTER < data.length){
+            console.error(`章节数过少，疑似分片错误，请确保章节数 >= 1且遵循 “第x章 ....”`);
+            console.error(input, '生成失败', 'count: ', max, 'length: ', data.length, 'adv: ', data.length / max);
+            return false;
+        }else{
+            console.warn('使用缩进分卷风险很大，请小心删除，检查内容是否有效');
+            chaps.push(...idParsed);
+        }
+    }else{
+        let start = matches[0].index;
 
-    if(start > 0){
-        data = data.substring(0, start);
-        chaps.unshift({
-            title: "前言",
-            data: encodeContent(data)
-        });
-
-        const match = data.match(/[\r\n]+\s*作者[：:]\s*(.+?)\s*[\r\n]+/);
-        if(match){
-            options.author = match[1];
+        // debug
+        if(output == undefined){
+            console.log(matches.map(m => m[1]).join('\n'));
+            return false;
         }
 
-        // const ctxmatch = data.match(/[\r\n]+\s*简介[：:]\s*[\r\n]+/);
-        // if(ctxmatch){
-        //     const start = ctxmatch.index + ctxmatch[0].length;
-        //     const end = start.match(/[\r\n]+\s*[\r\n]+/)
-        // }
+        for (let i = 1; i <= matches.length; i++) {
+            const content = data.substring(matches[i - 1].index, matches[i]?.index),
+                title = matches[i - 1][1].substring(0, 50) + (matches[i-1][1].length > 50 ? '...' : '');
 
-        // image
-        const imgmatch = data.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/);
-        if(imgmatch){
-            options.cover = imgmatch[0];
+            chaps.push({
+                title: title.replaceAll(/\s+/g, ' '),
+                data: encodeContent(content).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_,it) =>
+                    it ? `<img src="${it}" />` : ''
+                ),
+            });
+        }
+
+        if(start > 0){
+            data = data.substring(0, start);
+            chaps.unshift({
+                title: "前言",
+                data: encodeContent(data)
+            });
+
+            const match = data.match(/[\r\n]+\s*作者[：:]\s*(.+?)\s*[\r\n]+/);
+            if(match){
+                options.author = match[1];
+            }
+
+            // const ctxmatch = data.match(/[\r\n]+\s*简介[：:]\s*[\r\n]+/);
+            // if(ctxmatch){
+            //     const start = ctxmatch.index + ctxmatch[0].length;
+            //     const end = start.match(/[\r\n]+\s*[\r\n]+/)
+            // }
+
+            // image
+            const imgmatch = data.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/);
+            if(imgmatch){
+                options.cover = imgmatch[0];
+            }
         }
     }
 
@@ -127,11 +233,13 @@ export const encodeContent = (str: string) => {
 if (import.meta.main) {
     const args = parseArgs(Deno.args, {
         string: ['output'],
-        boolean: ['help', 'delete'],
+        boolean: ['help', 'delete', 'force', 'delete-exist'],
         alias: {
             o: 'output',
             h: 'help',
-            d: 'delete'
+            d: 'delete',
+            f: 'force',
+            e: 'delete-exist',
         }
     });
 
@@ -145,6 +253,8 @@ if (import.meta.main) {
         -o, --output <output>  Output dir (default: auto-generated)
         -h, --help             Show help
         -d, --delete           Delete input file after conversion
+        -f, --force            Overwrite existing output file
+        -e, --delete-exist     Delete source file if existing output file
     
     Example:
       deno run 2epub.ts input.txt -o output.epub`);
@@ -170,8 +280,16 @@ if (import.meta.main) {
     for(const file of files) try{
         const ofile = output + '/' + basename(file) + '.epub';
         if(await exists(ofile)){
-            console.log(`"${ofile}" already exists, skip`);
-            continue;
+            if(args['delete-exist']){
+                console.log(`"${ofile}" already exists, delete source file`);
+                Deno.removeSync(ofile);
+                continue;
+            }
+
+            if(!args.force){
+                console.log(`"${ofile}" already exists, skip`);
+                continue;
+            }
         }
         
         const data = Deno.readTextFileSync(file);
