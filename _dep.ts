@@ -98,11 +98,3 @@ export function parseCueSheet(cueContent: string) {
     }
     return tracks;
 }
-
-export const arg = parseArgs(Deno.args);
-
-export function help(help:string){
-    if(!arg.help) return;
-    console.log(help);
-    Deno.exit(0);
-}

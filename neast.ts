@@ -2,7 +2,7 @@ import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { removeIllegalPath } from './main.ts'
 import { fetch2 } from "./main.ts";
 
-const frontEnd = 'http://192.168.1.2:3000';
+const frontEnd = 'http://localhost:3000';
 const outDir = 'musicout/';
 await ensureDir(outDir);
 

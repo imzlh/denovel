@@ -1,12 +1,12 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename, dirname } from "jsr:@std/path";
 import { EPub, EpubContentOptions, EpubOptions } from "./genepub.ts";
-import { exists } from "./main.ts";
+import { exists, tryReadTextFile } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // deno-lint-ignore no-control-regex
 const rep = /[\x00-\x1F\x7F-\x9F\u200B-\u200F\uFEFF]/g;
-const MAX_CHARS_PER_CHAPTER = 1e5 * 2;  // 2w字
+const MAX_CHARS_PER_CHAPTER = 1e5 * 1;
 
 // 1~奇怪的传单
 // chapter 1~偷吃？不，没有
@@ -22,19 +22,21 @@ const MAX_CHARS_PER_CHAPTER = 1e5 * 2;  // 2w字
 // 第一卷：我变成女孩子了？ 男孩子就应该喜欢女装！
 //     二 归来的女仆
 // 1～长的很可爱的大哥哥( ´･ω･)
+//    ────────────────────────\n\n    序章
+
 const regexp = [
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[-一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/g,
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[-一二三四五六七八九十百千万亿0-9]+\s(.*)\]?[\r\n]+/g,
-    /[\r\n]+\s*(?:chapter\s*)[零一二三四五六七八九十百千万亿0-9]+\s*[、. ：:~，·～]\s*(.*)[\r\n]+/g,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/g,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s(.*)\]?[\r\n]+/g,
+    /[\r\n]+\s*(?:chapter\s*)[零一二三四五六七八九十百千万亿0-9]+\s*[、. ：:~，·～．]\s*(.*)[\r\n]+/g,
     /[\r\n]+\s*(?:正文\s*)?\d+＜(.+)＞\s*[\r\n]+/gi,
-    /[\r\n]+\s*第[-零一二三四五六七八九十百千万亿0-9]+卷\s*(?:.+)\s+(.+)\s*[\r\n]+/g,
-    /[\r\n]+\s*No[、.]\d+\s*(.+)\s*[\r\n]+/g,
+    /[\r\n]+\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷\s*(?:.+)\s+(.+)\s*[\r\n]+/g,
+    /[\r\n]+\s*No[、.．]\d+\s*(.+)\s*[\r\n]+/g,
     /[\r\n]+.+\s*[：:]\s*\d+\s*(.*)\s*[\r\n]+/g,
-    /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，·～]\s*(.+)\s*[\r\n]+/g,
-    /[\r\n]+\s*[-零一二三四五六七八九十百千万亿0-9]+[、. ：:~，·～]\s*(.+)\s*[\r\n]+/g,
-    /[\r\n]+(.+)[\r\n]+([=\-])\2{2,}[\r\n]+/g,
-    /\s+第\s*[-零一二三四五六七八九十百千万亿0-9]+\s*[章集季]\s*(.+)\s+/g,
-    /[\r\n]+\s*[-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/g
+    /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，．·～]\s*(.+)\s*[\r\n]+/g,
+    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+[、. ：:~，·．～]\s*(.+)\s*[\r\n]+/g,
+    /[\r\n]+(.+)[\r\n]+([=\-─])\2{2,}[\r\n]+/g,
+    /\s+第\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章集季]\s*(.+)\s+/g,
+    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/g
 ];
 
 function splitByIndent(text: string): {title: string, data: string}[] {
@@ -127,8 +129,8 @@ function splitByIndent(text: string): {title: string, data: string}[] {
  * @param input 输入的文件名
  * @param output 输出位置
  */
-export function toEpub(data: string, input: string, output: string, thenCB?: () => any): boolean {
-    input = input ? input.replace('.txt', '') : '<inmemory>';
+export function toEpub(data: string, input: string, output: string, thenCB?: () => any, per_page_max = MAX_CHARS_PER_CHAPTER): boolean {
+    input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
 
     // 分卷
@@ -148,11 +150,11 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
     for(const reg of regexp){
         matches = Array.from(data.matchAll(reg));
         max = Math.max(max, matches.length);
-        if(matches.length * MAX_CHARS_PER_CHAPTER >= data.length) break;
+        if(matches.length * per_page_max >= data.length) break;
     }
-    if(matches.length * MAX_CHARS_PER_CHAPTER < data.length){
+    if(matches.length * per_page_max < data.length){
         const idParsed = splitByIndent(data);
-        if(idParsed.length * MAX_CHARS_PER_CHAPTER < data.length){
+        if(idParsed.length * per_page_max < data.length){
             console.error(`章节数过少，疑似分片错误，请确保章节数 >= 1且遵循 “第x章 ....”`);
             console.error(input, '生成失败', 'count: ', max, 'length: ', data.length, 'adv: ', data.length / max);
             return false;
@@ -232,7 +234,7 @@ export const encodeContent = (str: string) => {
 
 if (import.meta.main) {
     const args = parseArgs(Deno.args, {
-        string: ['output'],
+        string: ['output', 'chapter-max'],
         boolean: ['help', 'delete', 'force', 'delete-exist'],
         alias: {
             o: 'output',
@@ -240,24 +242,26 @@ if (import.meta.main) {
             d: 'delete',
             f: 'force',
             e: 'delete-exist',
+            c: 'chapter-max'
         }
     });
 
     if (args.help) {
         console.log(`Convert TXT to EPUB file
     
-    Usage:
-      deno run 2epub.ts [options] <input>
+Usage:
+  deno run 2epub.ts [options] <input>
     
-    Options:
-        -o, --output <output>  Output dir (default: auto-generated)
-        -h, --help             Show help
-        -d, --delete           Delete input file after conversion
-        -f, --force            Overwrite existing output file
-        -e, --delete-exist     Delete source file if existing output file
+Options:
+    -o, --output <output>  Output dir (default: auto-generated)
+    -h, --help             Show help
+    -d, --delete           Delete input file after conversion
+    -f, --force            Overwrite existing output file
+    -e, --delete-exist     Delete source file if existing output file
+    -c, --chapter-max <n>  Max chars per chapter (default: 1w)
     
-    Example:
-      deno run 2epub.ts input.txt -o output.epub`);
+Example:
+    deno run 2epub.ts input.txt -o output.epub`);
         Deno.exit(0);
     }
 
@@ -269,11 +273,15 @@ if (import.meta.main) {
     let files = [] as string[];
     if(finfo.isDirectory) {
         files = await Array.fromAsync(Deno.readDir(input)).then(data => 
-            data.filter(item => item.isFile && item.name.endsWith('.txt')).map(item => item.name)
+            data.filter(item => item.isFile && /\.txt$/i.test(item.name)).map(item => item.name)
         );
     } else {
         files = [input];
     }
+
+    let chapMax = MAX_CHARS_PER_CHAPTER;
+    if(args['chapter-max']) chapMax = parseInt(args['chapter-max']);
+    if(isNaN(chapMax) || chapMax < 1) chapMax = MAX_CHARS_PER_CHAPTER;
 
     console.time('convert');
     await ensureDir(output);
@@ -292,8 +300,8 @@ if (import.meta.main) {
             }
         }
         
-        const data = Deno.readTextFileSync(file);
-        const res = toEpub(data, file, ofile);
+        const data = tryReadTextFile(file);
+        const res = toEpub(data, file, ofile, undefined, chapMax);
         if(res)
             console.log(`"${file}" has been converted to "${basename(file)}.epub"`);
         console.timeLog('convert');

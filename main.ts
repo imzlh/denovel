@@ -176,6 +176,20 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
     return doc;
 }
 
+function tryReadTextFile(file: string): string {
+    const binFile = Deno.readFileSync(file);
+    try{
+        return new TextDecoder('utf-8', { fatal: true }).decode(binFile);
+    // }catch{ try{
+    //     console.log('try windows-1252(ANSI)')
+    //     return new TextDecoder('windows-1252', { fatal: true }).decode(binFile);
+    }catch{
+        console.log('try gb18030(GBK+)')
+        return new TextDecoder('gb18030', { fatal: true }).decode(binFile);
+    }
+// }
+}
+
 enum Status{
     QUEUED,
     DOWNLOADING,
@@ -186,7 +200,7 @@ enum Status{
     CANCELLED
 }
 
-const convert = Converter({ from: 'tw', to: 'cn' });
+export const convert = Converter({ from: 'tw', to: 'cn' });
 /**
  * 下载并转换小说
  * @param start_url 起始URL
@@ -385,4 +399,4 @@ if(import.meta.main){
         console.error('未找到' + host + '的配置，站点不受支持');
 }
 
-export { NoRetryError, timeout, getDocument, removeIllegalPath, exists, existsSync, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };
+export { NoRetryError, timeout, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };

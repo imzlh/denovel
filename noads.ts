@@ -7,32 +7,9 @@ import { dirname } from "https://deno.land/std@0.224.0/path/dirname.ts";
 import { basename } from "jsr:@std/path@^1.0.8/basename";
 import { exists } from "./main.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import pinyin from "https://cdn.skypack.dev/pinyin@2.9.1";
 
-// warn: 不安全，需要进一步调试
-const chars = `
-零一二三四五六七八九十〇
-①②③④⑤⑥⑦⑧⑨⑩
-依（）紦玲柒锍盈〶
-〓/〤.〳尹〉弍冷③2⊙企】
-=%裠无尹妻疤〥〤冷⒎;榴〤y〵祁扒〤
-〓舞丝陆'企[尔~厁〷另事〥〯玖起厁师〜
-"印 起扒  玐0-7（六）y"i靈夢
-鸸氿溜」⑤氵捌⒎〹易〙③
-熘0」（二）倭三F寺虾ba肆Z
-陾揪〡〇〪鷗 山捌气〖印〘 掺〃
-（一）⒉龄衫倭澪七罒岜君羊
-坝厁球韭〇企⒐V覇
-裙聊IIjiu$溜焐3虾齐引衫
-霓爾^彡li%n]g寺⒐qi彡死
-`.replaceAll('\n', '');
-
-const set = new Set<string>();
-for(let chr of chars){
-    if(('a' <= chr && chr <= 'z') || ('A' <= chr && chr <= 'Z')) continue;
-    if('[]&-\\'.includes(chr)) chr = '\\' + chr;
-    set.add(chr);
-}
-const regexp = new RegExp(`[${Array.from(set).join('')}\\^a-z]{10,30}`, 'gi');
+throw new Error('不要使用！目前还不可用！');
 
 // 灵/m@e-*/n#g/首^发
 const sc = '\/@-*/#^%$&~`!'.split('').map(c => '\\' + c).join('');
@@ -41,8 +18,96 @@ const repexp = [
     new RegExp(`(?:灵[${sc}]{1,3}|l[${sc}]{1,3}i[${sc}]{1,3}n[${sc}]{1,3}g[${sc}]{1,3})(?:梦[${sc}]{1,3}|m[${sc}]{1,3}e[${sc}]{1,3}n[${sc}]{1,3}g[${sc}]{1,3})首[${sc}]{1,3}发`, 'gi')
 ];
 
-export { regexp, repexp };
-const except_reg = /零一二三四五六七八九十〇1-9a-zA-Z/g;
+const getPy = (char: string) => pinyin(char, { style: "normal", heteronym: true })[0] as string[];
+const py = Array.from('零一二三四五六七八九').map(getPy);
+
+// 扩展数字匹配规则（示例，可按需补充）
+const NUM_REGEX = /[零一二三四五六七八九十①②③④⑤⑥⑦⑧⑨⑩⒈⒉⒊⒋⒌⒍⒎⒏⒐⒑]|(wu|liu|qi|ba|jiu|shi)/i;
+
+function checkAds(content: string[]): undefined | { start: number, end: number } {
+    // 标记数字和特殊字符混合区
+    let start = -1;
+    let hasNumber = false;
+    
+    for (let i = 0; i < content.length; i++) {
+        const isNum = NUM_REGEX.test(content[i]); // 数字类字符
+        const isSpecial = !/^[\p{Script=Han}a-zA-Z]$/u.test(content[i]); // 非汉字/字母的符号
+        
+        // 开始/继续可疑区间
+        if (isNum || isSpecial) {
+            if (start === -1) start = i;
+            if (isNum) hasNumber = true;
+        } else {
+            // 遇到正常字符时，若区间包含数字则验证
+            if (start !== -1 && hasNumber) {
+                const end = i - 1;
+                if (end - start + 1 >= 3) { // 至少3个元素含数字和符号
+                    return { start, end };
+                }
+            }
+            start = -1;
+            hasNumber = false;
+        }
+    }
+    
+    // 处理末尾残留区间
+    if (start !== -1 && hasNumber && content.length - start >= 3) {
+        return { start, end: content.length - 1 };
+    }
+    
+    return undefined;
+}
+
+
+function forEachByte(content: string, ref_ads?: { value: number }) {
+    const queue: string[] = [];
+    let lastAds = 0;
+    const contentPieces: string[] = [];
+    const maxQueueSize = 100;
+    let i = 0;
+
+    while (i < content.length) {
+        const chr = content[i];
+        
+        // 优化队列维护：直接限制队列长度
+        if (queue.length >= maxQueueSize) {
+            queue.shift();
+        } else {
+            queue.push(getPy(chr)[0]);
+            i++;
+        }
+
+        // 精确触发检测时机（当队列首次填满或后续维护时）
+        if (queue.length === maxQueueSize) {
+            const res = checkAds(queue);
+            if (res) {
+                // 计算绝对位置时考虑队列实际长度
+                const windowStart = i - maxQueueSize;
+                const absoluteStart = Math.max(windowStart + res.start, lastAds);
+                const absoluteEnd = windowStart + res.end;
+
+                // 防御性边界检查
+                if (absoluteEnd >= content.length) break;
+                if (absoluteStart > absoluteEnd) continue;
+
+                contentPieces.push(
+                    content.slice(lastAds, absoluteStart)
+                );
+                lastAds = absoluteEnd + 1;
+
+                // 精准跳转逻辑（避免死循环核心）
+                i = absoluteEnd + 1;
+                queue.length = 0; // 清空队列避免残留状态
+                if (ref_ads) ref_ads.value++;
+                continue; // 跳过后续队列维护
+            }
+        }
+    }
+
+    contentPieces.push(content.slice(lastAds));
+    return contentPieces.join('');
+}
+
 
 export function filterNoAds(content: string): string {
     let occurrence = 0;
@@ -50,16 +115,9 @@ export function filterNoAds(content: string): string {
         occurrence += (content.match(exp) || []).length;
         content = content.replace(exp, '');
     }
-    // content = content.replaceAll(regexp, (txt) => {
-    //     // 80%中文才替换
-    //     // const occurances = (txt.match(except_reg)?.length || 1) -1;
-    //     // if(occurances >= txt.length * .8) return txt;
-    //     // else 
-    //     console.error(txt);//debug
-    //     occurrence ++;
-    //     return '(_' + txt.substring(1) + txt.substring(txt.length - 1) + '_)'
-    // });
-
+    const ref_ads = { value: 0 };
+    content = forEachByte(content, ref_ads);
+    occurrence += ref_ads.value;
     console.log(`Filtered ${occurrence} ads in ${content.length} characters.`);
     return content;
 }

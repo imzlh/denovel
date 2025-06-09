@@ -3,6 +3,7 @@
  * - 当大号穿越异世遇上创世神小号⊙1-extra卷第20章（完本）.txt
  * - 【灵梦特殊广告书】崩坏，活下去⊙48w[多看阅读].epub
  * - 【南锦】我的丧尸女王每天都想跟我贴贴⊙完本.txt
+ * - 御兽：悟性逆天，开局须佐套大佛无广告【去除大部分】.txt
  */
 
 import { assert, assertEquals, fail } from "https://deno.land/std@0.92.0/testing/asserts.ts";
@@ -39,6 +40,11 @@ if(import.meta.main && Deno.args.length > 0){
                     filemap[_title] = [];
                 }
                 const obj = filemap[_title];
+                obj.push([name, Deno.statSync(name).size]);
+            }else if(name.includes("无广告")){
+                const title = name.split("无广告")[0] + '.' + name.split(".").pop();
+                if(!(title in filemap)) filemap[title] = [];
+                const obj = filemap[title];
                 obj.push([name, Deno.statSync(name).size]);
             }else if(name.endsWith(".txt") || name.endsWith(".epub")){
                 // 已经预处理的小说
