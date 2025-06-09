@@ -200,6 +200,21 @@ enum Status{
     CANCELLED
 }
 
+function similarTitle(title1: string, title2: string) {
+    title1 = title1.trim().toLocaleLowerCase();
+    title2 = title2.trim().toLocaleLowerCase();
+    const minLen = Math.min(title1.length, title2.length);
+    let matched = 0;
+    for(let i = 0; i < minLen; i++){
+        if(title1[i] == title2[i]){
+            matched++;
+        }else{
+            break;
+        }
+    }
+    return matched >= minLen * .6;
+}
+
 export const convert = Converter({ from: 'tw', to: 'cn' });
 /**
  * 下载并转换小说
@@ -226,6 +241,7 @@ async function downloadNovel(
 
     const configOrCallback = await import('./lib/' + next_url.hostname + (isTraditional ? '.t.ts' : '.n.ts'));
     const config = (isTraditional ? configOrCallback.default : await configOrCallback.default() as TraditionalConfig | Callback);
+    let previous_title = '';
 
     loop: while(next_url) {
         if (sig_abort?.aborted) {
@@ -286,7 +302,7 @@ async function downloadNovel(
             next_link = data.next_link;
         }
 
-        if(!content || !content.trim())
+        if(!content || !content.trim() || content.length < 200)
             report_status(Status.DONE, `ID: ${chapter_id} 内未找到内容`);
 
         if(content){
@@ -300,8 +316,22 @@ async function downloadNovel(
             content = content.trim();
         }
 
-        const text = (args.parted ? '' : (`第${chapter_id++}章 ${title || ''}\r\n`))
-            + (content || '[ERROR: 内容获取失败]') + '\r\n\r\n';
+        // 上架感言?
+        if(title && title.trim() == '上架感言'){
+            report_status(Status.WARNING, '小说到这里免费部分已经结束了');
+            break;
+        }
+
+        // 章节分卷？
+        let text = '';
+        if(!args.parted && previous_title && title && similarTitle(title, previous_title)){
+            // 直接写入
+            text += '\n' + content;
+        }else{
+            text = (args.parted ? '' : (`第${chapter_id++}章 ${title || ''}\r\n`))
+                + (content || '[ERROR: 内容获取失败]') + '\r\n\r\n';
+            previous_title = title;
+        }
 
         report_status(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
