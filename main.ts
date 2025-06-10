@@ -166,7 +166,7 @@ async function fetch2(
     let response: Response | undefined;
     for (let i = 0; i < 3; i++) {
         try {
-            response = await fetch(targetUrl, { ...options, headers });
+            response = await fetch(targetUrl, { ...options, headers, redirect: 'manual' });
             break;
         } catch (e) {
             console.warn(`Fetch failed (attempt ${i + 1}):`, (e as Error).message);
@@ -187,6 +187,11 @@ async function fetch2(
         }
     }
     cookieStore[host] = obj;
+
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+        // 重定向
+        response = await fetch2(new URL(response.headers.get('location')!), options, measureIP);
+    }
 
     return response;
 }
@@ -365,12 +370,12 @@ async function downloadNovel(
                 report_status(Status.WARNING, "filter函数执行失败", e as Error);
             }
             content = data.content;
-            title = data.title;
+            title = data.title?.trim();
             next_link = data.next_link;
         } else {
             const data = documentOrData as Data;
             content = data.content;
-            title = data.title;
+            title = data.title?.trim();
             next_link = data.next_link;
         }
 
