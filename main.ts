@@ -8,7 +8,7 @@ class NoRetryError extends Error { }
 const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
     args = parseArgs(Deno.args, {
-        string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'url', 'timeout', 'cover'],
+        string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover'],
         boolean: ['help', 'epub', 'parted', 'translate'],
         alias: {
             h: 'help',
@@ -17,7 +17,6 @@ const parser = new DOMParser(),
             s: 'sleep',
             r: 'retry',
             c: 'charset',
-            u: 'url',
             t: 'timeout',
             e: 'epub',
             p: 'parted',
@@ -82,10 +81,10 @@ const ipCache: Record<string, IPInfo> = await exists(IP_CACHE_FILE)
     : {};
 
 // 在onbeforeunload中添加IP缓存保存
-globalThis.onbeforeunload = function () {
+const forceSaveConfig = globalThis.onbeforeunload = function () {
     Deno.writeTextFileSync('cookie.json', JSON.stringify(cookieStore, null, 4));
     Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
-};
+} as () => void;
 
 // 改进后的fetch2函数
 async function fetch2(
@@ -182,6 +181,18 @@ async function fetch2(
     for (const setCookie of setCookieHeader) {
         const cookie = setCookie.split(';')[0]
         const [key, value] = cookie.split('=');
+
+        // 检查Expire时间
+        const expire = setCookie.split(';').find(s => s.trim().toLowerCase().startsWith('expires='))
+            ?.trim().split('=')[1];
+        if (expire) {
+            const exp_date = new Date(expire);
+            if (exp_date.getTime() <= Date.now()) {
+                delete obj[key];
+                continue;
+            }
+        }
+
         if (key && value) {
             obj[key.trim()] = value.trim();
         }
@@ -295,7 +306,7 @@ export const convert = Converter({ from: 'tw', to: 'cn' });
  * @param sig_abort 可选的终止信号
  */
 async function downloadNovel(
-    start_url = args.url,
+    start_url = '',
     isTraditional: boolean = true,
     report_status: (status: Status, message: string, error?: Error) => void = (status, msg, e) =>
         console.log(`[ ${Status[status]} ] ${msg}`, e?.message),
@@ -473,7 +484,6 @@ if (import.meta.main) {
     -s, --sleep         间隔时间防止DDOS护盾deny，单位秒，默认0
     -r, --retry         最大重试次数，默认10
     -c, --charset       网页编码，默认从网站中获取
-    -u, --url           网页地址，默认https://www.baidu.com
     -t, --timeout       超时时间，单位秒，默认30
     -p, --parted        指定输入源为分完页的文本，这时不会输出自动生成的标题
     -e, --epub          输出epub文件
@@ -496,7 +506,7 @@ if (import.meta.main) {
     console.log.apply(console, logs);
 
     if (Deno.stdin.isTerminal()){
-        start_url = args.url || prompt("请输入起始URL >> ") || '';
+        start_url = args._[0] || prompt("请输入起始URL >> ") || '';
         cover = args.cover || prompt("请输入封面URL(可选) >> ");
     } else {
         start_url = JSON.parse(Deno.readTextFileSync('debug.json')).url;
@@ -513,4 +523,8 @@ if (import.meta.main) {
         console.error('未找到' + host + '的配置，站点不受支持');
 }
 
-export { NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep };
+export { 
+    NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, 
+    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep,
+    forceSaveConfig
+ };
