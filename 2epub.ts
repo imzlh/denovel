@@ -133,6 +133,11 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
 
+    // 检查是否是zComicLib?
+    if(data.trimStart().startsWith('zComicLib/')){
+        throw new Error('请使用comic.ts处理zComicLib漫画缓存文件!');
+    }
+
     // 分卷
     const chaps: Array<EpubContentOptions> = [];
     let max: number = 0;

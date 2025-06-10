@@ -47,6 +47,7 @@ async function processHostQueue(host: string) {
                 isTraditional,
                 createReporter(id),
                 name,
+                undefined,
                 nextTask.abortController.signal
             );
         } catch (err) {

@@ -282,6 +282,7 @@ export interface EpubOptions {
     tempDir?: string;
     allowedAttributes?: string[];
     allowedXhtml11Tags?: string[];
+    networkHandler?: typeof fetch2;
 }
 
 interface EpubContent {
@@ -346,6 +347,7 @@ export class EPub {
     allowedXhtml11Tags: string[];
     coverMetaContent: string | null;
     startOfContentHref: string;
+    networkHandler: typeof fetch2;
 
     constructor(options: EpubOptions, output: string) {
         // File ID
@@ -391,6 +393,7 @@ export class EPub {
         // Temporary folder for work
         this.tempDir = options.tempDir ?? resolve(__dirname, "./tempDir/");
         this.tempEpubDir = resolve(this.tempDir, this.uuid);
+        this.networkHandler = options.networkHandler ?? fetch2;
 
         // Check the cover image
         if (this.cover !== null) {
@@ -741,7 +744,7 @@ export class EPub {
 
         if (this.cover.slice(0, 4) === "http" || this.cover.slice(0, 2) === "//") {
             try {
-                const httpRequest = await fetch2(this.cover, {
+                const httpRequest = await this.networkHandler(this.cover, {
                     headers: { "User-Agent": this.userAgent },
                 });
                 if(!httpRequest.ok || !httpRequest.body)
@@ -793,7 +796,7 @@ export class EPub {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (media.url.indexOf("http") === 0 || media.url.indexOf("//") === 0) {
             try {
-                const httpRequest = await fetch2(media.url, {
+                const httpRequest = await this.networkHandler(media.url, {
                     headers: { "User-Agent": this.userAgent },
                 });
                 if(!httpRequest.ok || !httpRequest.body)
