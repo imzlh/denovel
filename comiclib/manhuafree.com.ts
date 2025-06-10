@@ -1,7 +1,5 @@
 import { getDocument, fetch2, sleep } from "../main.ts";
 
-console.warn("在中国这个网站时常不可用，建议用相同API的manhuafree.com!");
-
 interface Chapter {
     mangatitle: string;
     title: string;
@@ -23,7 +21,7 @@ interface Chapter {
 
 async function getEverything(url: string){
 
-    const document = await getDocument(url, undefined, undefined, false, true);
+    const document = await getDocument(url, undefined, undefined, false, false);
     const t = document.getElementById("chapterContent");
     if (t) {
         const n = t.dataset.ms
@@ -35,8 +33,8 @@ async function getEverything(url: string){
             const i = document.getElementById("backManga");
             const res = await fetch(d, {
                 headers: {
-                    "Referer": "https://baozimh.org/",
-                    "Origin": "https://baozimh.org",
+                    "Referer": "https://manhuafree.com/",
+                    "Origin": "https://manhuafree.com",
                     "Accept": "application/json, text/plain, */*",
                     "Sec-fetch-mode": "cors",
                     "Sec-fetch-site": "cross-site",
@@ -66,7 +64,7 @@ function* geterateLinks(chapter: Chapter) {
 }
 
 function nextUrl(chapter: Chapter){
-    const nextUrl = `https://baozimh.org/manga/${chapter.slug}/${chapter.nextslug}`;
+    const nextUrl = `https://manhuafree.com/manga/${chapter.slug}/${chapter.nextslug}`;
     return nextUrl;
 }
 
