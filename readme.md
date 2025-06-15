@@ -8,6 +8,13 @@
 看`lib/`文件夹都是已经支持的
  - 番茄：借助jingluo API，不过IP容易被封禁
  - sfacg：web
+ - 刺猬猫(实验性)：WebAPI
+ - esjZone：web + WebAPI
+
+漫画支持
+ - 包子漫画(baozimh.org www.baozimhcn.com manhuafree.com)
+ - dm5漫画人 (tel.dm5.com)
+ - sfacg漫画(manhua.sfacg.com)
 
 # 怎么用？
 **注意** 有部分网站有CC保护，请合理安排间隔时间 "-s"
