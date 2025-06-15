@@ -1,4 +1,4 @@
-import { DOMParser, HTMLDocument } from "jsr:@b-fuze/deno-dom";
+import { DOMParser, Element, HTMLDocument } from "jsr:@b-fuze/deno-dom";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { toEpub } from "./2epub.ts";
 import { Converter } from './t2cn.js';
@@ -298,6 +298,46 @@ function similarTitle(title1: string, title2: string) {
     return t1res && t2res && t1res[1] == t2res[1];
 }
 
+function processContent(ctx: Element) {
+    let text = '';
+    for(const node of ctx.childNodes){
+        if(node.nodeName.toLowerCase() == 'img'){
+            const el = node as Element;
+            let src;
+            if(el.hasAttribute('src')){
+                src = el.getAttribute('src');
+            }else if(el.hasAttribute('srcset')){
+                src = el.getAttribute('srcset')?.split(/\s*\,\s*/)[0]
+            }else for(const attr of el.attributes){
+                if(attr.name.toLowerCase().includes('src')){
+                    src = attr.value;
+                }else if(
+                    ['.webp', '.png', '.jpg', '.jpeg'].some(ext => attr.value.endsWith(ext)) ||
+                    attr.value.startsWith('http')
+                ) {
+                    src = attr.value;
+                }
+            }
+
+            if(src){
+                text += `[img=${el.getAttribute('width') || 0}:${el.getAttribute('height') || 0}]${el.getAttribute('src')}[/img]`;
+            }else{
+                console.warn('[warn] 空图片:', el.outerHTML);
+            }
+        }else if(node.nodeType == node.TEXT_NODE){
+            const name = node.nodeName.toLowerCase();
+            text += node.textContent;
+            if(['br', 'hr', 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre'].includes(name)){
+                text += '\n';
+            }
+        }else if(node.nodeType == node.ELEMENT_NODE){
+            text += processContent(node as Element);
+        }
+    }
+
+    return text;
+}
+
 export const convert = Converter({ from: 'tw', to: 'cn' });
 /**
  * 下载并转换小说
@@ -325,7 +365,7 @@ async function downloadNovel(
 
     const configOrCallback = await import('./lib/' + next_url.hostname + (isTraditional ? '.t.ts' : '.n.ts'));
     const config = (isTraditional ? configOrCallback.default : await configOrCallback.default() as TraditionalConfig | Callback);
-    let previous_title = '';
+    let previous_title = '', previous_link = '';
 
     if(cover){
         file.write(new TextEncoder().encode(`封面: ${cover}\r\n`));
@@ -339,12 +379,17 @@ async function downloadNovel(
 
         let documentOrData: HTMLDocument | Data, retry = 1;
         while (true) {
+            if(next_url.href == previous_link){
+                report_status(Status.WARNING, `ID: ${chapter_id} 内链接重复，疑似内容结束`);
+                break loop;
+            }
             try {
                 documentOrData = isTraditional ? await getDocument(next_url, sig_abort) : await config(next_url);
                 if (!documentOrData) {
                     report_status(Status.ERROR, `ID: ${chapter_id} 内未找到内容`);
                     break loop;
                 }
+                previous_link = next_url.href;
                 break;
             } catch (e) {
                 if (e instanceof NoRetryError) {
@@ -366,12 +411,9 @@ async function downloadNovel(
             const document = documentOrData as HTMLDocument;
             const ctx = document.querySelector((config as TraditionalConfig).content);
 
-            // image（for epub）
-            const imgs = ctx ? Array.from(ctx?.querySelectorAll('img')).map(img => `<img src="${img.getAttribute('src')}" />`) : [];
-
             const data: Data & { url: URL } = {
                 title: document.querySelector((config as TraditionalConfig).title)?.innerText!,
-                content: ctx?.innerText ? ctx.innerText! + imgs.join('\n') : '',
+                content: ctx ? processContent(ctx) : '',
                 next_link: document.querySelector((config as TraditionalConfig).next_link)?.getAttribute('href') || '',
                 url: next_url
             }
@@ -391,7 +433,7 @@ async function downloadNovel(
         }
 
         if (!content || !content.trim() || content.length < 200){
-            if (previous_title.trim() == '上架感言') {
+            if (previous_title== '上架感言') {
                 report_status(Status.WARNING, '小说到这里免费部分已经结束了');
                 break;
             }else{
@@ -408,6 +450,10 @@ async function downloadNovel(
             if (args.translate) content = convert(content);
             // 移除空格
             content = content.trim();
+        }
+
+        if(title && args.translate){
+            title = convert(title);
         }
 
         // 章节分卷？
@@ -487,11 +533,11 @@ if (import.meta.main) {
     -t, --timeout       超时时间，单位秒，默认30
     -p, --parted        指定输入源为分完页的文本，这时不会输出自动生成的标题
     -e, --epub          输出epub文件
-    -t, --translate     翻译模式，将输出的繁体翻译为简体中文
+    -l, --translate     翻译模式，将输出的繁体翻译为简体中文
     -b, --cover         封面URL，默认为空
 
 示例:
-    main.ts -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -t -u https://www.baidu.com -t 60
+    main.ts -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
 `);
         Deno.exit(0);
     }

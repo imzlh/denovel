@@ -36,7 +36,7 @@ async function getImages2(page: string) {
 }
 
 export default async function* main(page1: string) {
-    if(page1.includes('cn.baozimhcn.com')){
+    if(page1.includes('baozimhcn.com/')){
         // get 
         const dl = await getDocument(page1);
         const chap1 = dl.querySelector('#chapter-items > div:nth-child(1) > a');
@@ -45,6 +45,7 @@ export default async function* main(page1: string) {
         page1 = new URL(page, page1).href;
     }
     const page = await getImages2(page1);
+    if(!page[0]) throw new Error('没有找到图片');
     yield* page[0];
     await sleep(1);
     return [

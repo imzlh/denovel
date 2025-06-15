@@ -195,7 +195,7 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
                 data: encodeContent(data)
             });
 
-            const match = data.match(/[\r\n]+\s*作者[：:]\s*(.+?)\s*[\r\n]+/);
+            const match = data.match(/作者[：:]\s*(.+?)\s*[\r\n]+/);
             if(match){
                 options.author = match[1];
             }
