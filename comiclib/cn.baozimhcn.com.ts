@@ -39,7 +39,8 @@ export default async function* main(page1: string) {
     if(page1.includes('baozimhcn.com/')){
         // get 
         const dl = await getDocument(page1);
-        const chap1 = dl.querySelector('#chapter-items > div:nth-child(1) > a');
+        // update: 25/6/15
+        const chap1 = dl.querySelector('#layout > div.comics-detail > div:nth-child(3) > div > div.pure-g > div:last-child > a');
         const page = chap1?.getAttribute('href');
         if(!page) throw new Error('似乎网址不正确？');
         page1 = new URL(page, page1).href;

@@ -23,20 +23,24 @@ const MAX_CHARS_PER_CHAPTER = 1e5 * 1;
 //     二 归来的女仆
 // 1～长的很可爱的大哥哥( ´･ω･)
 //    ────────────────────────\n\n    序章
-
+// Part.0 『为什么会变成这样的人』
+// Part.12 『完美假面』no.1
 const regexp = [
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/g,
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s(.*)\]?[\r\n]+/g,
-    /[\r\n]+\s*(?:chapter\s*)[零一二三四五六七八九十百千万亿0-9]+\s*[、. ：:~，·～．]\s*(.*)[\r\n]+/g,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/gi,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s(.*)\]?[\r\n]+/gi,
+    /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)\d+\s+[、. ：:~，·～．『]\s*(.*)\s*』?[\r\n]+/gi,
+    /[\r\n]+\s*No[、.．]\d+\s*(.+)\s*[\r\n]+/gi,
     /[\r\n]+\s*(?:正文\s*)?\d+＜(.+)＞\s*[\r\n]+/gi,
-    /[\r\n]+\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷\s*(?:.+)\s+(.+)\s*[\r\n]+/g,
-    /[\r\n]+\s*No[、.．]\d+\s*(.+)\s*[\r\n]+/g,
-    /[\r\n]+.+\s*[：:]\s*\d+\s*(.*)\s*[\r\n]+/g,
-    /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，．·～]\s*(.+)\s*[\r\n]+/g,
-    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+[、. ：:~，·．～]\s*(.+)\s*[\r\n]+/g,
-    /[\r\n]+(.+)[\r\n]+([=\-─])\2{2,}[\r\n]+/g,
-    /\s+第\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章集季]\s*(.+)\s+/g,
-    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/g
+
+    /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，．·～]\s*(.+)\s*[\r\n]+/gi,
+    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+[、. ：:~，·．～]\s*(.+)\s*[\r\n]+/gi,
+    /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)[零一二三四五六七八九十百千万亿0-9]+\s*(.+?)\s*[\r\n]+/gi,
+    /[\r\n]+.{0,20}\s*[：:]\s*\d+\s*(.*)\s*[\r\n]+/gi,
+    /[\r\n]+(.+)[\r\n]+([=\-─])\2{5,}[\r\n]+/gi,
+     
+    /[\r\n]+\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷\s*(?:.+)\s+(.+)\s*[\r\n]+/gi,
+    /\s+第\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章集季]\s*(.+)\s+/gi,
+    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/gi
 ];
 
 function splitByIndent(text: string): {title: string, data: string}[] {
@@ -155,6 +159,7 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
     for(const reg of regexp){
         matches = Array.from(data.matchAll(reg));
         max = Math.max(max, matches.length);
+        // console.debug(`Found ${matches.length} matches for ${reg}`);
         if(matches.length * per_page_max >= data.length) break;
     }
     if(matches.length * per_page_max < data.length){
@@ -240,14 +245,15 @@ export const encodeContent = (str: string) => {
 if (import.meta.main) {
     const args = parseArgs(Deno.args, {
         string: ['output', 'chapter-max'],
-        boolean: ['help', 'delete', 'force', 'delete-exist'],
+        boolean: ['help', 'delete', 'force', 'delete-exist', 'test-title'],
         alias: {
             o: 'output',
             h: 'help',
             d: 'delete',
             f: 'force',
             e: 'delete-exist',
-            c: 'chapter-max'
+            c: 'chapter-max',
+            t: 'test-title'
         }
     });
 
@@ -264,10 +270,26 @@ Options:
     -f, --force            Overwrite existing output file
     -e, --delete-exist     Delete source file if existing output file
     -c, --chapter-max <n>  Max chars per chapter (default: 1w)
+    -t, --test-title <t>   Test title whether it can be processed correctly
     
 Example:
     deno run 2epub.ts input.txt -o output.epub`);
         Deno.exit(0);
+    }
+
+    if(args["test-title"]){
+        let input = args._[0] || prompt('Input title >> ');
+        if(typeof input !== 'string') Deno.exit(0);
+        input = '\r\n' + input + '\r\n';
+        for(const reg of regexp){
+            if(input.match(reg)){
+                console.log(`"${input.trim()}" can be processed correctly by ${reg}`);
+                console.log('result:', reg.exec(input));
+                Deno.exit(0);
+            }
+        }
+        console.error(`"${input.trim()}" cannot be processed correctly`);
+        Deno.exit(1);
     }
 
     const input = args._[0];

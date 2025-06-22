@@ -57,7 +57,7 @@ export default async function* main(page1: string) {
         yield url.href;
     }
     return [
-        title, next
+        title, next ? new URL(next, page1).href : null
     ];
 }
 

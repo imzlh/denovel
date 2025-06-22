@@ -298,7 +298,7 @@ function similarTitle(title1: string, title2: string) {
     return t1res && t2res && t1res[1] == t2res[1];
 }
 
-function processContent(ctx: Element) {
+function processContent(ctx: Element, parentNode?: Element) {
     let text = '';
     for(const node of ctx.childNodes){
         if(node.nodeName.toLowerCase() == 'img'){
@@ -320,15 +320,15 @@ function processContent(ctx: Element) {
             }
 
             if(src){
-                text += `[img=${el.getAttribute('width') || 0}:${el.getAttribute('height') || 0}]${el.getAttribute('src')}[/img]`;
+                text += `\r\n\r\n[img=${el.getAttribute('width') || 0},${el.getAttribute('height') || 0}]${el.getAttribute('src')}[/img]\r\n\r\n`;
             }else{
                 console.warn('[warn] 空图片:', el.outerHTML);
             }
         }else if(node.nodeType == node.TEXT_NODE){
-            const name = node.nodeName.toLowerCase();
-            text += node.textContent;
+            const name = ctx.tagName.toLowerCase();
+            text += node.textContent.replaceAll(/[\s^\r\n]+/g, ' '); // HTML默认会将多个空格合并为一个
             if(['br', 'hr', 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre'].includes(name)){
-                text += '\n';
+                text += '\r\n';
             }
         }else if(node.nodeType == node.ELEMENT_NODE){
             text += processContent(node as Element);
@@ -572,5 +572,6 @@ if (import.meta.main) {
 export { 
     NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, 
     args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep,
-    forceSaveConfig
+    forceSaveConfig,
+    processContent
  };
