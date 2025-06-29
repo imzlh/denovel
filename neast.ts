@@ -123,8 +123,40 @@ if(import.meta.main) while(true){
             continue;
         }
 
-        Deno.writeFile(outDir + songName + '.mp3', stream);
+        Deno.writeFile(outDir + songName + '.mpeg', stream);
         if(lyric) Deno.writeTextFile(outDir + songName + '.lrc', lyric);
+
+        const cover = await fetch2(song.al.picUrl);
+        if(cover.status != 200) throw new Error('专辑封面下载失败： Server returned ' + cover.status);
+        const coverStream = await cover.bytes();
+        Deno.writeFile(outDir + songName + '.jpg', coverStream);
+
+        // merge using ffmpeg
+        const d = new Deno.Command('ffmpeg', {
+            args: [
+                '-y',
+                '-i', outDir + songName + '.mpeg',
+                '-i', outDir + songName + '.jpg',
+                '-map', '0:0', '-map', '1:0',
+                '-c', 'copy', '-id3v2_version', '3',
+                '-metadata', 'title=' + song.name,
+                '-metadata', 'artist=' + song.ar.map(a => a.name).join(','),
+                '-metadata', 'album=' + song.al.name,
+                '-metadata', 'album_artist=' + song.ar.map(a => a.name).join(','),
+                '-metadata', 'track=' + song.no,
+                '-metadata', 'year=' + new Date(song.publishTime).getFullYear(),
+                '-metadata', 'genre=' + 'Electronic',
+                '-metadata', 'comment=' + lyric,
+                outDir + songName + '.mp3'
+            ],
+            stdout: 'piped',
+            stderr: 'piped'
+        }).outputSync();
+        console.log(new TextDecoder().decode(d.stdout));
+        console.log(new TextDecoder().decode(d.stderr));
+        Deno.remove(outDir + songName + '.mpeg');
+        Deno.remove(outDir + songName + '.jpg');
+
         console.log(`歌曲${song.name}(${song.id})下载成功`);
     }catch(e){
         console.log(`歌曲${song.name}(${song.id})获取失败：${(e as Error).message}`);

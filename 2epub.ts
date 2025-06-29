@@ -7,6 +7,7 @@ import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 // deno-lint-ignore no-control-regex
 const rep = /[\x00-\x1F\x7F-\x9F\u200B-\u200F\uFEFF]/g;
 const MAX_CHARS_PER_CHAPTER = 1e5 * 1;
+const MIN_CHARS_PER_CHAPTER = 10;   // 10字最少
 
 // 1~奇怪的传单
 // chapter 1~偷吃？不，没有
@@ -37,21 +38,21 @@ const regexp = [
     /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)[零一二三四五六七八九十百千万亿0-9]+\s*(.+?)\s*[\r\n]+/gi,
     /[\r\n]+.{0,20}\s*[：:]\s*\d+\s*(.*)\s*[\r\n]+/gi,
     /[\r\n]+(.+)[\r\n]+([=\-─])\2{5,}[\r\n]+/gi,
-     
+
     /[\r\n]+\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷\s*(?:.+)\s+(.+)\s*[\r\n]+/gi,
     /\s+第\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章集季]\s*(.+)\s+/gi,
     /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/gi
 ];
 
-function splitByIndent(text: string): {title: string, data: string}[] {
-    const result: {title: string, data: string}[] = [];
+function splitByIndent(text: string): { title: string, data: string }[] {
+    const result: { title: string, data: string }[] = [];
     let lines = text.split(/\r?\n/);
-    
+
     // 原函数的备用分割逻辑
-    if(lines.length == 0) lines = text.split('\r');
-    if(lines.length == 0) lines = text.replaceAll(/\s{2,}/, t => '\n' + t.substring(1)).split('\n');
-    if(lines.length == 0) return [{title: "前言", data: text}];
-    
+    if (lines.length == 0) lines = text.split('\r');
+    if (lines.length == 0) lines = text.replaceAll(/\s{2,}/, t => '\n' + t.substring(1)).split('\n');
+    if (lines.length == 0) return [{ title: "前言", data: text }];
+
     let currentTitle: string = "";
     let currentData: string[] = [];
     let pendingTitles: string[] = [];
@@ -60,9 +61,9 @@ function splitByIndent(text: string): {title: string, data: string}[] {
     for (const line of lines) {
         const trimmed = line.trim();
         if (trimmed === "") continue; // 跳过空行
-        
+
         const indent = line.match(/^\s*/)?.[0].length || 0;
-        
+
         if (indent === 0) {
             // 无缩进行为标题
             if (isFirstSection) {
@@ -80,11 +81,11 @@ function splitByIndent(text: string): {title: string, data: string}[] {
                 pendingTitles = [];
                 isFirstSection = false;
             }
-            
+
             if (!isFirstSection && pendingTitles.length > 0) {
                 if (currentTitle !== "") {
                     result.push({
-                        title: currentTitle.slice(0, 50), 
+                        title: currentTitle.slice(0, 50),
                         data: currentData.join('\n')
                     });
                 }
@@ -92,11 +93,11 @@ function splitByIndent(text: string): {title: string, data: string}[] {
                 currentData = [];
                 pendingTitles = [];
             }
-            
+
             currentData.push(line);
         }
     }
-    
+
     // 处理最后的pendingTitles
     if (pendingTitles.length > 0) {
         if (isFirstSection) {
@@ -113,7 +114,7 @@ function splitByIndent(text: string): {title: string, data: string}[] {
             currentData = [];
         }
     }
-    
+
     // 添加最后一个章节
     if (currentTitle !== "" || currentData.length > 0) {
         result.push({
@@ -121,10 +122,42 @@ function splitByIndent(text: string): {title: string, data: string}[] {
             data: currentData.join('\n')
         });
     }
-    
+
     return result;
 }
 
+function fromPreg(rawTxt: string, matches: Iterable<RegExpMatchArray>, merge: boolean = false) {
+    const result: [string, string][] = [];
+    let prevTitleStart = 0, prevTitleEnd = 0, prevTitleContent = '';
+
+    for (const match of matches) {
+        if (!match.index) continue;
+        const titleStart = match.index;
+        const titleEnd = titleStart + (match.length || 0);
+        const prevTitle = prevTitleContent;
+        const prevContent = rawTxt.slice(prevTitleEnd, titleStart);
+
+        if(!merge || (prevContent.length > MIN_CHARS_PER_CHAPTER && prevContent.length < MAX_CHARS_PER_CHAPTER)){
+            result.push([
+                prevTitle,
+                prevContent
+            ]);
+            prevTitleStart = titleStart;
+            prevTitleEnd = titleEnd;
+            prevTitleContent = match[1] || '';
+        }
+    }
+
+    // 添加末尾未处理内容
+    if (prevTitleStart < rawTxt.length) {
+        result.push([
+            rawTxt.slice(prevTitleStart, prevTitleEnd),
+            rawTxt.slice(prevTitleEnd)
+        ]);
+    }
+
+    return result;
+}
 
 
 /**
@@ -133,12 +166,12 @@ function splitByIndent(text: string): {title: string, data: string}[] {
  * @param input 输入的文件名
  * @param output 输出位置
  */
-export function toEpub(data: string, input: string, output: string, thenCB?: () => any, per_page_max = MAX_CHARS_PER_CHAPTER): boolean {
+export function toEpub(data: string, input: string, output: string, thenCB?: () => any, per_page_max = MAX_CHARS_PER_CHAPTER, merge: boolean = false): boolean {
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
 
     // 检查是否是zComicLib?
-    if(data.trimStart().startsWith('zComicLib/')){
+    if (data.trimStart().startsWith('zComicLib/')) {
         throw new Error('请使用comic.ts处理zComicLib漫画缓存文件!');
     }
 
@@ -155,75 +188,70 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
         lang: "zh-CN",
     };
 
-    let matches: Array<RegExpExecArray> = [];
-    for(const reg of regexp){
-        matches = Array.from(data.matchAll(reg));
-        max = Math.max(max, matches.length);
+    let matches: Array<[string, string]> = [];
+    let pregmatches: RegExpExecArray[] = [];
+    for (const reg of regexp) {
+        pregmatches = Array.from(data.matchAll(reg));
+        max = Math.max(max, pregmatches.length);
         // console.debug(`Found ${matches.length} matches for ${reg}`);
-        if(matches.length * per_page_max >= data.length) break;
+        if (pregmatches.length * per_page_max >= data.length){
+            matches = fromPreg(data, pregmatches, merge);
+            break;
+        }
     }
-    if(matches.length * per_page_max < data.length){
+    if (pregmatches.length * per_page_max < data.length) {
         const idParsed = splitByIndent(data);
-        if(idParsed.length * per_page_max < data.length){
+        if (idParsed.length * per_page_max < data.length) {
             console.error(`章节数过少，疑似分片错误，请确保章节数 >= 1且遵循 “第x章 ....”`);
             console.error(input, '生成失败', 'count: ', max, 'length: ', data.length, 'adv: ', data.length / max);
             return false;
-        }else{
+        } else {
             console.warn('使用缩进分卷风险很大，请小心删除，检查内容是否有效');
             chaps.push(...idParsed);
         }
-    }else{
-        let start = matches[0].index;
-
+    } else {
         // debug
-        if(output == undefined){
-            console.log(matches.map(m => m[1]).join('\n'));
+        if (output == undefined) {
+            console.log(matches.map(m => m[0]));
             return false;
         }
 
-        for (let i = 1; i <= matches.length; i++) {
-            const content = data.substring(matches[i - 1].index, matches[i]?.index),
-                title = matches[i - 1][1].substring(0, 50) + (matches[i-1][1].length > 50 ? '...' : '');
-
+        let first = true;
+        let beforeText = '';
+        for (const c of matches) {
             chaps.push({
-                title: title.replaceAll(/\s+/g, ' '),
-                data: encodeContent(content).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_,it) =>
+                title: c[0].replaceAll(/\s+/g, ' ') || (first ? '前言' : ''),
+                data: encodeContent(c[1]).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) =>
                     it ? `<img src="${it}" />` : ''
                 ),
             });
+            beforeText = c[1];
+            first = false;
         }
 
-        if(start > 0){
-            data = data.substring(0, start);
-            chaps.unshift({
-                title: "前言",
-                data: encodeContent(data)
-            });
+        const match = beforeText.match(/作者[：:]\s*(.+?)\s*[\r\n]+/);
+        if (match) {
+            options.author = match[1];
+        }
 
-            const match = data.match(/作者[：:]\s*(.+?)\s*[\r\n]+/);
-            if(match){
-                options.author = match[1];
-            }
+        // const ctxmatch = data.match(/[\r\n]+\s*简介[：:]\s*[\r\n]+/);
+        // if(ctxmatch){
+        //     const start = ctxmatch.index + ctxmatch[0].length;
+        //     const end = start.match(/[\r\n]+\s*[\r\n]+/)
+        // }
 
-            // const ctxmatch = data.match(/[\r\n]+\s*简介[：:]\s*[\r\n]+/);
-            // if(ctxmatch){
-            //     const start = ctxmatch.index + ctxmatch[0].length;
-            //     const end = start.match(/[\r\n]+\s*[\r\n]+/)
-            // }
-
-            // image
-            const imgmatch = data.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/);
-            if(imgmatch){
-                options.cover = imgmatch[0];
-            }
+        // image
+        const imgmatch = beforeText.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/);
+        if (imgmatch) {
+            options.cover = imgmatch[0];
         }
     }
 
     // 生成 epub 文件
     console.log('Generating EPub file to ', output, '...');
     new EPub(options, output).render().then(a => {
-        console.log('EPub has been generated to ',output, a.result);
-        if(thenCB) thenCB();
+        console.log('EPub has been generated to ', output, a.result);
+        if (thenCB) thenCB();
     });
 
     return true;
@@ -271,18 +299,19 @@ Options:
     -e, --delete-exist     Delete source file if existing output file
     -c, --chapter-max <n>  Max chars per chapter (default: 1w)
     -t, --test-title <t>   Test title whether it can be processed correctly
+    -m, --merge            Merge chapters less than 10 chars into one chapter
     
 Example:
-    deno run 2epub.ts input.txt -o output.epub`);
+    deno run 2epub.ts input.txt -m -o output.epub`);
         Deno.exit(0);
     }
 
-    if(args["test-title"]){
+    if (args["test-title"]) {
         let input = args._[0] || prompt('Input title >> ');
-        if(typeof input !== 'string') Deno.exit(0);
+        if (typeof input !== 'string') Deno.exit(0);
         input = '\r\n' + input + '\r\n';
-        for(const reg of regexp){
-            if(input.match(reg)){
+        for (const reg of regexp) {
+            if (input.match(reg)) {
                 console.log(`"${input.trim()}" can be processed correctly by ${reg}`);
                 console.log('result:', reg.exec(input));
                 Deno.exit(0);
@@ -298,8 +327,8 @@ Example:
         throw new Error('Input file is required');
     const finfo = await Deno.stat(input);
     let files = [] as string[];
-    if(finfo.isDirectory) {
-        files = await Array.fromAsync(Deno.readDir(input)).then(data => 
+    if (finfo.isDirectory) {
+        files = await Array.fromAsync(Deno.readDir(input)).then(data =>
             data.filter(item => item.isFile && /\.txt$/i.test(item.name)).map(item => item.name)
         );
     } else {
@@ -307,33 +336,33 @@ Example:
     }
 
     let chapMax = MAX_CHARS_PER_CHAPTER;
-    if(args['chapter-max']) chapMax = parseInt(args['chapter-max']);
-    if(isNaN(chapMax) || chapMax < 1) chapMax = MAX_CHARS_PER_CHAPTER;
+    if (args['chapter-max']) chapMax = parseInt(args['chapter-max']);
+    if (isNaN(chapMax) || chapMax < 1) chapMax = MAX_CHARS_PER_CHAPTER;
 
     console.time('convert');
     await ensureDir(output);
-    for(const file of files) try{
+    for (const file of files) try {
         const ofile = output + '/' + basename(file) + '.epub';
-        if(await exists(ofile)){
-            if(args['delete-exist']){
+        if (await exists(ofile)) {
+            if (args['delete-exist']) {
                 console.log(`"${ofile}" already exists, delete source file`);
                 Deno.removeSync(ofile);
                 continue;
             }
 
-            if(!args.force){
+            if (!args.force) {
                 console.log(`"${ofile}" already exists, skip`);
                 continue;
             }
         }
-        
+
         const data = tryReadTextFile(file);
         const res = toEpub(data, file, ofile, undefined, chapMax);
-        if(res)
+        if (res)
             console.log(`"${file}" has been converted to "${basename(file)}.epub"`);
         console.timeLog('convert');
-        if(args.delete && res) Deno.removeSync(file);
-    }catch(e) {
+        if (args.delete && res) Deno.removeSync(file);
+    } catch (e) {
         console.error(`Error converting "${file}": ${(e as Error).message}`);
     }
     console.timeEnd('convert');

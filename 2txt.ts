@@ -5,16 +5,16 @@ import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { DOMParser } from "jsr:@b-fuze/deno-dom";
 import { parse as parseXML, XmlNode, RegularTagNode, OrphanTagNode } from 'jsr:@melvdouc/xml-parser';
 import { toEpub } from "./2epub.ts";
-import { processContent, tryReadTextFile } from "./main.ts";
+import { exists, processContent, tryReadTextFile } from "./main.ts";
 import { ensure } from "./_dep.ts";
 
 class ElementArray<T extends XmlNode> extends Array<T> {
-    static fromXML(xml: string){
+    static fromXML(xml: string) {
         return new ElementArray(...parseXML(xml));
     }
 
-    static getText(node: XmlNode): string{
-        switch(node.kind){
+    static getText(node: XmlNode): string {
+        switch (node.kind) {
             case "BAD_NODE":
                 return "";
             case "TEXT_NODE":
@@ -28,12 +28,12 @@ class ElementArray<T extends XmlNode> extends Array<T> {
         }
     }
 
-    static override from(element: XmlNode[]){
+    static override from(element: XmlNode[]) {
         return new ElementArray(...element.filter(node => node.kind == 'REGULAR_TAG_NODE' || node.kind == 'ORPHAN_TAG_NODE'));
     }
 
-    get children(): ElementArray<XmlNode>{
-        return new ElementArray(...this.flatMap(node => node.kind == 'REGULAR_TAG_NODE'? node.children : []));
+    get children(): ElementArray<XmlNode> {
+        return new ElementArray(...this.flatMap(node => node.kind == 'REGULAR_TAG_NODE' ? node.children : []));
     }
 
     selectNode(name: string, attrs?: Record<string, RegExp | string | undefined>, deep = false) {
@@ -41,19 +41,19 @@ class ElementArray<T extends XmlNode> extends Array<T> {
         name = name.toLowerCase();
         for (const _node of this) {
             const node = _node as XmlNode;
-            if(node.kind != 'REGULAR_TAG_NODE' && node.kind != 'ORPHAN_TAG_NODE') continue;
+            if (node.kind != 'REGULAR_TAG_NODE' && node.kind != 'ORPHAN_TAG_NODE') continue;
             if (node.tagName.toLowerCase() == name) {
                 if (attrs) {
                     for (const [key, value] of Object.entries(attrs)) {
-                        if(!node.attributes || !(key in node.attributes)) continue; // 属性不存在
-                        if(value && (typeof value == 'string' ? node.attributes[key] !== value : !value.test(node.attributes[key]))) 
+                        if (!node.attributes || !(key in node.attributes)) continue; // 属性不存在
+                        if (value && (typeof value == 'string' ? node.attributes[key] !== value : !value.test(node.attributes[key])))
                             continue; // 属性值不匹配
                     }
                 }
                 nodes.push(node);
-            }else if(deep){
+            } else if (deep) {
                 // 递归查找子节点
-                if(node.kind == 'REGULAR_TAG_NODE')
+                if (node.kind == 'REGULAR_TAG_NODE')
                     nodes.push(...ElementArray.from(node.children).selectNode(name, attrs, deep));
             }
         }
@@ -64,7 +64,7 @@ class ElementArray<T extends XmlNode> extends Array<T> {
         return this.children.selectNode(name, attrs, deep);
     }
 
-    get textContent(): string{
+    get textContent(): string {
         return this.map(ElementArray.getText).join('');
     }
 }
@@ -105,7 +105,7 @@ export async function toTXT(source: Uint8Array, outdir: string): Promise<void> {
     if (!rootfile)
         throw new Error("Invalid EPUB file: rootfile not found");
 
-    function getF(path: string){
+    function getF(path: string) {
         const f = dirname(rootfile_path) + '/' + path;
         return files.find(file => file.name === f);
     }
@@ -131,7 +131,7 @@ export async function toTXT(source: Uint8Array, outdir: string): Promise<void> {
     // 生成ID目录
     const idMap: Record<string, string> = {};
     // for (const el of opf.querySelectorAll('package > manifest > item[id][href]')) {
-    for(const el of opf.selectNode('package').selectSubNode('manifest').selectSubNode('item')) {
+    for (const el of opf.selectNode('package').selectSubNode('manifest').selectSubNode('item')) {
         const id = el.attributes?.id!, href = el.attributes?.href!;
         if (id in idMap) throw new Error(`Duplicate ID in manifest: ${id}`);
         idMap[id] = href;
@@ -140,10 +140,10 @@ export async function toTXT(source: Uint8Array, outdir: string): Promise<void> {
     // 提取章节内容
     const chapters: string[] = [];
     // for (const el of opf.querySelectorAll('package > spine itemref[idref]')) {
-    for(const el of opf.selectNode('package').selectSubNode('spine').selectSubNode('itemref', { idref: undefined })) {
+    for (const el of opf.selectNode('package').selectSubNode('spine').selectSubNode('itemref', { idref: undefined })) {
         const idref = el.attributes?.idref!;
         const filePath = idMap[idref];
-        if (!filePath){
+        if (!filePath) {
             console.log(`Warning: 未找到ID为${idref}的章节文件`);
             continue;
         }
@@ -179,7 +179,7 @@ export async function toTXT(source: Uint8Array, outdir: string): Promise<void> {
 
         // 标题
         const title = document.querySelector('head > title')?.innerText;
-        if(title == '目录') continue;
+        if (title == '目录') continue;
 
         txt += `第${i}章 ${title}\r\n${processContent(document.body)}\r\n\r\n`;
     } catch (e) {
@@ -253,7 +253,7 @@ EPUB/TXT转换工具 v1.2
 `);
         Deno.exit(0);
     }
-        // 获取输入路径参数
+    // 获取输入路径参数
     const inputPath = args._[0] || prompt("请输入输入文件或目录：") || "E:\\docs\\Documents\\6.1\\潘小姐想变回男孩子.txt.epub";
     if (!inputPath) {
         console.error("错误：必须指定输入文件或目录");
@@ -274,10 +274,10 @@ EPUB/TXT转换工具 v1.2
         async handleFile(filePath: string) {
             try {
                 console.log(`正在处理：${filePath}`);
-                
+
                 // 读取文件内容
                 const fileData = await Deno.readFile(filePath);
-                
+
                 // 生成输出路径
                 const outputDir = args.output || dirname(filePath);
                 const baseName = args.name || basename(filePath).split('.')[0];
@@ -292,7 +292,7 @@ EPUB/TXT转换工具 v1.2
                 );
                 if (args["to-epub"]) {
                     console.log(dirname(filePath) + '/' + baseName + '.epub');
-                    if(!toEpub(
+                    if (!toEpub(
                         tryReadTextFile(outputPath + '/content.txt'),
                         filePath,
                         dirname(filePath) + '/' + baseName + '.epub',
@@ -306,12 +306,17 @@ EPUB/TXT转换工具 v1.2
                             }
                         },
                         parseInt(args["chapter-max"] as string || "10000")
-                    )){
+                    )) {
                         throw new Error("转换失败");
                     }
                 }
             } catch (e) {
-                console.error(`处理失败：${filePath}`, e);
+                if((e instanceof Error) && e.message.includes("Could not locate directory")){
+                    console.error(`不正常的epub文件：压缩包损坏`);
+                    await Deno.remove(filePath, { recursive: true });
+                }else{
+                    console.error(`处理失败：${filePath}`, e);
+                }
             }
         }
     };
@@ -322,10 +327,35 @@ EPUB/TXT转换工具 v1.2
     }
     // 处理目录（批量转换）
     else if (inputStat.isDirectory) {
-        for await (const dirEntry of Deno.readDir(inputPath.toString())) try{
+        for await (const dirEntry of Deno.readDir(inputPath.toString())) try {
             if (dirEntry.isFile && dirEntry.name.endsWith('.epub'))
                 await processor.handleFile(join(inputPath.toString(), dirEntry.name));
-        }catch(e){
+            else if (dirEntry.isDirectory && await exists(join(inputPath.toString(), dirEntry.name, 'content.txt')) && args["to-epub"]) {
+                const filePath = join(inputPath.toString(), dirEntry.name, 'content.txt'),
+                    outputDir = args.output || dirname(filePath),
+                    baseName = args.name || basename(filePath).split('.')[0];
+                await ensureDir(join(outputDir, baseName));
+                const outputPath = await Deno.realPath(join(outputDir, baseName));
+                console.log(`开始转换：${filePath} -> ${outputPath}.epub`);
+                if (!toEpub(
+                    tryReadTextFile(outputPath + '/content.txt'),
+                    filePath,
+                    dirname(filePath) + '/' + baseName + '.epub',
+                    () => {
+                        console.log(`转换成功：${filePath} -> ${outputPath}.epub`);
+
+                        // 转换成功后处理原文件
+                        if (args.delete) {
+                            Deno.removeSync(filePath);
+                            console.log(`已删除原文件：${filePath}`);
+                        }
+                    },
+                    parseInt(args["chapter-max"] as string || "10000")
+                )) {
+                    throw new Error("转换失败");
+                }
+            }
+        } catch (e) {
             console.error(`处理失败：${dirEntry.name}`, e);
         }
         console.log(`处理完成：${inputPath}`);
@@ -337,4 +367,5 @@ EPUB/TXT转换工具 v1.2
 // 执行主函数
 if (import.meta.main) {
     await main()
+    globalThis.addEventListener("unhandledrejection", (e) => e.preventDefault())
 }

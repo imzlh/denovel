@@ -433,7 +433,7 @@ async function downloadNovel(
         }
 
         if (!content || !content.trim() || content.length < 200){
-            if (previous_title== '上架感言') {
+            if (previous_title.trimStart().startsWith('上架感言')) {
                 report_status(Status.WARNING, '小说到这里免费部分已经结束了');
                 break;
             }else{
