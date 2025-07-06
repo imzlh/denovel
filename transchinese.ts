@@ -95,7 +95,7 @@ export async function getTBooks(_url: URL | string){
         }
         const [title2, content] = __res;
         ensureDir(dirname(title2));
-        if(title2.endsWith('.txt') && toEpub(new TextDecoder().decode(content), title2, title2.replace('.txt', '.epub'))){
+        if(title2.endsWith('.txt') && toEpub(new TextDecoder().decode(content), title2, title2.replace('.txt', '.epub'), {})){
             // success
         }else{
             Deno.writeFile(title2, content);

@@ -1,3 +1,5 @@
+/* This file is part of the @imzlh/denovel project. */
+
 .epub-author {
 	color: #555;
 }
@@ -46,4 +48,14 @@ div.cover {
 	height: auto;
 	/* ignored on older devices */
 	height: 100vh;
+}
+
+quote {
+	margin: auto 10%;
+	color: #127dab;
+	background-color: #b9f6ff;
+}
+
+dialog {
+	color: #23a854;
 }

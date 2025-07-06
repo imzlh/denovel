@@ -296,16 +296,18 @@ EPUB/TXT转换工具 v1.2
                         tryReadTextFile(outputPath + '/content.txt'),
                         filePath,
                         dirname(filePath) + '/' + baseName + '.epub',
-                        () => {
-                            console.log(`转换成功：${filePath} -> ${outputPath}.epub`);
+                        {
+                            thenCB: () => {
+                                console.log(`转换成功：${filePath} -> ${outputPath}.epub`);
 
-                            // 转换成功后处理原文件
-                            if (args.delete) {
-                                Deno.removeSync(filePath);
-                                console.log(`已删除原文件：${filePath}`);
-                            }
-                        },
-                        parseInt(args["chapter-max"] as string || "10000")
+                                // 转换成功后处理原文件
+                                if (args.delete) {
+                                    Deno.removeSync(filePath);
+                                    console.log(`已删除原文件：${filePath}`);
+                                }
+                            },
+                            per_page_max: parseInt(args["chapter-max"] as string || "10000")
+                        }
                     )) {
                         throw new Error("转换失败");
                     }
@@ -341,16 +343,18 @@ EPUB/TXT转换工具 v1.2
                     tryReadTextFile(outputPath + '/content.txt'),
                     filePath,
                     dirname(filePath) + '/' + baseName + '.epub',
-                    () => {
-                        console.log(`转换成功：${filePath} -> ${outputPath}.epub`);
+                    {
+                        thenCB: () => {
+                            console.log(`转换成功：${filePath} -> ${outputPath}.epub`);
 
-                        // 转换成功后处理原文件
-                        if (args.delete) {
-                            Deno.removeSync(filePath);
-                            console.log(`已删除原文件：${filePath}`);
-                        }
-                    },
-                    parseInt(args["chapter-max"] as string || "10000")
+                            // 转换成功后处理原文件
+                            if (args.delete) {
+                                Deno.removeSync(filePath);
+                                console.log(`已删除原文件：${filePath}`);
+                            }
+                        },
+                        per_page_max: parseInt(args["chapter-max"] as string || "10000")
+                    }
                 )) {
                     throw new Error("转换失败");
                 }

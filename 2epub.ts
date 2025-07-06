@@ -44,6 +44,13 @@ const regexp = [
     /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/gi
 ];
 
+// 「宫城，拿这个的下一集给我。」
+// 【谢啦。】
+const specialTag = {
+    'dialog': /「(.+?)」/g,
+    'quote': /【(.+?)】/g,
+};
+
 function splitByIndent(text: string): { title: string, data: string }[] {
     const result: { title: string, data: string }[] = [];
     let lines = text.split(/\r?\n/);
@@ -166,7 +173,9 @@ function fromPreg(rawTxt: string, matches: Iterable<RegExpMatchArray>, merge: bo
  * @param input 输入的文件名
  * @param output 输出位置
  */
-export function toEpub(data: string, input: string, output: string, thenCB?: () => any, per_page_max = MAX_CHARS_PER_CHAPTER, merge: boolean = false): boolean {
+export function toEpub(data: string, input: string, output: string, option: {
+    thenCB?: () => any, per_page_max?: number, merge?: boolean, jpFormat?: boolean
+}): boolean {
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
 
@@ -190,12 +199,13 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
 
     let matches: Array<[string, string]> = [];
     let pregmatches: RegExpExecArray[] = [];
+    const per_page_max = option.per_page_max || MAX_CHARS_PER_CHAPTER;
     for (const reg of regexp) {
         pregmatches = Array.from(data.matchAll(reg));
         max = Math.max(max, pregmatches.length);
         // console.debug(`Found ${matches.length} matches for ${reg}`);
         if (pregmatches.length * per_page_max >= data.length){
-            matches = fromPreg(data, pregmatches, merge);
+            matches = fromPreg(data, pregmatches, option.merge);
             break;
         }
     }
@@ -221,7 +231,7 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
         for (const c of matches) {
             chaps.push({
                 title: c[0].replaceAll(/\s+/g, ' ') || (first ? '前言' : ''),
-                data: encodeContent(c[1]).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) =>
+                data: encodeContent(c[1], option.jpFormat).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) =>
                     it ? `<img src="${it}" />` : ''
                 ),
             });
@@ -251,14 +261,14 @@ export function toEpub(data: string, input: string, output: string, thenCB?: () 
     console.log('Generating EPub file to ', output, '...');
     new EPub(options, output).render().then(a => {
         console.log('EPub has been generated to ', output, a.result);
-        if (thenCB) thenCB();
+        if (option.thenCB) option.thenCB();
     });
 
     return true;
 }
 
-export const encodeContent = (str: string) => {
-    const str2 = '<p>' + str.replace(/&/g, '&amp;')
+export const encodeContent = (str: string, jpFormat = false) => {
+    str = '<p>' + str.replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
@@ -267,13 +277,23 @@ export const encodeContent = (str: string) => {
         .replace(rep, '')
         .replaceAll(/\&lt\;img.+src=\&(?:quot|apos)\;(.+?)\&(?:quot|apos)\;.*\/?\&gt;/g, '<img src="$1" />')
         + '</p>';
-    return str2.replaceAll(/\<p\> *\<\/p\>/g, '');
+    str = str.replaceAll(/\<p\> *\<\/p\>/g, '');
+
+    // 特殊优化 for 日/韩轻小说
+    if(jpFormat){
+        for(const tag in specialTag){
+            // @ts-ignore Object
+            str = str.replaceAll(specialTag[tag], (_, p1) => `<${tag}>${p1}</${tag}>`);
+        }
+    }
+
+    return str;
 }
 
 if (import.meta.main) {
     const args = parseArgs(Deno.args, {
         string: ['output', 'chapter-max'],
-        boolean: ['help', 'delete', 'force', 'delete-exist', 'test-title'],
+        boolean: ['help', 'delete', 'force', 'delete-exist', 'test-title', 'jp-format', 'merge'],
         alias: {
             o: 'output',
             h: 'help',
@@ -281,7 +301,9 @@ if (import.meta.main) {
             f: 'force',
             e: 'delete-exist',
             c: 'chapter-max',
-            t: 'test-title'
+            t: 'test-title',
+            j: 'jp-format',
+            m: 'merge'
         }
     });
 
@@ -300,6 +322,8 @@ Options:
     -c, --chapter-max <n>  Max chars per chapter (default: 1w)
     -t, --test-title <t>   Test title whether it can be processed correctly
     -m, --merge            Merge chapters less than 10 chars into one chapter
+    -j, --jp-format        Format for special translated books(mostly for Japanese/Korean light novel)
+    -m, --merge            Merge chapters less than 10 chars into one chapter(mostly for 2txt processed text)
     
 Example:
     deno run 2epub.ts input.txt -m -o output.epub`);
@@ -357,7 +381,11 @@ Example:
         }
 
         const data = tryReadTextFile(file);
-        const res = toEpub(data, file, ofile, undefined, chapMax);
+        const res = toEpub(data, file, ofile, {
+            per_page_max: chapMax,
+            merge: args.merge,
+            jpFormat: args["jp-format"]
+        });
         if (res)
             console.log(`"${file}" has been converted to "${basename(file)}.epub"`);
         console.timeLog('convert');

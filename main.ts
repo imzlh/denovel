@@ -492,7 +492,7 @@ async function downloadNovel(
 
     if (!sig_abort?.aborted && args.epub) {
         const text = await Deno.readTextFile(fpath);
-        toEpub(text, fpath, fpath.replace('.txt', '.epub'));
+        toEpub(text, fpath, fpath.replace('.txt', '.epub'), {});
     }
 }
 
