@@ -6,7 +6,7 @@
 
 # 目前已经支持？
 看`lib/`文件夹都是已经支持的
- - 番茄：借助jingluo API，不过IP容易被封禁
+ - 番茄：参考@POf-L/Fanqie-novel-Downloader
  - sfacg：web
  - 刺猬猫(实验性)：WebAPI
  - esjZone：web + WebAPI

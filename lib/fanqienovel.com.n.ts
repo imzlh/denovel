@@ -1,130 +1,40 @@
-// /**
-//  * fanqieAPI
-//  */
-// const API = {
-//     detail: (bid: string) => `https://api5-normal-sinfonlinea.fqnovel.com/reading/bookapi/detail/v?without_video=true&book_id=${bid}&iid=2904223656184955&device_id=2904223657000043&ac=wifi&channel=43536071a&aid=1967&app_name=novelapp&version_code=66932&version_name=6.6.9.32&device_platform=android&os=android&ssmix=a&device_type=Pixel+5&device_brand=google&language=zh&os_api=33&os_version=13&manifest_version_code=66932&resolution=1920*1080&dpi=240&update_version_code=66932&_rticket=1745107984402&&host_abi=armeabi-v7a&dragon_device_type=phone&pv_player=66932&compliance_status=0&need_personal_recommend=1&player_so_load=1&is_android_pad_screen=0&rom_version=TQ3A.230901.001&cdid=dceae012-9bd3-4509-9e3e-d8afb51c8551`,
-//     content: (bid: string, iid: string) => `https://api5-normal-sinfonlinea.fqnovel.com/reading/reader/full/v?item_id=${iid}&key_register_ts=0&book_id=${bid}&iid=2904223656184955&device_id=2904223657000043&ac=wifi&channel=43536071a&aid=1967&app_name=novelapp&version_code=66932&version_name=6.6.9.32&device_platform=android&os=android&ssmix=a&device_type=Pixel+5&device_brand=google&language=zh&os_api=33&os_version=13&manifest_version_code=66932&resolution=1920*1080&dpi=240&update_version_code=66932&_rticket=1745108485514&&host_abi=armeabi-v7a&dragon_device_type=phone&pv_player=66932&compliance_status=0&need_personal_recommend=1&player_so_load=1&is_android_pad_screen=0&rom_version=TQ3A.230901.001&cdid=dceae012-9bd3-4509-9e3e-d8afb51c8551`
-// }
-
-// const INTERNAL_NEXT = 'https://book-next-internal.local/__internal_next_link__';
-
-// console.log('请知晓，为了防止被封，本爬虫会在每次请求之后随机等待几秒');
-
-// const detail = (bookid: string) =>
-//     fetch2(`${URL_base}/detail.php?book_id=${bookid}`).then(r => r.json())
-//         .then(__ => {
-//             if(__.code != 0) throw new Error(`Failed to fetch book detail: ${__.msg}`);
-//             const data = __.data,
-//                 thumb = data.thumb_url as string,
-//                 desc = (data.book_abstract_v2 || data.book_abstract) as string,
-//                 lastUpdate = parseInt(data.last_chapter_update_time);
-//             return { thumb, desc, lastUpdate };
-//         });
-
-// interface IChapter{
-//     itemId: string,
-//     title: string,
-//     firstPassTime: string,
-//     volume_name: string,
-//     need_pay: number
-// }
-    
-// const chapters = (bookid: string) =>
-//     fetch2(`${URL_get}/all_items?book_id=${bookid}`).then(r => r.json())
-//         .then(__ => {
-//             if(__.code != 0) throw new Error(`Failed to fetch book chapters: ${__.msg}`);
-//             const data = __.data.chapterListWithVolume as Array<Array<IChapter>>,
-//                 volume = __.data.volumeNameList as Array<string>;
-            
-//             return Object.fromEntries(volume.map((c, i) => [c, data[i]]));
-//         });
-
-// const content2 = (chapId: string) => 
-//     fetch2(`${URL_get}/content?item_id=${chapId}`).then(r => r.json())
-//         .then(__ => {
-//             if(__.code != 0) throw new Error(`Failed to fetch chapter content: ${__.msg}`);
-//             const data = __.data.content as string;
-//             return removeHTMLTags(data);
-//         });
-
-// const genTicket = () => Math.floor(Math.random() * 13).toString(10);
-// const socter = 'AAEAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-
-// const bookMeta = async (bid: string) => {
-//     const ticket = genTicket();
-//     const res = await fetch2(API.detail(bid), {
-
-// const content = async (bid: string, iid: string) => {
-//     const ticket = genTicket();
-//     fetch(API.content(bid, iid), {
-//         headers: {
-//             'Content-Type': 'application/json; charset=utf-8,application/x-protobuf',
-//             'x-xs-from-web': '0',
-//             'x-ss-req-ticked': ticket,
-//             'x-reading-request': `${ticket}-${ticket.substring(0, 10)}`,
-//             'x-vc-bdturing-sdk-version': '3.7.2.cn',
-//             'sdk-version': '2'
-//         }
-//     })
-// }
-
-// export default (function () {
-//     const urlPreg = /^https?\:\/\/.*fanqienovel\.com\/page\/(\d+)\/?/i;
-//     let chapter: IChapter[];
-//     let i = 0;
-
-//     return async function (url) {
-//         url = typeof url === 'object' ? url.toString() : url;
-//         if(url == INTERNAL_NEXT){
-//             if(i >= chapter.length) return null;
-
-//             // 强制sleep防止被封
-//             await delay(2000 * Math.random() + 1000);
-
-//             let ctx;
-//             ctx = await content2(chapter[i].itemId);
-//             if(!ctx) throw new Error('Failed to fetch chapter content');
-
-//             return {
-//                 title: chapter[i++].title,
-//                 content: ctx,
-//                 next_link: INTERNAL_NEXT
-//             };
-//         }else if(urlPreg.test(url)){
-//             const bookid = url.match(urlPreg)![1];
-//             chapter = Object.values(await chapters(bookid)).flat();
-//             const res = {
-//                 title: chapter[i].title,
-//                 content: await content(chapter[i].itemId),
-//                 next_link: INTERNAL_NEXT
-//             };
-//             i++;    // to avoid i++ when error occurs
-//             return res;
-//         }else{
-//             throw new Error("Invalid url");
-//         }
-//     }
-// } satisfies Callback);
+/**
+ * Adapted from @POf-L/Fanqie-novel-Downloader
+ */
 
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
-import { fetch2, getDocument, removeHTMLTags } from "../main.ts";
-
-const URL_base = "https://api.cenguigui.cn/api/tomato/api",
-    URL_get = "http://rehaofan.jingluo.love";
+import { fetch2, timeout } from "../main.ts";
 
 const INTERNAL_NEXT = 'https://book-next-internal.local/__internal_next_link__';
+const True = true, False = false, None = null;
+const CONFIG = {    // 2025/7/1
+    "max_workers": 4,
+    "max_retries": 3,
+    "request_timeout": 15,
+    "status_file": "chapter.json",
+    "request_rate_limit": 0.4,
+    "auth_token": "wcnmd91jb",
+    "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
+    "api_endpoints": [],
+    "batch_config": {
+        "name": "qyuing",
+        "base_url": None,
+        "batch_endpoint": None,
+        "token": None,
+        "max_batch_size": 290,
+        "timeout": 10,
+        "enabled": True
+    }
+};
 
 console.log('请知晓，为了防止被封，本爬虫会在每次请求之后随机等待几秒');
 
 const detail = (bookid: string) =>
-    fetch2(`${URL_base}/detail.php?book_id=${bookid}`).then(r => r.json())
+    fetch2(`https://fanqienovel.com/api/reader/directory/detail?bookId=${bookid}`).then(r => r.json())
         .then(__ => {
             if(__.code != 0) throw new Error(`Failed to fetch book detail: ${__.msg}`);
-            const data = __.data,
-                thumb = data.thumb_url as string,
-                desc = (data.book_abstract_v2 || data.book_abstract) as string,
-                lastUpdate = parseInt(data.last_chapter_update_time);
-            return { thumb, desc, lastUpdate };
+            const data = __.data.chapterListWithVolume;
+            return data.flat(1) as Array<IChapter>;
         });
 
 interface IChapter{
@@ -134,37 +44,118 @@ interface IChapter{
     volume_name: string,
     need_pay: number
 }
-    
-const chapters = (bookid: string) =>
-    fetch2(`${URL_base}/all_items.php?book_id=${bookid}`).then(r => r.json())
-        .then(__ => {
-            if(__.code != 0) throw new Error(`Failed to fetch book chapters: ${__.msg}`);
-            const data = __.data.chapterListWithVolume as Array<Array<IChapter>>,
-                volume = __.data.volumeNameList as Array<string>;
-            
-            return Object.fromEntries(volume.map((c, i) => [c, data[i]]));
-        });
+interface ISource{
+    enabled: boolean,
+    name: string,
+    single_url: string,
+    token: string
+}
 
-const content = async (chapId: string) => 
-    fetch2(`${URL_base}/content.php?item_id=${chapId}`).then(r => r.json())
-        .then(__ => {
-            if(__.code != 0) throw new Error(`Failed to fetch chapter content: ${__.msg}`);
+const getNodes = () => fetch2(CONFIG.server_url, {
+    headers: {
+        "X-Auth-Token": CONFIG.auth_token
+    }
+}).then(r => r.json())
+   .then(r => {
+        if('sources' in r) return r.sources as Array<ISource>;
+        else throw new Error(`Failed to fetch sources: ${r.msg}`);
+    });
 
-            const data = __.data.content as string;
-            return data;
-        });
+async function tryBatchNode(cids: Array<string>, node: ISource) {
+    // FIXME: 这里的batch_endpoint可能有问题
+    const url = new URL(node.single_url);
+    const kname = Array.from(url.searchParams.entries()).find(v => v[1] == '{chapter_id}');
+    if(kname) url.searchParams.delete(kname[0]);
+    const fe = await fetch2(url, {
+        headers: {
+            'token': node.token,
+            'Content-Type': 'application/json'
+        },
+        method: 'POST',
+        body: JSON.stringify({
+            "item_ids": cids
+        })
+    });
+    if(fe.ok){
+        const res = (await fe.json()).data as Record<string, string>[];
+        if(!res) throw new Error('Failed to fetch chapter content');
+        
+        const ret: Record<string, string> = {};
+        for(const id in res){
+            const content = res[id].content;
+            if(!content){
+                throw new Error(`Failed to fetch chapter content from ${node.name}: ${res[id].msg} ${await fe.text()}`);
+            }
+            ret[id] = content;
+        }
+        return ret;
+    }else{
+        throw new Error(`Failed to fetch chapter content from ${node.name}: ${fe.status} ${await fe.text()}`);
+    }
+}
 
-const content2 = (chapId: string) => 
-    fetch2(`${URL_get}/content?item_id=${chapId}`).then(r => r.json())
-        .then(__ => {
-            if(__.code != 0) throw new Error(`Failed to fetch chapter content: ${__.msg}`);
-            const data = __.data.content as string;
-            return removeHTMLTags(data);
-        });
+async function tryNode(cid: string, node: ISource) {
+    const url = node.single_url.replace('{chapter_id}', cid);
+    const fe = await fetch2(url, {
+        signal: timeout(CONFIG.request_timeout)
+    });
+    if(fe.ok){
+        const res = (await fe.json()).data as string;
+        if(!res) throw new Error('Failed to fetch chapter content');
+
+        switch(node.name){
+            case 'fqphp':
+                return res.substring(20);
+
+            case 'qyuing':
+                return res;
+
+            case 'lsjk':
+                return res;
+
+            default:
+                return res;
+        }
+    }else{
+        throw new Error(`Failed to fetch chapter content from ${node.name}: ${fe.status}`);
+    }
+}
+
+let nodes: Array<ISource> = [];
+async function* getChapterContent(cid: string[]): AsyncGenerator<string, void, string> {
+    if(!nodes.length){
+        nodes = await getNodes();
+    }
+
+    for(const node of nodes){
+        if(node.enabled) try{
+            if(node.name == CONFIG.batch_config.name){
+                console.log('尝试批量下载，耗时可能较长，请耐心等待');
+                yield* Object.entries(await tryBatchNode(cid, node))
+                    .sort((v1, v2) => cid.indexOf(v1[0]) - cid.indexOf(v2[0]))
+                    .map(v => v[1]);
+            }else {
+                for(const c of cid)
+                    yield await tryNode(c, node);
+            }
+            return;
+        }catch(e){
+            console.error(`Failed to fetch chapter content from ${node.name}: ${(e as Error).message}`);
+        }
+    }
+    throw new Error('Failed to fetch chapter content');
+}
+
+function batchable(){
+    if(CONFIG.batch_config.enabled && CONFIG.batch_config.token && CONFIG.batch_config.batch_endpoint)
+        return true;
+    else return false;
+}
 
 export default (function () {
     const urlPreg = /^https?\:\/\/.*fanqienovel\.com\/page\/(\d+)\/?/i;
     let chapter: IChapter[];
+    let chapterBatched: string[] | undefined = undefined;
     let i = 0;
 
     return async function (url) {
@@ -172,31 +163,35 @@ export default (function () {
         if(url == INTERNAL_NEXT){
             if(i >= chapter.length) return null;
 
-            // 强制sleep防止被封
-            await delay(2000 * Math.random() + 1000);
+            const ret = {
+                title: chapter[i++].title,
+                content: '',
+                next_link: INTERNAL_NEXT
+            };
 
-            let ctx;
-            try{
-                ctx = await content2(chapter[i].itemId);
-                if(!ctx) throw new Error('Failed to fetch chapter content');
-            }catch(e){
-                ctx = await content(chapter[i].itemId);
+            if(chapterBatched && chapterBatched.length > i-1){
+                ret.content = chapterBatched[i-1];
+            }else{
+                // 强制sleep防止被封
+                await delay(2000 * Math.random() + 1000);
+
+                const ctx = await Array.fromAsync(getChapterContent([chapter[i].itemId]));
                 if(!ctx) throw new Error('Failed to fetch chapter content');
             }
 
-            return {
-                title: chapter[i++].title,
-                content: ctx,
-                next_link: INTERNAL_NEXT
-            };
+            return ret;
         }else if(urlPreg.test(url)){
             const bookid = url.match(urlPreg)![1];
-            chapter = Object.values(await chapters(bookid)).flat();
+            chapter = await detail(bookid);
             const res = {
                 title: chapter[i].title,
-                content: await content(chapter[i].itemId),
+                content: '',
                 next_link: INTERNAL_NEXT
             };
+
+            chapterBatched = await Array.fromAsync(getChapterContent(chapter.map(v => v.itemId)));
+            res.content = chapterBatched[i];
+
             i++;    // to avoid i++ when error occurs
             return res;
         }else{
