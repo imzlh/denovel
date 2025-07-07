@@ -16,6 +16,13 @@ import { existsSync, fetch2 } from "./main.ts";
 import { exists } from "./main.ts";
 import { basename, dirname, resolve } from "jsr:@std/path@^1.0.8";
 
+function getExtensionFromDataUrl(dataUrl: string) {
+    // data:image/jpeg;base64,...
+    const res = dataUrl.match(/^data:[a-z]+\/([a-z]+);/);
+    if(!res) return null;
+    return res[1];
+}
+
 // Allowed HTML attributes & tags
 export const defaultAllowedAttributes = [
     "content",
@@ -597,7 +604,8 @@ export class EPub {
             }
             extension = mime.getExtension(mediaType);
             if (extension === null) {
-                if (true) {
+                extension = getExtensionFromDataUrl(url);
+                if (!extension) {
                     console.error(
                         `[Media Error] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
                     );
@@ -800,12 +808,12 @@ export class EPub {
                     headers: { "User-Agent": this.userAgent },
                 });
                 if(!httpRequest.ok || !httpRequest.body)
-                    throw new Error("Failed to fetch media(status code: " + httpRequest.status + ")");
+                    throw new Error("下载内嵌资源失败(HTTP  " + httpRequest.status + ")");
                 await Deno.writeFile(filename, httpRequest.body);
                 console.log('成功下载：', media.url);
             } catch (err) {
                 if (true) {
-                    console.error(`The media can't be processed : ${media.url}, ${err}`);
+                    console.error(`无法处理文件(格式错误?) : ${media.url}, ${err}`);
                 }
                 return;
             }
@@ -859,6 +867,7 @@ export class EPub {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             archive.on("error", (err: any) => reject(err));
             archive.finalize();
+            console.log('All done with', this.audioVideo.length, 'audio/video files and', this.images.length, 'images.')
         });
     }
 }

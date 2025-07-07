@@ -229,11 +229,13 @@ export function toEpub(data: string, input: string, output: string, option: {
         let first = true;
         let beforeText = '';
         for (const c of matches) {
+            let text = encodeContent(c[1], option.jpFormat);
+            text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
+                return it ? `<img src="${it}" />` : ''
+            })
             chaps.push({
                 title: c[0].replaceAll(/\s+/g, ' ') || (first ? '前言' : ''),
-                data: encodeContent(c[1], option.jpFormat).replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) =>
-                    it ? `<img src="${it}" />` : ''
-                ),
+                data: text,
             });
             beforeText = c[1];
             first = false;
