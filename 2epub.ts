@@ -1,7 +1,7 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename, dirname } from "jsr:@std/path";
 import { EPub, EpubContentOptions, EpubOptions } from "./genepub.ts";
-import { exists, tryReadTextFile } from "./main.ts";
+import { exists, PRESERVE_EL, tryReadTextFile } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // deno-lint-ignore no-control-regex
@@ -27,7 +27,7 @@ const MIN_CHARS_PER_CHAPTER = 10;   // 10字最少
 // Part.0 『为什么会变成这样的人』
 // Part.12 『完美假面』no.1
 const regexp = [
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/gi,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/gi,
     /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s(.*)\]?[\r\n]+/gi,
     /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)\d+\s+[、. ：:~，·～．『]\s*(.*)\s*』?[\r\n]+/gi,
     /[\r\n]+\s*No[、.．]\d+\s*(.+)\s*[\r\n]+/gi,
@@ -238,7 +238,13 @@ export function toEpub(data: string, input: string, output: string, option: {
             let text = encodeContent(c[1], option.jpFormat);
             text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
                 return it ? `<img src="${it.replaceAll('一', '-')}" />` : ''
-            })
+            }).replaceAll(/\[(?<tag>[a-z]{1,10})\]([\s\S]*?)\[\/\k<tag>\]/g, (_, tag, it) => {
+                if(PRESERVE_EL.includes(tag)){
+                    return `<${tag}>${it}</${tag}>`;
+                }else{
+                    return _;
+                }
+            });
             chaps.push({
                 title: maxC(c[0].replaceAll(/\s+/g, ' '), 60) || (first ? '前言' : ''),
                 data: text,
@@ -252,11 +258,10 @@ export function toEpub(data: string, input: string, output: string, option: {
             options.author = maxC(match[1], 20);
         }
 
-        // const ctxmatch = data.match(/[\r\n]+\s*简介[：:]\s*[\r\n]+/);
-        // if(ctxmatch){
-        //     const start = ctxmatch.index + ctxmatch[0].length;
-        //     const end = start.match(/[\r\n]+\s*[\r\n]+/)
-        // }
+        const ctxmatch = data.match(/(?:\r?\n)+\s*简介[：:]([\s\S]+?)(?=(?:\r?\n){2,}|(?:\r?\n{2,}){2,}|-{10,})/gm);
+        if(ctxmatch && ctxmatch[0].length){
+            options.description = ctxmatch[0].trim();
+        }
 
         // image
         const imgmatch = beforeText.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/);
@@ -266,7 +271,7 @@ export function toEpub(data: string, input: string, output: string, option: {
     }
 
     // 生成 epub 文件
-    console.log('Generating EPub file to ', output, '...');
+    console.log('Generating EPub file to ', output, option.jpFormat ? 'using jp format' : '', '...');
     new EPub(options, output).render().then(a => {
         console.log('EPub has been generated to ', output, a.result);
         if (option.thenCB) option.thenCB();

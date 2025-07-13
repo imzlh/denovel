@@ -154,7 +154,7 @@ async function fetch2(
     }
     headers.set('Cookie', cookies);
     headers.set('User-Agent', UA);
-    headers.set('Origin', originalUrl.origin);
+    // headers.set('Origin', originalUrl.origin);
 
     // 修复请求方法逻辑
     if (options.body && (!options.method || /^get|head$/i.test(options.method))) {
@@ -166,6 +166,7 @@ async function fetch2(
     for (let i = 0; i < 3; i++) {
         try {
             response = await fetch(targetUrl, { ...options, headers, redirect: 'manual' });
+            if(response.status >= 500) throw new Error('Server Error: status ' + response.status);
             break;
         } catch (e) {
             console.warn(`Fetch failed (attempt ${i + 1}):`, (e as Error).message);
@@ -298,8 +299,12 @@ function similarTitle(title1: string, title2: string) {
     return t1res && t2res && t1res[1] == t2res[1];
 }
 
-function processContent(ctx: Element, parentNode?: Element) {
+export const WRAP_EL = ['br', 'hr', 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre'],
+    PRESERVE_EL = ['b', 'ul', 'li', 'ol', 'strong', 'em', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'tfoot'];
+
+function processContent(ctx?: Element | null | undefined, parentNode?: Element) {
     let text = '';
+    if(!ctx) return text;
     for(const node of ctx.childNodes){
         if(node.nodeName.toLowerCase() == 'img'){
             const el = node as Element;
@@ -327,11 +332,15 @@ function processContent(ctx: Element, parentNode?: Element) {
         }else if(node.nodeType == node.TEXT_NODE){
             const name = ctx.tagName.toLowerCase();
             text += node.textContent.replaceAll(/[\s^\r\n]+/g, ' '); // HTML默认会将多个空格合并为一个
-            if(['br', 'hr', 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre'].includes(name)){
+            if(WRAP_EL.includes(name)){
                 text += '\r\n';
             }
         }else if(node.nodeType == node.ELEMENT_NODE){
-            text += processContent(node as Element);
+            const tag = parentNode?.tagName.toLowerCase();
+            const preserve = tag ? PRESERVE_EL.includes(tag): null;
+            if(tag && preserve) text += `[${tag}]`
+            text += processContent(node as Element, ctx);
+            if(tag && preserve) text += `[/${tag}]`
         }
     }
 
@@ -354,18 +363,48 @@ async function downloadNovel(
     cover?: string,
     sig_abort?: AbortSignal
 ) {
-    book_name || (book_name = prompt("请输入书名 >> ") || '');
+    let next_url = new URL(start_url!)
+    const configOrCallback = await import('./lib/' + next_url.hostname + (isTraditional ? '.t.ts' : '.n.ts'));
+    const config = (isTraditional ? configOrCallback.default : await configOrCallback.default() as TraditionalConfig | Callback);
+    let summary: string | undefined;
+
+    if(isTraditional && (config as TraditionalConfig).mainPageLike?.test(next_url.href) && (config as TraditionalConfig).mainPageFirstChapter){
+        const mainPage = await getDocument(next_url, sig_abort);
+        report_status(Status.DOWNLOADING, '获取书籍信息');
+        const cfg = config as TraditionalConfig;
+        const firstPage = mainPage.querySelector(cfg.mainPageFirstChapter!)?.getAttribute('href');
+        if(!firstPage){
+            throw new Error('未找到第一章');
+        }
+        next_url = new URL(firstPage, next_url);
+
+        cover = mainPage.querySelector(cfg.mainPageCover!)?.getAttribute('src') ?? undefined;
+        book_name = mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '';
+        if(!book_name){
+            report_status(Status.WARNING, '未找到书名，使用空文件名(".txt")');
+        }
+        summary = processContent(mainPage.querySelector(cfg.mainPageSummary!));
+    }else if(!isTraditional && typeof configOrCallback.getInfo == 'function'){
+        try{
+            const bookinfo = await configOrCallback.getInfo(next_url) as MainInfo;
+            cover = bookinfo.mainPageCover;
+            book_name = bookinfo.mainPageTitle;
+            next_url = new URL(bookinfo.mainPageFirstChapter, next_url);
+            summary = bookinfo.mainPageSummary;
+        }catch{
+            report_status(Status.WARNING, '自动化获取书籍信息失败(配置不支持?)');
+        }
+    }else{
+        console.log('[ INFO ] 未找到自动化配置，使用手动输入')
+        book_name || (book_name = prompt("请输入书名 >> ") || '');
+    }
     const fpath = (args.outdir || 'out') + '/' + removeIllegalPath(book_name) + '.txt';
     const file = await Deno.open(fpath, {
         create: true, write: true, truncate: true
     });
+    if(summary) file.write(new TextEncoder().encode(`简介: \r\n${summary}\r\n${'-'.repeat(20)}\r\n`));
 
-    let next_url = new URL(start_url!),
-        chapter_id = 1;
-
-    const configOrCallback = await import('./lib/' + next_url.hostname + (isTraditional ? '.t.ts' : '.n.ts'));
-    const config = (isTraditional ? configOrCallback.default : await configOrCallback.default() as TraditionalConfig | Callback);
-    let previous_title = '', previous_link = '';
+    let chapter_id = 1, previous_title = '', previous_link = '';
 
     if(cover){
         file.write(new TextEncoder().encode(`封面: ${cover}\r\n`));
@@ -492,7 +531,9 @@ async function downloadNovel(
 
     if (!sig_abort?.aborted && args.epub) {
         const text = await Deno.readTextFile(fpath);
-        toEpub(text, fpath, fpath.replace('.txt', '.epub'), {});
+        toEpub(text, fpath, fpath.replace('.txt', '.epub'), {
+            jpFormat: (config as TraditionalConfig).jpStyle,
+        });
     }
 }
 
@@ -553,7 +594,7 @@ if (import.meta.main) {
 
     if (Deno.stdin.isTerminal()){
         start_url = args._[0] || prompt("请输入起始URL >> ") || '';
-        cover = args.cover || prompt("请输入封面URL(可选) >> ");
+        cover = args.cover || prompt("请输入封面URL(可选,自动) >> ");
     } else {
         start_url = JSON.parse(Deno.readTextFileSync('debug.json')).url;
         console.log('从debug.json中读取url:', start_url);
