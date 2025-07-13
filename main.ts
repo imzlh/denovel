@@ -300,9 +300,71 @@ function similarTitle(title1: string, title2: string) {
 }
 
 export const WRAP_EL = ['br', 'hr', 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre'],
-    PRESERVE_EL = ['b', 'ul', 'li', 'ol', 'strong', 'em', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'tfoot'];
+    PRESERVE_EL = ['b', 'ul', 'li', 'ol', 'strong', 'em', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'tfoot'],
+    SCALABLE_STYLE = [
+        'font-size',
+        'font-family',
+        'font-weight',
+        'font-style',
+        'line-height',
+        'color',
+        'text-align',
+        'letter-spacing',
+        'word-spacing',
+        'text-indent'
+    ],
+    SPECIAL_CSS = [
+        // 格式: [css属性名, 条件/值, 转换后的HTML标签]
+        ['font-weight', t => parseInt(t) > 500, 'strong'],  // 加粗
+        ['font-style', 'italic', 'em'],                    // 斜体
+        ['text-decoration', 'underline', 'u'],             // 下划线
+        ['text-decoration', 'line-through', 'del'],        // 删除线
+        ['vertical-align', 'super', 'sup'],                // 上标
+        ['vertical-align', 'sub', 'sub'],                  // 下标
+        ['display', 'block', 'div'],                       // 块级元素
+        ['display', 'inline-block', 'span'],               // 行内块
+        ['text-align', 'center', 'div'],                   // 居中文本
+        ['text-align', 'right', 'div']                     // 右对齐文本
+    ] as Array<[
+        string, 
+        string | ((value: string) => boolean), 
+        string
+    ]>;
 
-function processContent(ctx?: Element | null | undefined, parentNode?: Element) {
+
+function parseInlineCSS(css: string){
+    const rules = css.split(';').map(s => s.trim()).filter(s => s);
+    const style: Record<string, string> = {};
+    for(const rule of rules){
+        const [key, value] = rule.split(':');
+        style[key.trim()] = value.trim();
+    }
+    return style;
+}
+
+function getCSS(el: Element, inherit_style: Record<string, string> = {}){
+    const css = el.getAttribute('style');
+    const style = {...inherit_style};
+    if(css){
+        const el_style = parseInlineCSS(css);
+        for(const key in el_style){
+            style[key] = el_style[key];
+        }
+    }
+    return style;
+}
+
+function cssToTag(css: Record<string, string>){
+    for(const [cssname, cond, tag] of SPECIAL_CSS){
+        const val = css[cssname];
+        if(!val) continue;
+        if(typeof cond == 'function' && cond(val)) return tag;
+        if(val == cond) return tag;
+    }
+    return 'span';
+}
+
+function processContent(ctx?: Element | null | undefined, parentNode?: Element, parentStyle: Record<string, string> = {}) {
     let text = '';
     if(!ctx) return text;
     for(const node of ctx.childNodes){
@@ -332,15 +394,19 @@ function processContent(ctx?: Element | null | undefined, parentNode?: Element) 
         }else if(node.nodeType == node.TEXT_NODE){
             const name = ctx.tagName.toLowerCase();
             text += node.textContent.replaceAll(/[\s^\r\n]+/g, ' '); // HTML默认会将多个空格合并为一个
-            if(WRAP_EL.includes(name)){
+            if(WRAP_EL.includes(name) || parentStyle['display']?.toLowerCase() == 'block'){
                 text += '\r\n';
             }
         }else if(node.nodeType == node.ELEMENT_NODE){
-            const tag = parentNode?.tagName.toLowerCase();
-            const preserve = tag ? PRESERVE_EL.includes(tag): null;
-            if(tag && preserve) text += `[${tag}]`
-            text += processContent(node as Element, ctx);
-            if(tag && preserve) text += `[/${tag}]`
+            const tag = [] as string[];
+            const rtag = (node as Element).tagName.toLowerCase();
+            if(PRESERVE_EL.includes(rtag)) tag.push(rtag);
+            const style = getCSS(node as Element, parentStyle);
+            const outertag = cssToTag(style);
+            if(outertag!= 'span' && outertag != rtag) tag.push(outertag);
+            if(tag.length) text += tag.map(t => `[${t}]`).join('');
+            text += processContent(node as Element, ctx, style);
+            if(tag.length) text += tag.map(t => `[/${t}]`).reverse().join('');
         }
     }
 
