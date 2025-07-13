@@ -166,6 +166,12 @@ function fromPreg(rawTxt: string, matches: Iterable<RegExpMatchArray>, merge: bo
     return result;
 }
 
+function maxC(str: string, max: number) {
+    if (str.length > max) {
+        return str.slice(0, max - 3) + '...';
+    }
+    return str;
+}
 
 /**
  * TXT转换成EPUB
@@ -231,19 +237,19 @@ export function toEpub(data: string, input: string, output: string, option: {
         for (const c of matches) {
             let text = encodeContent(c[1], option.jpFormat);
             text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
-                return it ? `<img src="${it}" />` : ''
+                return it ? `<img src="${it.replaceAll('一', '-')}" />` : ''
             })
             chaps.push({
-                title: c[0].replaceAll(/\s+/g, ' ') || (first ? '前言' : ''),
+                title: maxC(c[0].replaceAll(/\s+/g, ' '), 60) || (first ? '前言' : ''),
                 data: text,
             });
-            beforeText = c[1];
+            if(first) beforeText = c[1];
             first = false;
         }
 
         const match = beforeText.match(/作者[：:]\s*(.+?)\s*[\r\n]+/);
         if (match) {
-            options.author = match[1];
+            options.author = maxC(match[1], 20);
         }
 
         // const ctxmatch = data.match(/[\r\n]+\s*简介[：:]\s*[\r\n]+/);
