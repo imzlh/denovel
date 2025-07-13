@@ -1,5 +1,5 @@
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
-import { getDocument } from "./main.ts";
+import { getDocument, removeIllegalPath } from "./main.ts";
 
 const ENTRY_LINK = "https://17c.com",
     SEARCH_PATH = "/search/0.html?keyword={search}&page={page}",
@@ -120,7 +120,7 @@ const [raw_host, addr_base] = await (async function() {
 
     const addr0 = await handleRedirect((await getDocument(ENTRY_LINK, undefined, undefined, true)).getElementsByTagName('script')[0].innerHTML),
         addr1 = (await getDocument(addr0, undefined, undefined, true)).querySelector('a[href]')!.getAttribute('href')!,
-        addr2 = (await getDocument(addr1, undefined, undefined, true)).querySelector('#main > div:nth-child(2) > p:nth-child(3) > font')!.innerHTML!,
+        addr2 = (await getDocument(addr1, undefined, undefined, true)).querySelector('body > div:nth-child(2) > div > b:nth-child(2)')!.innerHTML!,
         ctx = (await getDocument(addr2, undefined, undefined, true)).querySelector('script')?.innerHTML!,
         addr = new URL(await handleRedirect(ctx));
 
@@ -151,12 +151,16 @@ async function search(keywords: string, page = '0') {
 }
 
 async function getM3U8(play: string | URL){
-    const doc = (await getDocument(play, undefined, { Host: raw_host })).getElementsByTagName('script')
+    const document = await getDocument(play, undefined, { Host: raw_host });
+    const doc = document.getElementsByTagName('script')
         .filter(scr => scr.innerHTML.includes('m3u8') && scr.innerHTML.includes('getFileIds()'))[0]
         .innerText!,
         [, sl] = doc.match(/sl\s*\:\s*\"(.+)\"/)!;
     
-    return decodeURIComponent(sl.split('').map(char => DECODE_MAPPER[char] ?? char).join(''));
+    return [
+        decodeURIComponent(sl.split('').map(char => DECODE_MAPPER[char] ?? char).join('')).trim()!,
+        document.querySelector('body > div.content-box > div:nth-child(1) > div.ran-box > div.video-title')?.innerText.trim()
+    ] as [string, string];
 }
 
 async function download(m3u8: string, out: string) {
@@ -198,10 +202,11 @@ const COMMANDS: Record<string, (this: any, ...args: string[]) => any | Promise<a
                 }
             }
 
-            const m3 = (await getM3U8(item)).trim();
-            await download(m3, outpath + '/' + crypto.randomUUID() + '.mp4');
-            console.log('\n\n下载视频', item ,'成功！！！\n\n');
+            const [m3, title] = await getM3U8(item);
+            await download(m3, outpath + '/' + removeIllegalPath(title) + '.mp4');
+            console.log('\n\n下载视频', title ,'成功！！！\n\n');
             history.push(m3);
+            Deno.writeTextFileSync('history.json', JSON.stringify(history));
         }catch(e){
             console.error('下载视频', item ,'失败！！！\n\n', e);
         }
@@ -234,9 +239,9 @@ if(import.meta.main){
     }
 }
 
-Deno.addSignalListener("SIGTERM", function(){
+globalThis.onbeforeunload = function () {
     // 保存
     Deno.writeTextFileSync('history.json', JSON.stringify(history));
     console.log('History saved');
     Deno.exit(0);
-})
+};

@@ -1,7 +1,7 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename, dirname } from "jsr:@std/path";
 import { EPub, EpubContentOptions, EpubOptions } from "./genepub.ts";
-import { exists, PRESERVE_EL, tryReadTextFile } from "./main.ts";
+import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // deno-lint-ignore no-control-regex
@@ -173,6 +173,12 @@ function maxC(str: string, max: number) {
     return str;
 }
 
+// 移除[a][/a]类tag
+const removeTags = (str: string) => str.replaceAll(
+    /\[\/?[a-z]+\]/, ''
+);
+
+let PRESEL: string[];
 /**
  * TXT转换成EPUB
  * @param data 输入的文件内容
@@ -184,6 +190,7 @@ export function toEpub(data: string, input: string, output: string, option: {
 }): boolean {
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
+    if(!PRESEL) PRESEL = PRESERVE_EL.concat(WRAP_EL);
 
     // 检查是否是zComicLib?
     if (data.trimStart().startsWith('zComicLib/')) {
@@ -238,13 +245,19 @@ export function toEpub(data: string, input: string, output: string, option: {
             let text = encodeContent(c[1], option.jpFormat);
             text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
                 return it ? `<img src="${it.replaceAll('一', '-')}" />` : ''
-            }).replaceAll(/\[(?<tag>[a-z]{1,10})\]([\s\S]*?)\[\/\k<tag>\]/g, (_, tag, it) => {
-                if(PRESERVE_EL.includes(tag)){
-                    return `<${tag}>${it}</${tag}>`;
-                }else{
-                    return _;
-                }
             });
+            const tagSt = [] as Array<string>;
+            try{
+                text = text.replaceAll(/\[(\/)?([a-z]{1,10})\]/g, (_, has_slash, tag) => {
+                    if(!PRESEL.includes(tag)) return _;
+                    if(has_slash && tagSt.pop() != tag) throw new Error(`[${tag}] not matched`);
+                    if(has_slash) return `</${tag}>`;
+                    tagSt.push(tag);
+                    return `<${tag}>`;
+                })
+            }catch(e){
+                console.warn(`ParseError: `, (e as Error).message, '\n', 'content declare tag will be preserved');
+            }
             chaps.push({
                 title: maxC(c[0].replaceAll(/\s+/g, ' '), 60) || (first ? '前言' : ''),
                 data: text,
@@ -260,13 +273,18 @@ export function toEpub(data: string, input: string, output: string, option: {
 
         const ctxmatch = data.match(/(?:\r?\n)+\s*简介[：:]([\s\S]+?)(?=(?:\r?\n){2,}|(?:\r?\n{2,}){2,}|-{10,})/gm);
         if(ctxmatch && ctxmatch[0].length){
-            options.description = ctxmatch[0].trim();
+            options.description = removeTags(ctxmatch[0].trim());
         }
 
         // image
         const imgmatch = beforeText.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/);
         if (imgmatch) {
             options.cover = imgmatch[0];
+        }else {
+            const match2 = beforeText.match(/[\r\n]封面[：:]\s*(.+?)\s*[\r\n]+/);
+            if (match2) {
+                options.cover = match2[1];
+            }
         }
     }
 

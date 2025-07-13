@@ -166,7 +166,7 @@ async function fetch2(
     for (let i = 0; i < 3; i++) {
         try {
             response = await fetch(targetUrl, { ...options, headers, redirect: 'manual' });
-            if(response.status >= 500) throw new Error('Server Error: status ' + response.status);
+            if(Math.floor(response.status / 100) == 5) throw new Error('Server Error: status ' + response.status);
             break;
         } catch (e) {
             console.warn(`Fetch failed (attempt ${i + 1}):`, (e as Error).message);
@@ -299,8 +299,39 @@ function similarTitle(title1: string, title2: string) {
     return t1res && t2res && t1res[1] == t2res[1];
 }
 
-export const WRAP_EL = ['br', 'hr', 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre'],
-    PRESERVE_EL = ['b', 'ul', 'li', 'ol', 'strong', 'em', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'tfoot'],
+export const WRAP_EL = [
+        // 基础换行元素
+        'br', 'hr', 'p', 'div',
+        
+        // 标题类（自带换行属性）
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        
+        // 预格式化文本（保留原始换行）
+        'pre',
+        
+        // 以下元素在浏览器中表现为块级，但EPUB支持可能不稳定
+        'blockquote', 'figure', 'figcaption',
+    ],
+
+    PRESERVE_EL = [
+        // 行内文本样式
+        'b', 'strong', 'i', 'em', 'u', 's', 'del', 'ins', 'mark',
+        
+        // 列表容器（实际换行行为由li控制）
+        'ul', 'ol', 'dl', 'dt', 'dd',
+        
+        // 表格单元格
+        'td', 'th',
+        
+        // 特殊文本
+        'ruby', 'rt', 'rp', 'sub', 'sup',
+        
+        // 代码片段（行内）
+        'code', 'kbd', 'samp', 'var',
+        
+        // 语义化行内元素
+        'cite', 'q', 'abbr', 'dfn', 'time',
+    ],
     SCALABLE_STYLE = [
         'font-size',
         'font-family',
@@ -359,7 +390,7 @@ function cssToTag(css: Record<string, string>){
         const val = css[cssname];
         if(!val) continue;
         if(typeof cond == 'function' && cond(val)) return tag;
-        if(val == cond) return tag;
+        if(val.toLowerCase() == cond) return tag;
     }
     return 'span';
 }
@@ -367,6 +398,9 @@ function cssToTag(css: Record<string, string>){
 function processContent(ctx?: Element | null | undefined, parentNode?: Element, parentStyle: Record<string, string> = {}) {
     let text = '';
     if(!ctx) return text;
+
+    const shouldWrap = parentNode && WRAP_EL.includes(parentNode.tagName.toLowerCase());
+    if(shouldWrap) text += '\r\n';
     for(const node of ctx.childNodes){
         if(node.nodeName.toLowerCase() == 'img'){
             const el = node as Element;
@@ -392,11 +426,7 @@ function processContent(ctx?: Element | null | undefined, parentNode?: Element, 
                 console.warn('[warn] 空图片:', el.outerHTML);
             }
         }else if(node.nodeType == node.TEXT_NODE){
-            const name = ctx.tagName.toLowerCase();
-            text += node.textContent.replaceAll(/[\s^\r\n]+/g, ' '); // HTML默认会将多个空格合并为一个
-            if(WRAP_EL.includes(name) || parentStyle['display']?.toLowerCase() == 'block'){
-                text += '\r\n';
-            }
+            text += ' ' + node.textContent.replaceAll(/[\s^\r\n]+/g, ' ');
         }else if(node.nodeType == node.ELEMENT_NODE){
             const tag = [] as string[];
             const rtag = (node as Element).tagName.toLowerCase();
@@ -404,13 +434,15 @@ function processContent(ctx?: Element | null | undefined, parentNode?: Element, 
             const style = getCSS(node as Element, parentStyle);
             const outertag = cssToTag(style);
             if(outertag!= 'span' && outertag != rtag) tag.push(outertag);
+
             if(tag.length) text += tag.map(t => `[${t}]`).join('');
             text += processContent(node as Element, ctx, style);
             if(tag.length) text += tag.map(t => `[/${t}]`).reverse().join('');
         }
     }
 
-    return text;
+    if(shouldWrap) text += '\r\n';
+    return text.replaceAll(/(?:\r\n){3,}/g, '\r\n\r\n');
 }
 
 export const convert = Converter({ from: 'tw', to: 'cn' });
@@ -542,7 +574,7 @@ async function downloadNovel(
                 report_status(Status.WARNING, '小说到这里免费部分已经结束了');
                 break;
             }else{
-                report_status(Status.ERROR, `ID: ${chapter_id} 内未找到内容`);
+                report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
             }
         }
 
