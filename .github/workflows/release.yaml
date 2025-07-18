@@ -1,68 +1,78 @@
-name: Build and Release Deno Binary
+name: Denovel Cross-Platform Build and Release
 
 on:
   push:
-    tags: ["v*"]  # 仅当打tag时触发 (例如 v1.0.0)
-  workflow_dispatch:  # 允许手动触发
+    tags:
+      - 'v*' # Trigger on version tags like v1.0.0
 
 jobs:
   build:
+    name: Build Denovel
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
           - os: ubuntu-latest
-            artifact_name: myapp-linux
-            ext: ""
+            artifact_name: denovel-linux
+            bin_ext: ''
           - os: macos-latest
-            artifact_name: myapp-macos
-            ext: ""
+            artifact_name: denovel-macos
+            bin_ext: ''
           - os: windows-latest
-            artifact_name: myapp-windows
-            ext: ".exe"
-    runs-on: ${{ matrix.os }}
-
+            artifact_name: denovel-windows
+            bin_ext: '.exe'
+    
     steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
-
+      
     - name: Setup Deno
       uses: denoland/setup-deno@v1
       with:
-        deno-version: "1.40"
-
-    - name: Build executable
-      run: |
-        deno compile \
-          --allow-read --allow-write --allow-net \
-          --allow-run --allow-env \
-          --output=./dist/${{ matrix.artifact_name }} \
-          exe.ts
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
+        deno-version: latest
+        
+    - name: Install dependencies
+      run: deno cache exe.ts
+      
+    - name: Compile to binary
+      run: deno compile --allow-all --output=denovel${{ matrix.bin_ext }} exe.ts
+      
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
-        path: ./dist/${{ matrix.artifact_name }}${{ matrix.ext }}
-
+        path: denovel${{ matrix.bin_ext }}
+        if-no-files-found: error
+        
   release:
+    name: Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')  # 仅tag触发
-
+    
     steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v3
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v4
       with:
-        path: ./artifacts
-
+        name: denovel-linux
+        
+    - name: Download macOS Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: denovel-macos
+        
+    - name: Download Windows Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: denovel-windows
+        
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref_name }}
-        name: Release ${{ github.ref_name }}
-        body: "Pre-built binaries for Linux, macOS and Windows"
         files: |
-          artifacts/myapp-linux
-          artifacts/myapp-macos
-          artifacts/myapp-windows.exe
+          denovel
+          denovel.exe
+        generate_release_notes: true
+        tag_name: ${{ github.ref_name }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
