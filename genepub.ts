@@ -695,7 +695,7 @@ export class EPub {
                     docHeader,
                 },
                 {
-                    escape: (markup) => markup,
+                    escape: (markup: string) => markup,
                 }
             );
             await Deno.writeTextFile(content.filePath, result);

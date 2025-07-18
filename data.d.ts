@@ -1,4 +1,4 @@
-interface MainInfo {
+declare interface MainInfo {
     // 自动从信息页获取数据
     mainPageLike: RegExp;
     mainPageFirstChapter: string;
@@ -7,7 +7,7 @@ interface MainInfo {
     mainPageSummary?: string;
 }
 
-interface TraditionalConfig extends Partial<MainInfo> {
+declare interface TraditionalConfig extends Partial<MainInfo> {
     title: string;
     content: string;
     next_link: string,
@@ -18,10 +18,10 @@ interface TraditionalConfig extends Partial<MainInfo> {
 
 type PromiseOrNot<T> = Promise<T> | T;
 
-interface Data{
+declare interface Data{
     title: string,
     content: string,
     next_link: string | URL
 }
 
-type Callback = () => PromiseOrNot<(url: string | URL) => PromiseOrNot<Data | null>>
+declare type Callback = () => PromiseOrNot<(url: string | URL) => PromiseOrNot<Data | null>>

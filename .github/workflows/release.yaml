@@ -36,7 +36,7 @@ jobs:
       run: deno cache exe.ts
       
     - name: Compile to binary
-      run: deno compile --allow-all --output=denovel${{ matrix.bin_ext }} exe.ts
+      run: deno compile --allow-all --include=data.d.ts --output=denovel${{ matrix.bin_ext }} exe.ts
       
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
