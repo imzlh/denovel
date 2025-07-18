@@ -10,7 +10,7 @@ import { tree, ensure, replaceFmt} from './_dep.ts';
 import { parseArgs } from 'jsr:@std/cli/parse-args';
 import { removeIllegalPath } from './main.ts';
 
-if(import.meta.main){
+export default async function main() {
     const arg = parseArgs(Deno.args, {
         string: ['from', 'to', 'delete', 'input', 'output', 'ab', 'ac', 'vb', 'vc', 'fps', 'vf', 'filter'],
         boolean: ['help'],
@@ -113,3 +113,5 @@ Args available:
         console.error('<!> 转换失败，原因:', e);
     }
 }
+
+if(import.meta.main) main();

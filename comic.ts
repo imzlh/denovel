@@ -29,7 +29,7 @@ const args = parseArgs(Deno.args, {
 //     }
 // }
 
-export async function comicMain(){
+export default async function main(){
     if(args.help){
         console.log(`zComicLib V1.0.0
 下载漫画，支持输出cbz(ComicInfo.xml)或者epub格式。
@@ -187,4 +187,4 @@ export async function comicMain(){
     console.log(`保存成功: ${filename}`);
 }
 
-if(import.meta.main) comicMain();
+if(import.meta.main) main();

@@ -659,7 +659,7 @@ function existsSync(file: string): boolean {
     }
 }
 
-if (import.meta.main) {
+export default async function main(){
     if (args._.includes('h') || args.help) {
         console.log(`用法: main.ts [options] [url]
 参数:
@@ -713,4 +713,6 @@ export {
     args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep,
     forceSaveConfig,
     processContent
- };
+};
+
+if (import.meta.main) main();

@@ -46,10 +46,48 @@ const regexp = [
 
 // 「宫城，拿这个的下一集给我。」
 // 【谢啦。】
-const specialTag = {
-    'dialog': /「(.+?)」/g,
-    'quote': /【(.+?)】/g,
+type SpecialTag = {
+    [key: string]: string[];
 };
+
+const specialTag: SpecialTag = {
+    'dialog': ['「', '」'],
+    'quote': ['【', '『', '】', '』'],
+    'comment': ['<', '>', '(', ')']
+};
+
+function addTags(text: string, sTag = specialTag): string {
+    const stack: { tag: string, char: string }[] = [];
+    let result = '';
+
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+
+        for (const tag in sTag) {
+            if (sTag[tag].includes(char)) {
+                if (sTag[tag].indexOf(char) % 2 === 0) {
+                    stack.push({ tag, char });
+                    result += `<${tag}>`;
+                } else {
+                    if (stack.length > 0 && stack[stack.length - 1].char === sTag[tag][sTag[tag].indexOf(char) - 1]) {
+                        result += `</${stack.pop()?.tag}>`;
+                    } else {
+                        result += char;
+                    }
+                }
+                continue;
+            }
+        }
+
+        result += char;
+    }
+
+    while (stack.length > 0) {
+        result += `</${stack.pop()?.tag}>`;
+    }
+
+    return result;
+}
 
 function splitByIndent(text: string): { title: string, data: string }[] {
     const result: { title: string, data: string }[] = [];
@@ -175,7 +213,7 @@ function maxC(str: string, max: number) {
 
 // 移除[a][/a]类tag
 const removeTags = (str: string) => str.replaceAll(
-    /\[\/?[a-z]+\]/, ''
+    /\[\/?[a-z]+\]/g, ''
 );
 
 let PRESEL: string[];
@@ -312,16 +350,13 @@ export const encodeContent = (str: string, jpFormat = false) => {
 
     // 特殊优化 for 日/韩轻小说
     if(jpFormat){
-        for(const tag in specialTag){
-            // @ts-ignore Object
-            str = str.replaceAll(specialTag[tag], (_, p1) => `<${tag}>${p1}</${tag}>`);
-        }
+        str = addTags(str)
     }
 
     return str;
 }
 
-if (import.meta.main) {
+export default async function main() {
     const args = parseArgs(Deno.args, {
         string: ['output', 'chapter-max'],
         boolean: ['help', 'delete', 'force', 'delete-exist', 'test-title', 'jp-format', 'merge'],
@@ -428,3 +463,5 @@ Example:
 
     console.log('Done!');
 }
+
+if (import.meta.main) main();

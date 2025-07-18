@@ -1,4 +1,3 @@
-import { comicMain } from "../comic.ts";
 import { getDocument, fetch2, sleep } from "../main.ts";
 
 console.log('此脚本需要使用第一章网址才能正常运行')
@@ -79,5 +78,3 @@ export async function networkHandler(url: string | URL, options?: RequestInit){
     await sleep(Math.random());
     return res;
 }
-
-if(import.meta.main) comicMain();

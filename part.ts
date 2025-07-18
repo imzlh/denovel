@@ -64,13 +64,15 @@ async function splitTxtFilesIntoFolders(
     }
 }
 
-// 从命令行参数获取目标文件夹
-const sourceDirectory = Deno.args[0];
-if (!sourceDirectory) {
-    console.error("请指定目标文件夹路径");
-    console.log("使用方法: deno run --allow-read --allow-write --allow-net fileSplitter.ts <目标文件夹>");
-    Deno.exit(1);
-}
+export default async function main(){
+    // 从命令行参数获取目标文件夹
+    const sourceDirectory = Deno.args[0];
+    if (!sourceDirectory) {
+        console.error("请指定目标文件夹路径");
+        console.log("使用方法: deno run --allow-read --allow-write --allow-net fileSplitter.ts <目标文件夹>");
+        Deno.exit(1);
+    }
 
-// 执行文件分割
-splitTxtFilesIntoFolders(sourceDirectory);
+    // 执行文件分割
+    splitTxtFilesIntoFolders(sourceDirectory);
+}

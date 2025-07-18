@@ -795,10 +795,12 @@ export class EPub {
     private async downloadMedia(media: EpubMedia, subfolder: string): Promise<void> {
         const filename = resolve(this.tempEpubDir, `./OEBPS/${subfolder}/${media.id}.${media.extension}`);
 
-        if (media.url.indexOf("file://") === 0) {
+        if (media.url.indexOf("file://") === 0) try{
             const auxpath = media.url.substring(7);
             await Deno.copyFile(auxpath, filename);
             return;
+        }catch{
+            return console.error(`无法处理文件(格式错误?) : ${media.url}`);
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

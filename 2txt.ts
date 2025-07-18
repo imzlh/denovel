@@ -200,7 +200,7 @@ interface ConvertOptions {
     help: boolean;
 }
 
-async function main() {
+export default async function main() {
     // 增强型参数解析
     const args = parseArgs(Deno.args, {
         string: ['output', 'name'],

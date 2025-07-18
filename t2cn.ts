@@ -3,7 +3,7 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename } from "jsr:@std/path@^1.0.8";
 import { convert, tryReadTextFile } from "./main.ts";
 
-if (import.meta.main) {
+export default async function main() {
     const args = parseArgs(Deno.args, {
         string: ['output'],
         boolean: ['help', 'delete'],
@@ -56,3 +56,5 @@ Options:
 
     console.log('Done!');
 }
+
+if (import.meta.main) main();
