@@ -154,6 +154,7 @@ async function fetch2(
     }
     headers.set('Cookie', cookies);
     headers.set('User-Agent', UA);
+    if(options.referrer) headers.set('referer', options.referrer);
     // headers.set('Origin', originalUrl.origin);
 
     // 修复请求方法逻辑
@@ -181,7 +182,9 @@ async function fetch2(
     const obj = cookieStore[host] || {};
     for (const setCookie of setCookieHeader) {
         const cookie = setCookie.split(';')[0]
-        const [key, value] = cookie.split('=');
+        let [key, value] = cookie.split('=');
+        key = key.trim();
+        value = value.trim();
 
         // 检查Expire时间
         const expire = setCookie.split(';').find(s => s.trim().toLowerCase().startsWith('expires='))
@@ -195,7 +198,7 @@ async function fetch2(
         }
 
         if (key && value) {
-            obj[key.trim()] = value.trim();
+            obj[key] = value;
         }
     }
     cookieStore[host] = obj;
@@ -217,7 +220,7 @@ const removeHTMLTags = (str: string) => str.replace(/<\/?[a-z]+(?:\s+[^>]+)?>/gi
     .replace(/&apos;/g, '\'')
     .replaceAll(/&#([0-9a-f]+)/gi, (_match, p1) => String.fromCharCode(parseInt(p1, 16)));
 
-const removeIllegalPath = (path: string) => path.replaceAll(/[\/:*?"<>|]/ig, '_');
+const removeIllegalPath = (path: string) => path?.replaceAll(/[\/:*?"<>|]/ig, '_');
 
 let charsetRaw = args.charset || 'utf-8';
 const t_timeout = parseInt(args.timeout || '10');
@@ -445,6 +448,22 @@ function processContent(ctx?: Element | null | undefined, parentNode?: Element, 
     return text.replaceAll(/(?:\r\n){3,}/g, '\r\n\r\n');
 }
 
+async function defaultGetInfo(page: URL, config: Partial<MainInfo>, sig_abort?: AbortSignal) {
+    const mainPage = await getDocument(page, sig_abort);
+    const cfg = config as TraditionalConfig;
+    const firstPage = mainPage.querySelector(cfg.mainPageFirstChapter!)?.getAttribute('href');
+    if (!firstPage) {
+        throw new Error('未找到第一章');
+    }
+
+    return {
+        firstPage: new URL(firstPage, page),
+        cover: mainPage.querySelector(cfg.mainPageCover!)?.getAttribute('src') ?? undefined,
+        book_name: mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '',
+        summary: processContent(mainPage.querySelector(cfg.mainPageSummary!))
+    }
+}
+
 export const convert = Converter({ from: 'tw', to: 'cn' });
 /**
  * 下载并转换小说
@@ -467,28 +486,18 @@ async function downloadNovel(
     let summary: string | undefined;
 
     if(isTraditional && (config as TraditionalConfig).mainPageLike?.test(next_url.href) && (config as TraditionalConfig).mainPageFirstChapter){
-        const mainPage = await getDocument(next_url, sig_abort);
-        report_status(Status.DOWNLOADING, '获取书籍信息');
-        const cfg = config as TraditionalConfig;
-        const firstPage = mainPage.querySelector(cfg.mainPageFirstChapter!)?.getAttribute('href');
-        if(!firstPage){
-            throw new Error('未找到第一章');
-        }
-        next_url = new URL(firstPage, next_url);
-
-        cover = mainPage.querySelector(cfg.mainPageCover!)?.getAttribute('src') ?? undefined;
-        book_name = mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '';
-        if(!book_name){
-            report_status(Status.WARNING, '未找到书名，使用空文件名(".txt")');
-        }
-        summary = processContent(mainPage.querySelector(cfg.mainPageSummary!));
+        const data = await defaultGetInfo(next_url, config as TraditionalConfig, sig_abort);
+        next_url = data.firstPage;
+        summary = data.summary;
+        book_name = data.book_name;
+        cover = data.cover;
     }else if(!isTraditional && typeof configOrCallback.getInfo == 'function'){
         try{
-            const bookinfo = await configOrCallback.getInfo(next_url) as MainInfo;
-            cover = bookinfo.mainPageCover;
-            book_name = bookinfo.mainPageTitle;
-            next_url = new URL(bookinfo.mainPageFirstChapter, next_url);
-            summary = bookinfo.mainPageSummary;
+            const data = await configOrCallback.getInfo(next_url);
+            next_url = data.firstPage;
+            summary = data.summary;
+            book_name = data.book_name;
+            cover = data.cover;
         }catch{
             report_status(Status.WARNING, '自动化获取书籍信息失败(配置不支持?)');
         }
@@ -496,6 +505,9 @@ async function downloadNovel(
         console.log('[ INFO ] 未找到自动化配置，使用手动输入')
         book_name || (book_name = prompt("请输入书名 >> ") || '');
     }
+
+    if(!next_url) throw new Error('未找到起始页面');
+
     const fpath = (args.outdir || 'out') + '/' + removeIllegalPath(book_name) + '.txt';
     const file = await Deno.open(fpath, {
         create: true, write: true, truncate: true
@@ -712,7 +724,7 @@ export {
     NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, 
     args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep,
     forceSaveConfig,
-    processContent
+    processContent, defaultGetInfo
 };
 
 if (import.meta.main) main();
