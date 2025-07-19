@@ -1,14 +1,13 @@
+// deno-lint-ignore-file no-var no-explicit-any no-inner-declarations
 // @ts-ignore npm package
 import CryptoJS from "npm:crypto-js";
 import { fetch2, getDocument, NoRetryError, setRawCookie, defaultGetInfo, getSiteCookie } from "../main.ts";
 
-export default (function () {
-    const b64ch = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-    const b64chs = Array.prototype.slice.call(b64ch);
-
+export default (async function* (url: URL | string) {
+    // jQuery.base64
     var _PADCHAR = "="
-      , _ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-      , _VERSION = "1.0";
+        , _ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        , _VERSION = "1.0";
     function _getbyte64(s: string, i: number) {
         var idx = _ALPHA.indexOf(s.charAt(i));
         if (idx === -1) {
@@ -37,14 +36,14 @@ export default (function () {
             x.push(String.fromCharCode(b10 >> 16, (b10 >> 8) & 255, b10 & 255))
         }
         switch (pads) {
-        case 1:
-            b10 = (_getbyte64(s, i) << 18) | (_getbyte64(s, i + 1) << 12) | (_getbyte64(s, i + 2) << 6);
-            x.push(String.fromCharCode(b10 >> 16, (b10 >> 8) & 255));
-            break;
-        case 2:
-            b10 = (_getbyte64(s, i) << 18) | (_getbyte64(s, i + 1) << 12);
-            x.push(String.fromCharCode(b10 >> 16));
-            break
+            case 1:
+                b10 = (_getbyte64(s, i) << 18) | (_getbyte64(s, i + 1) << 12) | (_getbyte64(s, i + 2) << 6);
+                x.push(String.fromCharCode(b10 >> 16, (b10 >> 8) & 255));
+                break;
+            case 2:
+                b10 = (_getbyte64(s, i) << 18) | (_getbyte64(s, i + 1) << 12);
+                x.push(String.fromCharCode(b10 >> 16));
+                break
         }
         return x.join("")
     }
@@ -72,14 +71,14 @@ export default (function () {
             x.push(_ALPHA.charAt(b10 & 63))
         }
         switch (s.length - imax) {
-        case 1:
-            b10 = _getbyte(s, i) << 16;
-            x.push(_ALPHA.charAt(b10 >> 18) + _ALPHA.charAt((b10 >> 12) & 63) + _PADCHAR + _PADCHAR);
-            break;
-        case 2:
-            b10 = (_getbyte(s, i) << 16) | (_getbyte(s, i + 1) << 8);
-            x.push(_ALPHA.charAt(b10 >> 18) + _ALPHA.charAt((b10 >> 12) & 63) + _ALPHA.charAt((b10 >> 6) & 63) + _PADCHAR);
-            break
+            case 1:
+                b10 = _getbyte(s, i) << 16;
+                x.push(_ALPHA.charAt(b10 >> 18) + _ALPHA.charAt((b10 >> 12) & 63) + _PADCHAR + _PADCHAR);
+                break;
+            case 2:
+                b10 = (_getbyte(s, i) << 16) | (_getbyte(s, i + 1) << 8);
+                x.push(_ALPHA.charAt(b10 >> 18) + _ALPHA.charAt((b10 >> 12) & 63) + _ALPHA.charAt((b10 >> 6) & 63) + _PADCHAR);
+                break
         }
         return x.join("")
     }
@@ -90,7 +89,7 @@ export default (function () {
             keys: [],
             accessKey: ""
         };
-        var s = {...l, ...g};
+        var s = { ...l, ...g };
         var n: any = s.content;
         var r = s.keys;
         var t = s.keys.length;
@@ -100,7 +99,7 @@ export default (function () {
         var k = [];
         k.push(r[(o[m - 1].charCodeAt(0)) % t]);
         k.push(r[(o[0].charCodeAt(0)) % t]);
-        for (i = 0; i < k.length; i++) {
+        for (let i = 0; i < k.length; i++) {
             n = _decode(n);
             var p = k[i];
             var j = _encode(n.substring(0, 16));
@@ -120,7 +119,6 @@ export default (function () {
 
     const API_CHAPINFO = 'https://www.ciweimao.com/chapter/get_book_chapter_detail_info';
     const API_SESSION = 'https://www.ciweimao.com/chapter/ajax_get_session_code';
-    const CHAP_HTML = 'https://www.ciweimao.com/chapter/';
     async function getSession(chapid: string): Promise<string> {
         const fe = await fetch2(API_SESSION, {
             method: 'POST',
@@ -160,21 +158,6 @@ export default (function () {
         });
     }
 
-    let inited = false;
-    // 初始化列表
-    const chaps = {} as Record<string, URL>;
-    async function initial(url: string | URL) {
-        url = url instanceof URL ? url.href : url;
-        if (!url.includes('/chapter-list/'))
-            throw new Error('\n请输入章节列表链接，如https://www.ciweimao.com/chapter-list/100431696/book_detail');
-        const dom = await getDocument(url);
-
-        // 解析DOM
-        for (const aTag of dom.querySelectorAll('body > div.container > div > div.book-detail > div.ly-main > div > div.bd > div > div > ul > li > a[href]'))
-            if (aTag.innerText && aTag.getAttribute('href')?.includes('/chapter/'))
-                chaps[aTag.innerText.trim()] = new URL(aTag.getAttribute('href')!.trim(), url);
-    }
-
     async function getChap(url: string) {
         const cid = url.match(/\/chapter\/(\d+)/)?.[1];
         const rpv = parseInt(getSiteCookie('ciweimao.com', 'readPage_visits') ?? '0');
@@ -186,26 +169,24 @@ export default (function () {
         return await getChapInfo(cid, sessionID);
     }
 
-    let i = 0;
-    return async function __main__(url) {
-        setRawCookie("ciweimao.com", "readPage_visits=1");
-        url = url instanceof URL ? url.href : url;
-        if (!inited) {
-            await initial(url);
-            inited = true;
-        }
-        const title = Object.keys(chaps)[i++];
-        let content = await getChap(chaps[title].href);
+    url = url instanceof URL ? url.href : url;
+    if (!url.includes('/chapter-list/'))
+        throw new Error('\n请输入章节列表链接，如https://www.ciweimao.com/chapter-list/100431696/book_detail');
+    const dom = await getDocument(url);
 
-        // process: remove span tags
-        content = content.replace(/<span[^>]*>([^<]*)<\/span>/g, '');
+    // 解析DOM
+    for (const aTag of dom.querySelectorAll('body > div.container > div > div.book-detail > div.ly-main > div > div.bd > div > div > ul > li > a[href]'))
+        if (aTag.innerText && aTag.getAttribute('href')?.includes('/chapter/')) {
+            const chapname = aTag.innerText.trim();
+            const chapurl = new URL(aTag.getAttribute('href')!.trim(), url);
+            let content = await getChap(chapurl.href);
+            content = content.replace(/<span[^>]*>([^<]*)<\/span>/g, '');
 
-        return {
-            title,
-            content,
-            next_link: 'internal://next'
+            yield {
+                title: chapname,
+                content
+            };
         }
-    }
 } satisfies Callback)
 
 export const getInfo = (enter: URL) => defaultGetInfo(enter, {

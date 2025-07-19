@@ -5,6 +5,7 @@ declare interface MainInfo {
     mainPageTitle: string;
     mainPageCover: string;
     mainPageSummary?: string;
+    jpStyle?: boolean;
 }
 
 declare interface TraditionalConfig extends Partial<MainInfo> {
@@ -12,8 +13,6 @@ declare interface TraditionalConfig extends Partial<MainInfo> {
     content: string;
     next_link: string,
     filter?: (document: import("jsr:@b-fuze/deno-dom").HTMLDocument, filled_data: Data & { url: URL }) => void;
-
-    jpStyle?: boolean;
 }
 
 type PromiseOrNot<T> = Promise<T> | T;
@@ -21,7 +20,10 @@ type PromiseOrNot<T> = Promise<T> | T;
 declare interface Data{
     title: string,
     content: string,
-    next_link: string | URL
+    next_link: string
 }
 
-declare type Callback = () => PromiseOrNot<(url: string | URL) => PromiseOrNot<Data | null>>
+declare type Callback = (url_start: URL | string) => AsyncGenerator<{
+    title: string,
+    content: string
+}, void, void>;

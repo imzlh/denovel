@@ -25,30 +25,34 @@ async function getChaps(url: string){
     return res;
 }
 
-export default (function () {
-    let contents: Array<string> = [];
-    let nextUrl = '';
-    let init = false;
+export default (async function* (urlStart: URL | string) {
+    let contents: string[] = [];
+    let nextUrl = urlStart.toString();
 
-    return async function (url) {
-        url = typeof url === 'object' ? url.toString() : url;
-        if(!init) nextUrl = url, init = true;
-        if(0 == contents.length){
-            if(!nextUrl) throw new Error('reached end of chapters!');
-            const { c, next } = await getChaps(nextUrl);
-            contents = c;
-            nextUrl = next;
+    while (true) {
+        // 加载新内容
+        if (contents.length === 0) {
+            if (!nextUrl) break; // 终止条件
+            
+            const result = await getChaps(nextUrl);
+            contents = result.c;
+            nextUrl = result.next;
+            
+            if (contents.length === 0) {
+                throw new Error('Failed to load chapter content');
+            }
         }
 
-        const data = contents.shift();
-        if(!data){
-            throw new Error('No content found!');
+        // 逐条产出内容
+        while (contents.length > 0) {
+            const data = contents.shift()!;
+            await sleep(1); // 保持原有延迟
+            
+            yield {
+                content: data,
+                title: '',       // 保持与原逻辑兼容
+                next_link: ''    // 无需返回 internal_next
+            };
         }
-        await sleep(1);
-        return {
-            content: data,
-            next_link: INTERNAL_NEXT,
-            title: ''
-        };
     }
 } satisfies Callback);

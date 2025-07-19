@@ -465,12 +465,45 @@ async function defaultGetInfo(page: URL, config: Partial<MainInfo>, sig_abort?: 
 }
 
 export const convert = Converter({ from: 'tw', to: 'cn' });
-/**
- * 下载并转换小说
- * @param start_url 起始URL
- * @param isTraditional 是否使用传统模式
- * @param sig_abort 可选的终止信号
- */
+
+// 包装配置
+async function* tWrapper(url: URL) {
+    let next_url = url;
+    const config = (await import('./lib/' + next_url.hostname + '.t.ts')).default as TraditionalConfig;
+    while (next_url) {
+        let document: HTMLDocument;
+
+        for (let retry = 0; true; retry++) try {
+            document = await getDocument(next_url);
+            if (!document) {
+                throw new Error(`在 ${next_url} 内找不到内容`);
+            }
+            break;
+        } catch (e) {
+            if (e instanceof NoRetryError || retry == MAX_RETRY) {
+                throw e;
+            }
+        }
+        const ctx = document.querySelector((config as TraditionalConfig).content);
+
+        const data = {
+            title: document.querySelector((config as TraditionalConfig).title)?.innerText!,
+            content: ctx ? processContent(ctx) : '',
+            next_link: document.querySelector((config as TraditionalConfig).next_link)?.getAttribute('href') || '',
+            url: next_url
+        }
+        if ((config as TraditionalConfig).filter) try {
+            (config as TraditionalConfig).filter!(document, data);
+        // deno-lint-ignore no-empty
+        }catch{}
+        next_url = new URL(data.next_link, next_url);
+
+        yield {
+            content: data.content.trim(), title: data.content.trim()
+        };
+    }
+}
+
 async function downloadNovel(
     start_url = '',
     isTraditional: boolean = true,
@@ -480,114 +513,52 @@ async function downloadNovel(
     cover?: string,
     sig_abort?: AbortSignal
 ) {
-    let next_url = new URL(start_url!)
-    const configOrCallback = await import('./lib/' + next_url.hostname + (isTraditional ? '.t.ts' : '.n.ts'));
-    const config = (isTraditional ? configOrCallback.default : await configOrCallback.default() as TraditionalConfig | Callback);
-    let summary: string | undefined;
+    let url = new URL(start_url);
+    const callbacks: {
+        default: Callback;
+        getInfo?: (url: URL) => Promise<Partial<MainInfo>>;
+    } = isTraditional ? {
+        default: tWrapper,
+        getInfo: defaultGetInfo
+    } : await import('./lib/' + url.hostname + '.n.ts');
 
-    if(isTraditional && (config as TraditionalConfig).mainPageLike?.test(next_url.href) && (config as TraditionalConfig).mainPageFirstChapter){
-        const data = await defaultGetInfo(next_url, config as TraditionalConfig, sig_abort);
-        next_url = data.firstPage;
-        summary = data.summary;
-        book_name = data.book_name;
-        cover = data.cover;
-    }else if(!isTraditional && typeof configOrCallback.getInfo == 'function'){
-        try{
-            const data = await configOrCallback.getInfo(next_url);
-            next_url = data.firstPage;
-            summary = data.summary;
-            book_name = data.book_name;
-            cover = data.cover;
-        }catch{
-            report_status(Status.WARNING, '自动化获取书籍信息失败(配置不支持?)');
-        }
+    // 获取信息
+    let summary: string | undefined;
+    const info = await callbacks.getInfo?.(url);
+    if(info){
+        summary = info.mainPageSummary;
+        info.mainPageCover && (cover = info.mainPageCover);
+        info.mainPageTitle && (book_name = info.mainPageTitle);
+        info.mainPageFirstChapter && (url = new URL(info.mainPageFirstChapter, url));
     }else{
-        console.log('[ INFO ] 未找到自动化配置，使用手动输入')
-        book_name || (book_name = prompt("请输入书名 >> ") || '');
+        if(!cover){
+            cover = prompt("请输入封面URL(可选) >> ") || '';
+            book_name = prompt("请输入书名 >> ") || '';
+        }
     }
 
-    if(!next_url) throw new Error('未找到起始页面');
-
+    // 打开文件
     const fpath = (args.outdir || 'out') + '/' + removeIllegalPath(book_name) + '.txt';
     const file = await Deno.open(fpath, {
         create: true, write: true, truncate: true
     });
     if(summary) file.write(new TextEncoder().encode(`简介: \r\n${summary}\r\n${'-'.repeat(20)}\r\n`));
 
-    let chapter_id = 1, previous_title = '', previous_link = '';
+    let chapter_id = 1, previous_title = '';
 
     if(cover){
         file.write(new TextEncoder().encode(`封面: ${cover}\r\n`));
     }
 
-    loop: while (next_url) {
+    // 开始循环
+    for await (let { title, content } of callbacks.default(url)) {
         if (sig_abort?.aborted) {
             report_status(Status.CANCELLED, '下载被用户终止');
-            break loop;
+            break;
         }
 
-        let documentOrData: HTMLDocument | Data, retry = 1;
-        while (true) {
-            if(next_url.href == previous_link){
-                report_status(Status.WARNING, `ID: ${chapter_id} 内链接重复，疑似内容结束`);
-                break loop;
-            }
-            try {
-                documentOrData = isTraditional ? await getDocument(next_url, sig_abort) : await config(next_url);
-                if (!documentOrData) {
-                    report_status(Status.ERROR, `ID: ${chapter_id} 内未找到内容`);
-                    break loop;
-                }
-                previous_link = next_url.href;
-                break;
-            } catch (e) {
-                if (e instanceof NoRetryError) {
-                    report_status(Status.DOWNLOADING, `获取页面 ${retry++} 次尝试重新获取`, e as Error);
-                    continue loop;
-                }
-                if (retry > MAX_RETRY) {
-                    report_status(Status.ERROR, `获取页面失败，重试次数过多，终止程序`);
-                    break loop;
-                }
-                report_status(Status.DOWNLOADING, `获取页面 ${retry++} 次尝试重新获取`, e as Error);
-                continue;
-            }
-        }
-
-        let content: string | undefined, title: string | undefined, next_link: string | URL;
-
-        if (isTraditional) {
-            const document = documentOrData as HTMLDocument;
-            const ctx = document.querySelector((config as TraditionalConfig).content);
-
-            const data: Data & { url: URL } = {
-                title: document.querySelector((config as TraditionalConfig).title)?.innerText!,
-                content: ctx ? processContent(ctx) : '',
-                next_link: document.querySelector((config as TraditionalConfig).next_link)?.getAttribute('href') || '',
-                url: next_url
-            }
-            if ((config as TraditionalConfig).filter) try {
-                (config as TraditionalConfig).filter!(document, data);
-            } catch (e) {
-                report_status(Status.WARNING, "filter函数执行失败", e as Error);
-            }
-            content = data.content;
-            title = data.title?.trim();
-            next_link = data.next_link;
-        } else {
-            const data = documentOrData as Data;
-            content = data.content;
-            title = data.title?.trim();
-            next_link = data.next_link;
-        }
-
-        if (!content || !content.trim() || content.length < 200){
-            if (previous_title.trimStart().startsWith('上架感言')) {
-                report_status(Status.WARNING, '小说到这里免费部分已经结束了');
-                break;
-            }else{
-                report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
-            }
+        if (content.trim().length < 200) {
+            report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
         }
 
         if (content) {
@@ -601,6 +572,7 @@ async function downloadNovel(
             content = content.trim();
         }
 
+        // 翻译标题
         if(title && args.translate){
             title = convert(title);
         }
@@ -618,10 +590,8 @@ async function downloadNovel(
 
         report_status(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
-        if (next_link) {
-            next_url = new URL(next_link, next_url);
-        } else {
-            report_status(Status.DONE, `下载完成`);
+        if (sig_abort?.aborted) {
+            report_status(Status.CANCELLED, '下载被用户终止');
             break;
         }
 
@@ -629,11 +599,6 @@ async function downloadNovel(
             file.write(new TextEncoder().encode(args.parted ? text.trim() : text)),
             sleep(Math.random() * SLEEP_INTERVAL),
         ]);
-
-        if (sig_abort?.aborted) {
-            report_status(Status.CANCELLED, '下载被用户终止');
-            break loop;
-        }
     }
 
     await file.sync();
@@ -642,7 +607,7 @@ async function downloadNovel(
     if (!sig_abort?.aborted && args.epub) {
         const text = await Deno.readTextFile(fpath);
         toEpub(text, fpath, fpath.replace('.txt', '.epub'), {
-            jpFormat: (config as TraditionalConfig).jpStyle,
+            jpFormat: info?.jpStyle,
         });
     }
 }

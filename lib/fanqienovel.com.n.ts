@@ -5,7 +5,6 @@
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { fetch2, timeout } from "../main.ts";
 
-const INTERNAL_NEXT = 'https://book-next-internal.local/__internal_next_link__';
 const True = true, False = false, None = null;
 const CONFIG = {    // 2025/7/1
     "max_workers": 4,
@@ -152,50 +151,39 @@ function batchable(){
     else return false;
 }
 
-export default (function () {
+export default (async function* (urlStart: URL | string) {
     const urlPreg = /^https?\:\/\/.*fanqienovel\.com\/page\/(\d+)\/?/i;
-    let chapter: IChapter[];
-    let chapterBatched: string[] | undefined = undefined;
-    let i = 0;
-
-    return async function (url) {
-        url = typeof url === 'object' ? url.toString() : url;
-        if(url == INTERNAL_NEXT){
-            if(i >= chapter.length) return null;
-
-            const ret = {
-                title: chapter[i++].title,
-                content: '',
-                next_link: INTERNAL_NEXT
-            };
-
-            if(chapterBatched && chapterBatched.length > i-1){
-                ret.content = chapterBatched[i-1];
-            }else{
-                // 强制sleep防止被封
-                await delay(2000 * Math.random() + 1000);
-
-                const ctx = await Array.fromAsync(getChapterContent([chapter[i].itemId]));
-                if(!ctx) throw new Error('Failed to fetch chapter content');
-            }
-
-            return ret;
-        }else if(urlPreg.test(url)){
-            const bookid = url.match(urlPreg)![1];
-            chapter = await detail(bookid);
-            const res = {
-                title: chapter[i].title,
-                content: '',
-                next_link: INTERNAL_NEXT
-            };
-
-            chapterBatched = await Array.fromAsync(getChapterContent(chapter.map(v => v.itemId)));
-            res.content = chapterBatched[i];
-
-            i++;    // to avoid i++ when error occurs
-            return res;
-        }else{
-            throw new Error("Invalid url");
+    const url = urlStart.toString();
+    
+    // 验证初始URL
+    const match = urlPreg.exec(url);
+    if (!match) throw new Error("Invalid url");
+    
+    // 初始化章节数据
+    const chapters = await detail(match[1]);
+    let chapterBatched = await Array.fromAsync(
+        getChapterContent(chapters.map(v => v.itemId))
+    );
+    
+    // 遍历章节生成内容
+    for (let i = 0; i < chapters.length; i++) {
+        // 批量获取失败时的补偿逻辑
+        if (!chapterBatched?.[i]) {
+            await delay(2000 * Math.random() + 1000);
+            const [content] = await Array.fromAsync(
+                getChapterContent([chapters[i].itemId])
+            );
+            if (!content) throw new Error('Failed to fetch chapter content');
+            
+            // 更新批量缓存
+            chapterBatched = chapterBatched || [];
+            chapterBatched[i] = content;
         }
+        
+        // 生成章节数据
+        yield {
+            title: chapters[i].title,
+            content: chapterBatched[i]
+        };
     }
 } satisfies Callback);
