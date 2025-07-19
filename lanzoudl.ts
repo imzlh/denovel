@@ -2,11 +2,12 @@
  * 下载蓝奏云盘
  */
 
-import { fetch2, getDocument } from "./main.ts";
-
-interface AjaxData {
-    [key: string]: string | number | boolean;
-}
+import { _TextDecoder } from "https://deno.land/std@0.92.0/node/_utils.ts";
+import { fetch2, getDocument, removeIllegalPath } from "./main.ts";
+import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
+import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
+import { basename } from "jsr:@std/path@^1.0";
+import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 
 interface LanZouFile {
     icon: string;
@@ -17,127 +18,422 @@ interface LanZouFile {
     time: string;
     duan: string;
     p_ico: number;
+    _link: string;
+    _path: string;
 }
+function extractFunctionByName(source: string, functionName: string): string | null {
+    // 定位函数起始位置
+    const funcHeader = `function ${functionName}(`;
+    const startIndex = source.indexOf(funcHeader);
+    if (startIndex === -1) return null;
 
-export function parseDynamicAjax(code: string): AjaxData {
-    // 提取所有变量和值
-    const variables = extractVariables(code);
+    // 语法分析状态机
+    let braceCount = 0;
+    let position = startIndex + funcHeader.length;
+    let inString: "'" | '"' | '`' | null = null;
+    let inComment = false;
+    let commentType: '//' | '/*' | null = null;
 
-    // 提取AJAX data对象内容
-    const dataContent = extractDataContent(code);
+    // 定位第一个左花括号
+    while (position < source.length) {
+        const char = source[position];
+        
+        // 处理注释
+        if (!inString && !inComment) {
+            if (char === '/' && source[position + 1] === '/') {
+                commentType = '//';
+                inComment = true;
+                position += 2;
+                continue;
+            }
+            if (char === '/' && source[position + 1] === '*') {
+                commentType = '/*';
+                inComment = true;
+                position += 2;
+                continue;
+            }
+        }
 
-    // 解析data对象
-    return parseDataObject(dataContent, variables);
-}
+        // 处理字符串
+        if (!inComment && (char === '"' || char === "'" || char === '`')) {
+            if (inString === char && source[position - 1] !== '\\') {
+                inString = null;
+            } else if (!inString) {
+                inString = char;
+            }
+        }
 
-// 提取变量声明和赋值
-function extractVariables(code: string): Record<string, any> {
-    const vars: Record<string, any> = {};
+        // 统计有效花括号
+        if (!inString && !inComment) {
+            if (char === '{') {
+                braceCount++;
+                if (braceCount === 1) {
+                    position++; // 跳过起始花括号
+                    break;
+                }
+            }
+        }
 
-    // 匹配 var variable = 'value' 格式
-    const varDeclarations = code.matchAll(/var\s+(\w+)\s*=\s*'([^']+)'/g);
-    for (const match of varDeclarations) {
-        vars[match[1]] = match[2];
+        position++;
     }
 
-    // 匹配 variable = value 格式的后续赋值
-    const assignments = code.matchAll(/(?:^|\n)\s*(\w+)\s*=\s*([^;]+);/g);
-    for (const match of assignments) {
-        const value = parseDynamicValue(match[2].trim(), vars);
-        if (value !== undefined) {
-            vars[match[1]] = value;
+    const codeStart = position;
+    let codeEnd = codeStart;
+
+    // 精确提取函数体
+    while (position < source.length && braceCount > 0) {
+        const char = source[position];
+        const nextChar = source[position + 1];
+
+        // 更新注释状态
+        if (!inString) {
+            if (!inComment && char === '/' && nextChar === '/') {
+                inComment = true;
+                commentType = '//';
+                position += 2;
+                continue;
+            }
+            if (!inComment && char === '/' && nextChar === '*') {
+                inComment = true;
+                commentType = '/*';
+                position += 2;
+                continue;
+            }
+            if (inComment && commentType === '/*' && char === '*' && nextChar === '/') {
+                inComment = false;
+                commentType = null;
+                position += 2;
+                continue;
+            }
+            if (inComment && commentType === '//' && char === '\n') {
+                inComment = false;
+                commentType = null;
+            }
+        }
+
+        // 更新字符串状态
+        if (!inComment) {
+            if (char === '\\' && inString) {
+                position += 2; // 跳过转义字符
+                continue;
+            }
+            if ((char === '"' || char === "'" || char === '`') && (!inString || inString === char)) {
+                inString = inString ? null : char;
+            }
+        }
+
+        // 统计有效花括号
+        if (!inString && !inComment) {
+            if (char === '{') braceCount++;
+            if (char === '}') braceCount--;
+        }
+
+        codeEnd = position;
+        position++;
+    }
+
+    return braceCount === 0 
+        ? source.slice(codeStart, codeEnd).trim()
+        : null;
+}
+
+Deno.test('extractFunctionByName', () => {
+    const example = `	var search_lock = 2;//search lock
+	var pwd;
+	var pgs;
+	var ibfc8b = '1752930910';
+	var _hdoa4 = '3af752e6e67a2c350f5826359f925355';
+	pgs =1;
+		document.getElementById("load2").style.display="block";
+	file();
+		document.getElementById('rpt').innerHTML='举报';
+function sms(stx){
+	document.getElementById("sms").style.display="none";
+	$("#smsspan").text(stx);
+	document.getElementById("sms").style.display="block";
+	setTimeout('document.getElementById("sms").style.display="none";',5000);
+}
+function file(){
+		$.ajax({
+			type : 'post',
+			url : '/filemoreajax.php?file=7536580',
+			data : { 
+			'lx':2,
+			'fid':7536580,
+			'uid':'3035387',
+			'pg':pgs,
+			'rep':'0',
+			't':ibfc8b,
+			'k':_hdoa4,
+			'up':1,
+			'vip':'0',
+			'webfoldersign':'',
+						},
+			dataType : 'json',
+			success:function(msg){
+				//隐藏
+				document.getElementById("load2").style.display="none";
+				if(msg.zt == '1'){
+										var data = msg.text;
+					$.each(data, function(i, n){
+						search_lock = 2;//解除回车锁
+						var str;
+						var file_ico;
+						var alink = '/' + n.id;
+						var file_time ='';
+												if(n.t ==1){ //style 1
+							alink = n.id;
+							n.name_all = n.name_all + '<span class="s_ad">推广</span>';
+						}
+												file_ico = '<div class=fileimg><img src=https://assets.woozooo.com/assets/images/type/'+ n.icon +'.gif align=absmiddle border=0></div>';
+						if(n.p_ico ==1){
+							file_ico = '<div class=fileimg style=background:url(https://image.woozooo.com/image/ico/'+ n.ico +'?x-oss-process=image/auto-orient,1/resize,m_fill,w_100,h_100/format,png);background-size:100%;background-repeat:no-repeat;background-position:50%;></div>';
+						}
+						str ='<div id=ready><div class=mbx><a href=' + alink + ' target=_blank class="mlink minPx-top">'+ file_ico +'<div class=filename>' + n.name_all + '<div class=filesize>'+ file_time + '<div>' + n.size +'</div></div></div><div class=filedown><div class=filedown-1></div><div class=filedown-2></div></div></a></div></div>';
+												if(n.id != '-1'){
+							$(str).appendTo("#infos");
+						}
+					});
+					pgs++;
+					//少于50条，隐"more"
+					if(data.length<50){
+						document.getElementById("filemore").style.display="none";
+					}
+					//alert(data.length);
+
+				}else if(msg.zt == '2'){
+					//sms(msg.info);
+					document.getElementById("filemore").style.display="none";
+									}else if(msg.zt == '3'){
+									}else if(msg.zt == '6'){
+					document.getElementById("filemore").style.display="none";
+					sms(msg.info);
+									}else{
+					sms(msg.info);
+				}
+			},
+			error:function(){
+				//隐藏
+				document.getElementById("load2").style.display="none";
+				$("#infos").text("获取失败，请重试");
+			}
+	
+	});
+}
+function more(){
+				$("#filemore").text("文件获取中...");
+		$.ajax({
+			type : 'post',
+			url : '/filemoreajax.php?file=7536580',
+			data : { 
+			'lx':2,
+			'fid':7536580,
+			'uid':'3035387',
+			'pg':pgs,
+			'rep':'0',
+			't':ibfc8b,
+			'k':_hdoa4,
+			'up':1,
+			'vip':'0',
+			'webfoldersign':'',
+						},
+			dataType : 'json',
+			success:function(msg){
+				if(msg.zt == '1'){
+					var data = msg.text;
+					$.each(data, function(i, n){
+						var str;
+						var file_ico;
+						var alink = '/' + n.id;
+						var file_time ='';
+												if(n.t ==1){ //style 1
+							alink = n.id;
+							n.name_all = n.name_all + '<span class="s_ad">推广</span>';
+						}
+												file_ico = '<div class=fileimg><img src=https://assets.woozooo.com/assets/images/type/'+ n.icon +'.gif align=absmiddle border=0></div>';
+						if(n.p_ico ==1){
+							file_ico = '<div class=fileimg style=background:url(https://image.woozooo.com/image/ico/'+ n.ico +'?x-oss-process=image/auto-orient,1/resize,m_fill,w_100,h_100/format,png);background-size:100%;background-repeat:no-repeat;background-position:50%;></div>';
+						}
+						str ='<div id=ready><div class=mbx><a href=' + alink + ' target=_blank class="mlink minPx-top">'+ file_ico +'<div class=filename>' + n.name_all + '<div class=filesize>'+ file_time + '<div>' + n.size +'</div></div></div><div class=filedown><div class=filedown-1></div><div class=filedown-2></div></div></a></div></div>';
+												if(n.id != '-1'){
+							$(str).appendTo("#infos");
+						}
+					});
+					if(data.length<50){
+						document.getElementById("filemore").style.display="none";
+					}else{
+						$("#filemore").text("更多");
+					}
+					pgs++;
+
+				}else{
+					sms(msg.info);
+					document.getElementById("filemore").style.display="none";
+				}
+			},
+			error:function(){
+				$("filemore").text("获取失败，请重试");
+			}
+	
+		});
+	}
+var urls =window.location.href + '?cp=rymcnla.0.0';
+var qrcode = new QRCode('code', {
+					text: urls,
+					width: 138,
+					height: 138,
+					colorDark : '#3f3f3f',
+					colorLight : '#ffffff',
+					correctLevel : QRCode.CorrectLevel.H
+				});
+function s_cl(){
+	$(".search").show();
+	$("#s_search").hide();
+	$("#fileview").show();
+	$("#s_file").html("");
+}
+//search post ajax
+function s_post(){
+		var wd = document.getElementById('spcinput').value;
+	$("#s_load").show();//load style
+			$.ajax({
+			type : 'post',
+			url : '/search/s.php',
+			data : { `;
+    console.log(extractFunctionByName(example, "file"));
+    console.log(extractFunctionByName(example, "more"));
+});
+
+function sandboxEval(code: string, predef: string) {
+    const env = `let res; const $ = { ajax: d => res = d }; `
+
+    // 提取前定义
+    let def = '';
+    for (const line of predef.split('\n')) {
+        if (line.trim()) {
+            // 非函数声明
+            if (line.trimStart().match(/\(.+\)/)) {
+                break;
+            }else{
+                def += line + '\n';
+            }
         }
     }
 
-    return vars;
-}
-
-// 提取AJAX请求中的data对象
-function extractDataContent(code: string): string {
-    const dataMatch = code.match(/data\s*:\s*{([\s\S]*?)},?\n/);
-    return dataMatch ? dataMatch[1] : '';
-}
-
-// 解析data对象内容
-function parseDataObject(content: string, variables: Record<string, any>): AjaxData {
-    const data: AjaxData = {};
-
-    // 匹配键值对
-    const entries = content.matchAll(/(['"]?)(\w+)\1\s*:\s*([^,\n]+)/g);
-    for (const match of entries) {
-        const key = match[2];
-        const rawValue = match[3].trim();
-        data[key] = parseDynamicValue(rawValue, variables);
+    // 找到$.ajax
+    const ajax = code.indexOf('$.ajax(');
+    if (ajax !== -1) {
+        code = code.substring(ajax);
     }
 
-    return data;
+    const ecode = env + '\n' + def + '\n' + code + '\n' + 'return res;';
+    try{
+        return new Function(ecode)() as { url: string, data: any };
+    }catch(e){
+        throw e;
+    }
 }
 
-// 动态值解析器
-function parseDynamicValue(rawValue: string, variables: Record<string, any>): any {
-    // 处理数字
-    if (/^\d+$/.test(rawValue)) return parseInt(rawValue);
-
-    // 处理字符串
-    if (rawValue.startsWith("'") || rawValue.startsWith('"')) {
-        return rawValue.slice(1, -1);
-    }
-
-    // 处理变量引用
-    if (rawValue in variables) {
-        return variables[rawValue];
-    }
-
-    // 处理布尔值
-    if (rawValue === 'true') return true;
-    if (rawValue === 'false') return false;
-
-    // 返回原始值（处理未定义的变量）
-    return rawValue;
-}
-
-const getFiles = async function(page: string) {
+const getFiles = async function (page: string, parentPath = '') {
     const doc = await getDocument(page);
-    const script = doc.getElementsByTagName('script').find(s => 
-        s.innerHTML.includes('document.title = ')
+    const script = doc.getElementsByTagName('script').find(s =>
+        s.innerHTML.includes('$.ajax')
     );
     if (!script) {
         throw new Error('找不到script部分，确保这是蓝奏云分享链接！');
     }
 
-    const data = parseDynamicAjax(script.innerHTML);
+    const data = extractFunctionByName(script.innerHTML, "file")!;
+    const { url, data: bodyData } = sandboxEval(data, script.innerHTML);
     const formData = new FormData();
-    for (const [key, value] of Object.entries(data)) {
+    for (const [key, value] of Object.entries(bodyData)) {
         formData.append(key, String(value));
     }
 
-    const files:LanZouFile[] = [];
+    const files: LanZouFile[] = [];
     let pgnum = 1;
     let lastNum = 50;   // 每页显示50个文件
-    while(lastNum == 50){
+    while (lastNum == 50) {
         formData.set('pg', pgnum.toString());
-        const list = await fetch2(`https://wwpe.lanzoub.com/filemoreajax.php?file=${data.fid}`, {
+        const list = await fetch2(new URL(url, page), {
             method: 'POST',
             body: formData
         }).then(r => r.json());
         lastNum = list.length;
         pgnum++;
-        if(list.info != 'success') throw new Error('获取文件列表失败！');
-        files.push(...list.text);
+        if (list.info == '密码不正确' || list.info == '没有了') break;
+        else if(list.info != 'sucess') throw new Error(list.info);
+        files.push(...list.text.map((el: LanZouFile) => ({
+            ...el,
+            _link: new URL('/' + el.id, page).href,
+            _path: parentPath + '/' + removeIllegalPath(el.name_all)
+        })));
+
+        console.log(`获取第 ${pgnum - 1} 页文件列表成功！`);
+        await delay(1201 * Math.random() + 1328);
     }
 
+    // 提取文件夹
+    for (const direl of doc.querySelectorAll('#folder a')) try {
+        const dirurl = new URL(direl.getAttribute('href')!, page);
+        console.log(`递归：获取文件夹 ${dirurl.href}`);
+        await delay(2201 * Math.random() + 528);
+        files.push(...await getFiles(dirurl.href, parentPath + '/' + direl.textContent));
+    } catch (e) {
+        console.error(e);
+    }
+
+    console.log(`共获取 ${files.length} 个文件！`);
     return files;
 }
 
-const RESOLVE_LINK = 'https://developer-oss.lanrar.com/file/?';
-const getLink = async function(file: LanZouFile) {
-    
-
-if(import.meta.main){
-    const link = prompt('请输入蓝奏云分享链接：');
-    if(!link) return;
-    const files = await getFiles(link);
-    console.log(files);
-
-    for(const file of files)
+/**
+ * {
+  "zt": 1,
+  "dom": "https://developer-oss.lanrar.com",
+  "url": "?BGICPFloDz4JAFdvVmNQPAY5VW1U7QGfAq5QsgHlUcYF6luwXJsFtwfZVJNR4l3GBthXtV6/Ao5WtAC2UbUA5ASjAvlZ4Q/dCcRX5FaZUPMGfFWyVIEBmgI0UHsBbFFmBTFbIlx1BSkHJVQkUWNdNQYwVzdeXgJpVjUAO1E8ADAENwJnWTMPawlqVzNWN1B3BjpVI1Q2ATQCPFBnAWlRZwU2WypccQUhB2xUMFE1XW4Gb1d9XjECNVZ+ADZRPAAuBDQCbFlnD2sJPVdnVjFQYQY6VWRUOAE7AmNQNQFlUWYFYVs+XDIFZAc3VDZRM10/BmhXN14wAjBWaQBiUTwAZwQqAiFZfA8vCXlXdFZxUDQGLlU5VG8BPgI2UGYBblFlBTZbNFw2BXcHJVRrUWhdOQY6V29eMAI3VmQANFE0ADIENgJhWTAPbAlxVy9WJFA3BjBVJ1Q2ATICMlBiAWRRYgU8WzVcNgVpB2RUJFFwXSwGK1dvXjACNlZpADRRNAAyBDICYlk9D2IJeVd0VmtQIQZhVWNUMgEtAjRQYQFsUX4FNFs/XDEFfwdgVDFRN11yBnpXNl5uAndWPwBZUW4AagQ5AmVZKg99CStXeFZyUDQGA1UlVGoBPgI1",
+  "inf": 0
 }
+ */
+
+async function downloadFile(url: string) {
+    const document1 = await getDocument(url);
+    for(const iframe of document1.getElementsByTagName('iframe')){
+        const document = await getDocument(iframe.getAttribute('src')!);
+        const { url, data } = sandboxEval(document.getElementsByTagName('script').at(-1)!.innerHTML, '');
+
+        const formData = new FormData();
+        for (const [key, value] of Object.entries(data)) {
+            formData.append(key, String(value));
+        }
+        const file = await fetch2(url, {
+            body: formData,
+            method: 'POST'
+        }).then(r => r.json());
+        const realpath = file.dom + '/file/' + file.url;
+
+        return await fetch2(realpath, {
+            referrer: url
+        });
+    }
+}
+
+const RESOLVE_LINK = 'https://developer-oss.lanrar.com/file/?';
+export default async function main() {
+    const link = prompt('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
+    if (!link) return;
+    const files = await getFiles(link);
+    Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4));
+
+    await ensureDir('lanout');
+    for (const file of files) try{
+        ensureDir(basename(file._path));
+        const f = await downloadFile(file._link);
+        if(!f?.body) throw new Error('下载 ' + file._path +' 失败！');
+        await Deno.writeFile(`lanout/${file._path}`, f?.body!);
+        console.log(`下载 ${file._path} 成功！`);
+    }catch(e){
+        console.error(e);
+    }
+}
+if(import.meta.main) main();

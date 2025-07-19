@@ -3,7 +3,7 @@
  */
 
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
-import { fetch2, timeout } from "../main.ts";
+import { defaultGetInfo, fetch2, timeout } from "../main.ts";
 
 const True = true, False = false, None = null;
 const CONFIG = {    // 2025/7/1
@@ -187,3 +187,12 @@ export default (async function* (urlStart: URL | string) {
         };
     }
 } satisfies Callback);
+
+export const getInfo = (url: URL) => defaultGetInfo(url, {
+    mainPageCover: '#app > div > div.muye.muye-page > div > div.page-wrap > div > div.page-header-info > div.muye-book-cover.img.is-book > div > img',
+    mainPageTitle: '#app > div > div.muye.muye-page > div > div.page-wrap > div > div.page-header-info > div.info > div.info-name > h1',
+    mainPageSummary: '#app > div > div.muye.muye-page > div > div.page-body-wrap > div > div.page-abstract-content > p',
+    
+    // https://fanqienovel.com/page/7508113040546483262?enter_from=search
+    mainPageLike: /^https?\:\/\/.*fanqienovel\.com\/page\/\d+/i
+})

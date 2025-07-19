@@ -597,12 +597,12 @@ export class EPub {
             id = uuid();
             const mediaType = mime.getType(url.replace(/\?.*/, ""));
             if (mediaType === null) {
-                console.error(
-                   `[Media Error] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
+                console.warn(
+                   `[Media Warn] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
                 );
-                return;
             }
-            extension = mime.getExtension(mediaType);
+            // 适配novelpia file结尾文件
+            extension = mediaType ? mime.getExtension(mediaType) : 'png';
             if (extension === null) {
                 extension = getExtensionFromDataUrl(url);
                 if (!extension) {

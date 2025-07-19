@@ -448,10 +448,15 @@ function processContent(ctx?: Element | null | undefined, parentNode?: Element, 
     return text.replaceAll(/(?:\r\n){3,}/g, '\r\n\r\n');
 }
 
-async function defaultGetInfo(page: URL, config: Partial<MainInfo>, sig_abort?: AbortSignal) {
-    const mainPage = await getDocument(page, sig_abort);
-    const cfg = config as TraditionalConfig;
-    const firstPage = mainPage.querySelector(cfg.mainPageFirstChapter!)?.getAttribute('href');
+async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainInfoResult> {
+    if(!cfg.mainPageLike || !cfg.mainPageLike.test(page.href)){
+        return { firstPage: page };
+    }
+
+    const mainPage = await getDocument(page);
+    const firstPage = cfg.mainPageFirstChapter
+        ? mainPage.querySelector(cfg.mainPageFirstChapter)?.getAttribute('href')
+        : page;
     if (!firstPage) {
         throw new Error('未找到第一章');
     }
@@ -460,8 +465,15 @@ async function defaultGetInfo(page: URL, config: Partial<MainInfo>, sig_abort?: 
         firstPage: new URL(firstPage, page),
         cover: mainPage.querySelector(cfg.mainPageCover!)?.getAttribute('src') ?? undefined,
         book_name: mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '',
-        summary: processContent(mainPage.querySelector(cfg.mainPageSummary!))
+        summary: processContent(mainPage.querySelector(cfg.mainPageSummary!)),
+        jpStyle: cfg.jpStyle
     }
+}
+
+async function defaultGetInfo2(page: URL): Promise<MainInfoResult> {
+    const cfg = (await import('./lib/' + page.hostname + '.t.ts')).default as TraditionalConfig;
+
+    return defaultGetInfo(page, cfg);
 }
 
 export const convert = Converter({ from: 'tw', to: 'cn' });
@@ -470,11 +482,11 @@ export const convert = Converter({ from: 'tw', to: 'cn' });
 async function* tWrapper(url: URL) {
     let next_url = url;
     const config = (await import('./lib/' + next_url.hostname + '.t.ts')).default as TraditionalConfig;
-    while (next_url) {
+    while (next_url && next_url.protocol.startsWith('http')) {
         let document: HTMLDocument;
 
         for (let retry = 0; true; retry++) try {
-            document = await getDocument(next_url);
+            document = await (config.request ?? getDocument)(next_url);
             if (!document) {
                 throw new Error(`在 ${next_url} 内找不到内容`);
             }
@@ -492,14 +504,14 @@ async function* tWrapper(url: URL) {
             next_link: document.querySelector((config as TraditionalConfig).next_link)?.getAttribute('href') || '',
             url: next_url
         }
-        if ((config as TraditionalConfig).filter) try {
-            (config as TraditionalConfig).filter!(document, data);
+        if (config.filter) try {
+            config.filter(document, data);
         // deno-lint-ignore no-empty
         }catch{}
         next_url = new URL(data.next_link, next_url);
 
         yield {
-            content: data.content.trim(), title: data.content.trim()
+            content: data.content?.trim(), title: data.title?.trim()
         };
     }
 }
@@ -516,25 +528,23 @@ async function downloadNovel(
     let url = new URL(start_url);
     const callbacks: {
         default: Callback;
-        getInfo?: (url: URL) => Promise<Partial<MainInfo>>;
+        getInfo?: (url: URL) => Promise<MainInfoResult>;
     } = isTraditional ? {
         default: tWrapper,
-        getInfo: defaultGetInfo
+        getInfo: defaultGetInfo2
     } : await import('./lib/' + url.hostname + '.n.ts');
 
     // 获取信息
     let summary: string | undefined;
     const info = await callbacks.getInfo?.(url);
     if(info){
-        summary = info.mainPageSummary;
-        info.mainPageCover && (cover = info.mainPageCover);
-        info.mainPageTitle && (book_name = info.mainPageTitle);
-        info.mainPageFirstChapter && (url = new URL(info.mainPageFirstChapter, url));
+        summary = info.summary;
+        (!cover && info.cover) && (cover = info.cover);
+        (!book_name && info.book_name) && (book_name = info.book_name);
+        info.firstPage && (url = info.firstPage);
     }else{
-        if(!cover){
-            cover = prompt("请输入封面URL(可选) >> ") || '';
-            book_name = prompt("请输入书名 >> ") || '';
-        }
+        !cover && (cover = prompt("请输入封面URL(可选) >> ") || '');
+        !book_name && (book_name = prompt("请输入书名 >> ") || '');
     }
 
     // 打开文件
@@ -557,7 +567,7 @@ async function downloadNovel(
             break;
         }
 
-        if (content.trim().length < 200) {
+        if (content?.trim().length < 200) {
             report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
         }
 
@@ -659,7 +669,7 @@ export default async function main(){
     }
 
     let start_url;
-    let cover: string | null = null;
+    // let cover: string | null = null;
     const logs = [];
     if (args.epub) logs.push('epub模式');
     if (args.translate) logs.push('翻译模式');
@@ -669,7 +679,7 @@ export default async function main(){
 
     if (Deno.stdin.isTerminal()){
         start_url = args._[0] || prompt("请输入起始URL >> ") || '';
-        cover = args.cover || prompt("请输入封面URL(可选,自动) >> ");
+        // cover = args.cover || prompt("请输入封面URL(可选,自动) >> ");
     } else {
         start_url = JSON.parse(Deno.readTextFileSync('debug.json')).url;
         console.log('从debug.json中读取url:', start_url);
@@ -678,9 +688,9 @@ export default async function main(){
 
     const host = new URL(start_url).hostname;
     if (await exists('lib/' + host + '.t.ts'))
-        downloadNovel(start_url, true, undefined, undefined, cover || undefined);
+        downloadNovel(start_url, true, undefined, undefined, undefined);
     else if (await exists('lib/' + host + '.n.ts'))
-        downloadNovel(start_url, false, undefined, undefined, cover || undefined);
+        downloadNovel(start_url, false, undefined, undefined, undefined);
     else
         console.error('未找到' + host + '的配置，站点不受支持');
 }

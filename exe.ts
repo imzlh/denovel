@@ -11,6 +11,7 @@ import partMain from './part.ts';
 import neastMain from './neast.ts';
 import serverMain from './server.ts';
 import t2cnMain from './t2cn.ts';
+import lanzouMain from './lanzoudl.ts';
 
 const builtins: Record<string, [() => void, string]> = {
     "downovel": [dowNovel, "下载小说"],
@@ -21,7 +22,8 @@ const builtins: Record<string, [() => void, string]> = {
     "part": [partMain, "将txt文件分割成文件夹(每文件夹60个文件)"],
     "downmusic": [neastMain, "下载网易云音乐歌单"],
     "server": [serverMain, "启动下载服务器(不稳定，待完整测试)"],
-    "t2cn": [t2cnMain, "将(带繁体文本的)txt文件转换为简体中文格式"]
+    "t2cn": [t2cnMain, "将(带繁体文本的)txt文件转换为简体中文格式"],
+    'lanzou': [lanzouMain, '下载蓝奏云分享文件']
 };
 
 const args = Array.from(Deno.args);

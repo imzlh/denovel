@@ -8,11 +8,21 @@ declare interface MainInfo {
     jpStyle?: boolean;
 }
 
+declare interface MainInfoResult {
+    firstPage: URL;
+    cover?: string;
+    book_name?: string;
+    summary?: string;
+    
+    jpStyle?: boolean;
+}
+
 declare interface TraditionalConfig extends Partial<MainInfo> {
     title: string;
     content: string;
     next_link: string,
     filter?: (document: import("jsr:@b-fuze/deno-dom").HTMLDocument, filled_data: Data & { url: URL }) => void;
+    request?: typeof import('./main.ts').getDocument;
 }
 
 type PromiseOrNot<T> = Promise<T> | T;
