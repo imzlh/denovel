@@ -449,6 +449,23 @@ async function downloadFile(docurl: string) {
     throw new Error('下载 ' + docurl +' 失败: 找不到文件下载链接！');
 }
 
+async function downloadCorutine(file: LanZouFile) {
+    try{
+        await ensureDir('lanout/' + dirname(file._path));
+        let f;
+        do{
+            if(f) console.log(`下载 ${basename(file._path)} 失败，重试...`);
+            f = await downloadFile(file._link);
+        }while(!f.ok)
+        if(!f?.body) throw new Error('下载 ' + file._path +' 失败！');
+        await Deno.writeFile(`lanout/${file._path}`, f?.body!);
+        console.log(`下载 ${basename(file._path)} 成功，大小: ${file.size} 字节！`);
+    }catch(e){
+        console.error(e);
+    }
+}
+
+const CO_COUNT = 8;
 export default async function main() {
     let files: LanZouFile[] = [];
     
@@ -466,19 +483,9 @@ export default async function main() {
     }
 
     await ensureDir('lanout');
-    for (const file of files) try{
-        await ensureDir('lanout/' + dirname(file._path));
-        let f;
-        do{
-            f = await downloadFile(file._link);
-            console.log(`正在下载 ${basename(file._path)} (http: ${f.status})...`)
-        }while(!f.ok)
-        if(!f?.body) throw new Error('下载 ' + file._path +' 失败！');
-        await Deno.writeFile(`lanout/${file._path}`, f?.body!);
-        console.log(`下载 ${basename(file._path)} 成功，大小: ${file.size} 字节！`);
-        await delay(856 * Math.random() + 782);
-    }catch(e){
-        console.error(e);
+    for (let i = 0; i < files.length; i+=CO_COUNT){
+        console.log(`## 开始下载第 ${i/CO_COUNT+1}/${Math.ceil(files.length/CO_COUNT+1)} 批文件...`);
+        await Promise.all(files.slice(i, i + CO_COUNT).map(downloadCorutine));
     }
 }
 if(import.meta.main) main();
