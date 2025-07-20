@@ -211,7 +211,7 @@ async function fetch2(
     return response;
 }
 
-const removeHTMLTags = (str: string) => str.replace(/<\/?[a-z]+(?:\s+[^>]+)?>/gi, '\n')
+const fromHTML = (str: string) => str
     .replace(/&nbsp;/g, '')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -398,12 +398,10 @@ function cssToTag(css: Record<string, string>){
     return 'span';
 }
 
-function processContent(ctx?: Element | null | undefined, parentNode?: Element, parentStyle: Record<string, string> = {}) {
+function processContent(ctx?: Element | null | undefined, parentStyle: Record<string, string> = {}) {
     let text = '';
     if(!ctx) return text;
 
-    const shouldWrap = parentNode && WRAP_EL.includes(parentNode.tagName.toLowerCase());
-    if(shouldWrap) text += '\r\n';
     for(const node of ctx.childNodes){
         if(node.nodeName.toLowerCase() == 'img'){
             const el = node as Element;
@@ -438,19 +436,32 @@ function processContent(ctx?: Element | null | undefined, parentNode?: Element, 
             const outertag = cssToTag(style);
             if(outertag!= 'span' && outertag != rtag) tag.push(outertag);
 
+            let wrap = WRAP_EL.includes(rtag);
+            for(let i = 0; i < tag.length; i ++){
+                if(WRAP_EL.includes(tag[i])){
+                    tag.splice(i, 1);
+                    wrap = true;
+                }
+            }
+
             if(tag.length) text += tag.map(t => `[${t}]`).join('');
-            text += processContent(node as Element, ctx, style);
+            text += processContent(node as Element, style);
             if(tag.length) text += tag.map(t => `[/${t}]`).reverse().join('');
+
+            // 模拟display: block
+            if(wrap) text += '\r\n';
+            if(text[0] != '\r' && text[0] != '\n'){
+                text = '\r\n' + text;
+            }
         }
     }
 
-    if(shouldWrap) text += '\r\n';
     return text.replaceAll(/(?:\r\n){3,}/g, '\r\n\r\n');
 }
 
-async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainInfoResult> {
+async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainInfoResult | null> {
     if(!cfg.mainPageLike || !cfg.mainPageLike.test(page.href)){
-        return { firstPage: page };
+        return null;
     }
 
     const mainPage = await getDocument(page);
@@ -470,7 +481,7 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainIn
     }
 }
 
-async function defaultGetInfo2(page: URL): Promise<MainInfoResult> {
+async function defaultGetInfo2(page: URL): Promise<MainInfoResult | null> {
     const cfg = (await import('./lib/' + page.hostname + '.t.ts')).default as TraditionalConfig;
 
     return defaultGetInfo(page, cfg);
@@ -488,7 +499,7 @@ async function* tWrapper(url: URL) {
         for (let retry = 0; true; retry++) try {
             document = await (config.request ?? getDocument)(next_url);
             if (!document) {
-                throw new Error(`在 ${next_url} 内找不到内容`);
+                throw new Error(`请求失败：找不到页面 ${next_url}`);
             }
             break;
         } catch (e) {
@@ -497,17 +508,21 @@ async function* tWrapper(url: URL) {
             }
         }
         const ctx = document.querySelector((config as TraditionalConfig).content);
+        if(!ctx && args.parted) return; // 空页面
 
         const data = {
             title: document.querySelector((config as TraditionalConfig).title)?.innerText!,
             content: ctx ? processContent(ctx) : '',
             next_link: document.querySelector((config as TraditionalConfig).next_link)?.getAttribute('href') || '',
             url: next_url
-        }
+        };
         if (config.filter) try {
             config.filter(document, data);
         // deno-lint-ignore no-empty
         }catch{}
+        if(!data.next_link || data.next_link.startsWith('javascript:')){
+            return; // 最后一章
+        }
         next_url = new URL(data.next_link, next_url);
 
         yield {
@@ -528,7 +543,7 @@ async function downloadNovel(
     let url = new URL(start_url);
     const callbacks: {
         default: Callback;
-        getInfo?: (url: URL) => Promise<MainInfoResult>;
+        getInfo?: (url: URL) => Promise<MainInfoResult | null>;
     } = isTraditional ? {
         default: tWrapper,
         getInfo: defaultGetInfo2
@@ -561,54 +576,58 @@ async function downloadNovel(
     }
 
     // 开始循环
-    for await (let { title, content } of callbacks.default(url)) {
-        if (sig_abort?.aborted) {
-            report_status(Status.CANCELLED, '下载被用户终止');
-            break;
+    try{
+        for await (let { title, content } of callbacks.default(url)) {
+            if (sig_abort?.aborted) {
+                report_status(Status.CANCELLED, '下载被用户终止');
+                break;
+            }
+
+            if (content?.trim().length < 200) {
+                report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
+            }
+
+            if (content) {
+                // 替换HTML转义
+                content = fromHTML(content);
+                // 移除不可见字符
+                // content = removeNonVisibleChars(content);
+                // 翻译
+                if (args.translate) content = convert(content);
+                // 移除空格
+                content = content.trim();
+            }
+
+            // 翻译标题
+            if(title && args.translate){
+                title = convert(title);
+            }
+
+            // 章节分卷？
+            let text = '';
+            if (!args.parted && previous_title && title && similarTitle(title, previous_title)) {
+                // 直接写入
+                text += '\n' + content;
+            } else {
+                text = (args.parted ? '' : (`第${chapter_id++}章 ${title || ''}\r\n`))
+                    + (content || '[ERROR: 内容获取失败]') + '\r\n\r\n';
+                previous_title = title;
+            }
+
+            report_status(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
+
+            if (sig_abort?.aborted) {
+                report_status(Status.CANCELLED, '下载被用户终止');
+                break;
+            }
+
+            await Promise.all([
+                file.write(new TextEncoder().encode(args.parted ? text.trim() : text)),
+                sleep(Math.random() * SLEEP_INTERVAL),
+            ]);
         }
-
-        if (content?.trim().length < 200) {
-            report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
-        }
-
-        if (content) {
-            // 移除HTML标签
-            content = removeHTMLTags(content);
-            // 移除不可见字符
-            // content = removeNonVisibleChars(content);
-            // 翻译
-            if (args.translate) content = convert(content);
-            // 移除空格
-            content = content.trim();
-        }
-
-        // 翻译标题
-        if(title && args.translate){
-            title = convert(title);
-        }
-
-        // 章节分卷？
-        let text = '';
-        if (!args.parted && previous_title && title && similarTitle(title, previous_title)) {
-            // 直接写入
-            text += '\n' + content;
-        } else {
-            text = (args.parted ? '' : (`第${chapter_id++}章 ${title || ''}\r\n`))
-                + (content || '[ERROR: 内容获取失败]') + '\r\n\r\n';
-            previous_title = title;
-        }
-
-        report_status(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
-
-        if (sig_abort?.aborted) {
-            report_status(Status.CANCELLED, '下载被用户终止');
-            break;
-        }
-
-        await Promise.all([
-            file.write(new TextEncoder().encode(args.parted ? text.trim() : text)),
-            sleep(Math.random() * SLEEP_INTERVAL),
-        ]);
+    }catch(e){
+        report_status(Status.WARNING, '发生错误,下载结束', e as Error);
     }
 
     await file.sync();
@@ -697,7 +716,7 @@ export default async function main(){
 
 export { 
     NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, 
-    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, removeHTMLTags, removeNonVisibleChars, Status, sleep,
+    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML as removeHTMLTags, removeNonVisibleChars, Status, sleep,
     forceSaveConfig,
     processContent, defaultGetInfo
 };

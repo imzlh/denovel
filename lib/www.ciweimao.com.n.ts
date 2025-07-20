@@ -1,7 +1,8 @@
 // deno-lint-ignore-file no-var no-explicit-any no-inner-declarations
 // @ts-ignore npm package
 import CryptoJS from "npm:crypto-js";
-import { fetch2, getDocument, NoRetryError, setRawCookie, defaultGetInfo, getSiteCookie } from "../main.ts";
+import { fetch2, getDocument, NoRetryError, setRawCookie, defaultGetInfo, getSiteCookie, processContent } from "../main.ts";
+import { DOMParser } from "jsr:@b-fuze/deno-dom";
 
 export default (async function* (url: URL | string) {
     // jQuery.base64
@@ -181,6 +182,7 @@ export default (async function* (url: URL | string) {
             const chapurl = new URL(aTag.getAttribute('href')!.trim(), url);
             let content = await getChap(chapurl.href);
             content = content.replace(/<span[^>]*>([^<]*)<\/span>/g, '');
+            content = processContent(new DOMParser().parseFromString(content, 'text/html').body);
 
             yield {
                 title: chapname,
