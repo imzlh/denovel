@@ -17,7 +17,7 @@ export default {
     mainPageLike: /https:\/\/book\.sfacg\.com\/Novel\/\d+\/$/,
     mainPageTitle: 'body > div.container > div:nth-child(5) > div > div.main-part.fl.previous-chapter > div.crumbs.clearfix > a:last-child',
     mainPageCover: 'body > div.container > div.d-normal-banner > div > div > div.summary-pic > img',
-    mainPageSummary: 'body > div.container > div:nth-child(5) > div > div.main-part.fl.previous-chapter > div.chapter-info > p',
+    mainPageSummary: 'body > div.container > div.d-normal-banner > div > div > div.summary-content > p',
     mainPageFirstChapter: '#BasicOperation > a:nth-child(1)',
 
     async request(url, ...d){
@@ -31,5 +31,17 @@ export default {
         }
 
         return await getDocument(url, ...d);
+    },
+    async infoFilter(url, info){
+        const id = url.pathname.match(/\/Novel\/(\d+)/)?.[1];
+        if(id) try{
+            const page = await getDocument(`https://m.sfacg.com/b/${id}/`, undefined, {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36'
+            }, true);
+            const desc = page.querySelector('#page > div:nth-child(2) > ul > li.book_bk_qs1');
+            if(desc) info.summary = desc.innerText.trim();
+        }catch(e){
+            console.error('无法获取完整简介：', e);
+        }
     }
 } satisfies TraditionalConfig;

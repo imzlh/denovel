@@ -21,7 +21,8 @@ declare interface TraditionalConfig extends Partial<MainInfo> {
     title: string;
     content: string;
     next_link: string,
-    filter?: (document: import("jsr:@b-fuze/deno-dom").HTMLDocument, filled_data: Data & { url: URL }) => void;
+    infoFilter?: (url: URL, info: MainInfoResult) => PromiseOrNot<void>;
+    filter?: (document: import("jsr:@b-fuze/deno-dom").HTMLDocument, filled_data: Data & { url: URL }) => PromiseOrNot<void>;
     request?: typeof import('./main.ts').getDocument;
 }
 

@@ -8,7 +8,7 @@ class NoRetryError extends Error { }
 const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
     args = parseArgs(Deno.args, {
-        string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover'],
+        string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover', 'error-count'],
         boolean: ['help', 'epub', 'parted', 'translate'],
         alias: {
             h: 'help',
@@ -24,8 +24,9 @@ const parser = new DOMParser(),
             b: 'cover'
         }
     }),
-    SLEEP_INTERVAL = parseInt(args.sleep || '0'), // 间隔时间防止DDOS护盾deny
-    MAX_RETRY = parseInt(args.retry || '10'); // 最大重试次数
+    SLEEP_INTERVAL = parseInt(args.sleep || '0'),               // 间隔时间防止DDOS护盾deny
+    MAX_RETRY = parseInt(args.retry ?? '10'),                   // 最大重试次数
+    MAX_ERROR_COUNT = parseInt(args["error-count"] ?? '10');    // 最大错误计数
 
 const sleep = (sec = SLEEP_INTERVAL) => new Promise(resolve => setTimeout(resolve, sec * 1000));
 
@@ -90,7 +91,8 @@ const forceSaveConfig = globalThis.onbeforeunload = function () {
 async function fetch2(
     url: string | URL,
     options: RequestInit = {},
-    measureIP: boolean = false
+    measureIP: boolean = false,
+    ignoreStatus = false
 ): Promise<Response> {
     const originalUrl = typeof url === 'string' ? new URL(url) : url;
     let targetUrl = originalUrl;
@@ -153,7 +155,7 @@ async function fetch2(
         headers.set('Host', originalUrl.hostname);
     }
     headers.set('Cookie', cookies);
-    headers.set('User-Agent', UA);
+    if(!headers.has('User-Agent')) headers.set('User-Agent', UA);
     if(options.referrer) headers.set('referer', options.referrer);
     // headers.set('Origin', originalUrl.origin);
 
@@ -167,7 +169,9 @@ async function fetch2(
     for (let i = 0; i < 3; i++) {
         try {
             response = await fetch(targetUrl, { ...options, headers, redirect: 'manual' });
-            if(Math.floor(response.status / 100) == 5) throw new Error('Server Error: status ' + response.status);
+            if(Math.floor(response.status / 100) == 5 && !ignoreStatus){
+                throw new Error('Server Error: status ' + response.status);
+            }
             break;
         } catch (e) {
             console.warn(`Fetch failed (attempt ${i + 1}):`, (e as Error).message);
@@ -238,7 +242,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         credentials: 'include',
         referrer: url.protocol + '://' + url.host + '/',
         referrerPolicy: 'unsafe-url'
-    }, measureIP);
+    }, measureIP, ignore_status);
     if (!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
     const data = new Uint8Array(await response.arrayBuffer());
 
@@ -484,7 +488,9 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainIn
 async function defaultGetInfo2(page: URL): Promise<MainInfoResult | null> {
     const cfg = (await import('./lib/' + page.hostname + '.t.ts')).default as TraditionalConfig;
 
-    return defaultGetInfo(page, cfg);
+    const info = await defaultGetInfo(page, cfg);
+    if(cfg.infoFilter && info) await cfg.infoFilter(page, info);
+    return info;
 }
 
 export const convert = Converter({ from: 'tw', to: 'cn' });
@@ -517,7 +523,7 @@ async function* tWrapper(url: URL) {
             url: next_url
         };
         if (config.filter) try {
-            config.filter(document, data);
+            await config.filter(document, data);
         // deno-lint-ignore no-empty
         }catch{}
         if(!data.next_link || data.next_link.startsWith('javascript:')){
@@ -577,25 +583,36 @@ async function downloadNovel(
 
     // 开始循环
     try{
+        let errorcount = 0;
         for await (let { title, content } of callbacks.default(url)) {
             if (sig_abort?.aborted) {
                 report_status(Status.CANCELLED, '下载被用户终止');
                 break;
             }
 
-            if (content?.trim().length < 200) {
-                report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
+            if (content) {
+                if(content.trim().length >= 200){
+                    // 替换HTML转义
+                    content = fromHTML(content);
+                    // 移除不可见字符
+                    // content = removeNonVisibleChars(content);
+                    // 翻译
+                    if (args.translate) content = convert(content);
+                    // 移除空格
+                    content = content.trim();
+                    errorcount = 0;
+                } else {
+                    report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
+                    errorcount++;
+                }
+            }else{
+                report_status(Status.ERROR, `ID: ${chapter_id} 内容为空`);
+                errorcount++;
             }
 
-            if (content) {
-                // 替换HTML转义
-                content = fromHTML(content);
-                // 移除不可见字符
-                // content = removeNonVisibleChars(content);
-                // 翻译
-                if (args.translate) content = convert(content);
-                // 移除空格
-                content = content.trim();
+            if(errorcount >= MAX_ERROR_COUNT){
+                report_status(Status.ERROR, `ID: ${chapter_id} 连续错误${MAX_ERROR_COUNT}次，放弃下载`);
+                break;
             }
 
             // 翻译标题
@@ -609,8 +626,8 @@ async function downloadNovel(
                 // 直接写入
                 text += '\n' + content;
             } else {
-                text = (args.parted ? '' : (`第${chapter_id++}章 ${title || ''}\r\n`))
-                    + (content || '[ERROR: 内容获取失败]') + '\r\n\r\n';
+                text = (args.parted ? '' : (`第${chapter_id++}章 ${title ?? ''}\r\n`))
+                    + (content ?? '[ERROR: 内容获取失败]') + '\r\n\r\n';
                 previous_title = title;
             }
 
@@ -680,6 +697,7 @@ export default async function main(){
     -e, --epub          输出epub文件
     -l, --translate     翻译模式，将输出的繁体翻译为简体中文
     -b, --cover         封面URL，默认为空
+        --error-count   指定多少次连续少内容时退出，默认10
 
 示例:
     main.ts -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
