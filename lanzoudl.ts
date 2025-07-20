@@ -6,8 +6,9 @@ import { _TextDecoder } from "https://deno.land/std@0.92.0/node/_utils.ts";
 import { fetch2, getDocument, removeIllegalPath } from "./main.ts";
 import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
-import { basename } from "jsr:@std/path@^1.0";
+import { basename, dirname } from "jsr:@std/path@^1.0";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
+import { DOMParser } from "jsr:@b-fuze/deno-dom";
 
 interface LanZouFile {
     icon: string;
@@ -334,7 +335,7 @@ function sandboxEval(code: string, predef: string) {
     }
 }
 
-const getFiles = async function (page: string, parentPath = '') {
+const getFiles = async function (page: string, parentPath = '', files: LanZouFile[]) {
     const doc = await getDocument(page);
     const script = doc.getElementsByTagName('script').find(s =>
         s.innerHTML.includes('$.ajax')
@@ -350,7 +351,6 @@ const getFiles = async function (page: string, parentPath = '') {
         formData.append(key, String(value));
     }
 
-    const files: LanZouFile[] = [];
     let pgnum = 1;
     let lastNum = 50;   // 每页显示50个文件
     while (lastNum == 50) {
@@ -359,10 +359,12 @@ const getFiles = async function (page: string, parentPath = '') {
             method: 'POST',
             body: formData
         }).then(r => r.json());
-        lastNum = list.length;
+        lastNum = list.text.length;
         pgnum++;
-        if (list.info == '密码不正确' || list.info == '没有了') break;
-        else if(list.info != 'sucess') throw new Error(list.info);
+        if(list.info != 'sucess'){
+            console.warn(`获取第 ${pgnum - 1} 页文件列表失败！`, list.info);
+            break;
+        }
         files.push(...list.text.map((el: LanZouFile) => ({
             ...el,
             _link: new URL('/' + el.id, page).href,
@@ -370,15 +372,15 @@ const getFiles = async function (page: string, parentPath = '') {
         })));
 
         console.log(`获取第 ${pgnum - 1} 页文件列表成功！`);
-        await delay(1201 * Math.random() + 1328);
+        await delay(1000 * Math.random() + 782);
     }
 
     // 提取文件夹
     for (const direl of doc.querySelectorAll('#folder a')) try {
         const dirurl = new URL(direl.getAttribute('href')!, page);
         console.log(`递归：获取文件夹 ${dirurl.href}`);
-        await delay(2201 * Math.random() + 528);
-        files.push(...await getFiles(dirurl.href, parentPath + '/' + direl.textContent));
+        await getFiles(dirurl.href, parentPath + '/' + direl.textContent, files);
+        await delay(500 * Math.random() + 432);
     } catch (e) {
         console.error(e);
     }
@@ -387,51 +389,94 @@ const getFiles = async function (page: string, parentPath = '') {
     return files;
 }
 
-/**
- * {
-  "zt": 1,
-  "dom": "https://developer-oss.lanrar.com",
-  "url": "?BGICPFloDz4JAFdvVmNQPAY5VW1U7QGfAq5QsgHlUcYF6luwXJsFtwfZVJNR4l3GBthXtV6/Ao5WtAC2UbUA5ASjAvlZ4Q/dCcRX5FaZUPMGfFWyVIEBmgI0UHsBbFFmBTFbIlx1BSkHJVQkUWNdNQYwVzdeXgJpVjUAO1E8ADAENwJnWTMPawlqVzNWN1B3BjpVI1Q2ATQCPFBnAWlRZwU2WypccQUhB2xUMFE1XW4Gb1d9XjECNVZ+ADZRPAAuBDQCbFlnD2sJPVdnVjFQYQY6VWRUOAE7AmNQNQFlUWYFYVs+XDIFZAc3VDZRM10/BmhXN14wAjBWaQBiUTwAZwQqAiFZfA8vCXlXdFZxUDQGLlU5VG8BPgI2UGYBblFlBTZbNFw2BXcHJVRrUWhdOQY6V29eMAI3VmQANFE0ADIENgJhWTAPbAlxVy9WJFA3BjBVJ1Q2ATICMlBiAWRRYgU8WzVcNgVpB2RUJFFwXSwGK1dvXjACNlZpADRRNAAyBDICYlk9D2IJeVd0VmtQIQZhVWNUMgEtAjRQYQFsUX4FNFs/XDEFfwdgVDFRN11yBnpXNl5uAndWPwBZUW4AagQ5AmVZKg99CStXeFZyUDQGA1UlVGoBPgI1",
-  "inf": 0
-}
- */
-
-async function downloadFile(url: string) {
-    const document1 = await getDocument(url);
+async function downloadFile(docurl: string) {
+    const document1 = await getDocument(docurl);
     for(const iframe of document1.getElementsByTagName('iframe')){
-        const document = await getDocument(iframe.getAttribute('src')!);
-        const { url, data } = sandboxEval(document.getElementsByTagName('script').at(-1)!.innerHTML, '');
+        await delay(475 + 1000 * Math.random());
+        const docurl2 = new URL(iframe.getAttribute('src')!, docurl);
+        const document = await getDocument(docurl2);
+        const code = document.getElementsByTagName('script').at(-1)!.innerHTML;
+        const { url, data } = sandboxEval(code, code);
 
         const formData = new FormData();
         for (const [key, value] of Object.entries(data)) {
             formData.append(key, String(value));
         }
-        const file = await fetch2(url, {
+        await delay(143 + 1000 * Math.random());
+        const file = await fetch2(new URL(url, docurl), {
             body: formData,
-            method: 'POST'
+            method: 'POST',
+            referrer: docurl2.href,
+            headers: {
+                Origin: docurl2.origin,
+                "X-Requested-With": "XMLHttpRequest"
+            }
         }).then(r => r.json());
+        if(file.zt != 1) throw new Error('下载 ' + file.name +' 失败: 链接超时');
         const realpath = file.dom + '/file/' + file.url;
 
-        return await fetch2(realpath, {
-            referrer: url
-        });
+        await delay(324 + 1000 * Math.random());
+        const textpath = new URL(realpath, docurl);
+        const text2 = await fetch2(textpath);
+        // 网络验证
+        if(text2.headers.get('Content-Type')?.includes('text/html')){
+            const document = new DOMParser().parseFromString(await text2.text(), 'text/html');
+            const script = document.getElementsByTagName('script').at(-1)!;
+            const func = extractFunctionByName(script.innerHTML, 'down_r')!;
+            const { url, data } = sandboxEval(func, 'var el = 2;' + script.innerHTML);
+            const formData = new FormData();
+            for (const [key, value] of Object.entries(data)) {
+                formData.append(key, String(value));
+            }
+            await delay(2241 + 1000 * Math.random());
+            const file2 = await fetch2(new URL(url, textpath), {
+                body: formData,
+                method: 'POST',
+                referrer: textpath.href,
+                headers: {
+                    Origin: textpath.origin,
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            }).then(r => r.json());
+            if(file2.zt != 1) throw new Error('下载 ' + file.name +' 失败: 验证网络：链接超时');
+            const urlreal = new URL(file2.url, textpath);
+            await delay(1000 * Math.random() + 621);
+            return await fetch2(urlreal);
+        }else{
+            return text2;
+        }
     }
+    throw new Error('下载 ' + docurl +' 失败: 找不到文件下载链接！');
 }
 
-const RESOLVE_LINK = 'https://developer-oss.lanrar.com/file/?';
 export default async function main() {
-    const link = prompt('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
-    if (!link) return;
-    const files = await getFiles(link);
-    Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4));
+    let files: LanZouFile[] = [];
+    
+    if(!Deno.args.length){
+        const link = prompt('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
+        if (!link) return;
+        
+        const intv = setInterval(() => Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4)), 10000);
+
+        await getFiles(link, '', files);
+        Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4));
+        clearInterval(intv);
+    }else{
+        files = JSON.parse(Deno.readTextFileSync(Deno.args[0] ?? 'files.json'));
+    }
 
     await ensureDir('lanout');
     for (const file of files) try{
-        ensureDir(basename(file._path));
-        const f = await downloadFile(file._link);
+        await ensureDir('lanout/' + dirname(file._path));
+        let f;
+        do{
+            f = await downloadFile(file._link);
+            console.log(`正在下载 ${basename(file._path)} (http: ${f.status})...`)
+        }while(!f.ok)
         if(!f?.body) throw new Error('下载 ' + file._path +' 失败！');
         await Deno.writeFile(`lanout/${file._path}`, f?.body!);
-        console.log(`下载 ${file._path} 成功！`);
+        console.log(`下载 ${basename(file._path)} 成功，大小: ${file.size} 字节！`);
+        await delay(856 * Math.random() + 782);
     }catch(e){
         console.error(e);
     }
