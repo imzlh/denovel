@@ -1,7 +1,7 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename, dirname } from "jsr:@std/path";
 import { EPub, EpubContentOptions, EpubOptions } from "./genepub.ts";
-import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL } from "./main.ts";
+import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL, fromHTML } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // deno-lint-ignore no-control-regex
@@ -67,10 +67,10 @@ function addTags(text: string, sTag = specialTag): string {
             if (sTag[tag].includes(char)) {
                 if (sTag[tag].indexOf(char) % 2 === 0) {
                     stack.push({ tag, char });
-                    result += `<${tag}>`;
+                    result += `<${tag}>${char}`;
                 } else {
                     if (stack.length > 0 && stack[stack.length - 1].char === sTag[tag][sTag[tag].indexOf(char) - 1]) {
-                        result += `</${stack.pop()?.tag}>`;
+                        result += `${char}</${stack.pop()?.tag}>`;
                     } else {
                         result += char;
                     }
@@ -337,15 +337,9 @@ export function toEpub(data: string, input: string, output: string, option: {
 }
 
 export const encodeContent = (str: string, jpFormat = false) => {
-    str = '<p>' + str.replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;')
+    str = '<p>' + fromHTML(str)
         .replace(/\s*[\r\n]+\s*/g, '</p><p>')
-        .replace(rep, '')
-        .replaceAll(/\&lt\;img.+src=\&(?:quot|apos)\;(.+?)\&(?:quot|apos)\;.*\/?\&gt;/g, '<img src="$1" />')
-        + '</p>';
+        .replace(rep, '') + '</p>';
     str = str.replaceAll(/\<p\> *\<\/p\>/g, '');
 
     // 特殊优化 for 日/韩轻小说

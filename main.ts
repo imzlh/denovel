@@ -170,6 +170,7 @@ async function fetch2(
         try {
             response = await fetch(targetUrl, { ...options, headers, redirect: 'manual' });
             if(Math.floor(response.status / 100) == 5 && !ignoreStatus){
+                Deno.writeTextFileSync('error.html', await response.text())
                 throw new Error('Server Error: status ' + response.status);
             }
             break;
@@ -734,7 +735,7 @@ export default async function main(){
 
 export { 
     NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, 
-    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML as removeHTMLTags, removeNonVisibleChars, Status, sleep,
+    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep,
     forceSaveConfig,
     processContent, defaultGetInfo
 };
