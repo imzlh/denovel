@@ -11,3 +11,4 @@ back/
 lib/fanqie/
 *.exe
 webo/
+*cache*

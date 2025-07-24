@@ -180,13 +180,15 @@ async function search(keywords: string, page = '0', totalRef?: { value: number }
     return await getAllLinks(url, totalRef);
 }
 
-function decodeImage(input: Uint8Array) {
-    let tmp = '';
+function decodeImage(input: Uint8Array): Uint8Array {
     const dec_base = 0x88;
-    for (let i = 0x0; i < input.byteLength; i++)
-        tmp += String.fromCharCode(input[i] ^ dec_base);
-    return 'data:image/jpeg;base64,' + btoa(tmp);
+    const output = new Uint8Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+        output[i] = input[i] ^ dec_base;
+    }
+    return output;
 }
+
 
 /**
  * return [m3u8, title, thumbnail]
@@ -200,12 +202,12 @@ async function getM3U8(play: string | URL){
         [, sl] = doc.match(/sl\s*\:\s*\"(.+)\"/)!,
         [, encryptUrl] = doc.match(/encryptUrl\s*\:\s*\"(.+)\"\s*/)!;
 
-    const imgres = await (await fetch2(new URL(encryptUrl, play))).bytes();
+    const imgres = new URL(encryptUrl, play).href;
     
     return [
         decodeURIComponent(sl.split('').map(char => DECODE_MAPPER[char] ?? char).join('')).trim()!,
         document.querySelector('body > div.content-box > div:nth-child(1) > div.ran-box > div.video-title')?.innerText.trim(),
-        decodeImage(imgres)
+        imgres
     ] as [string, string, string];
 }
 
@@ -333,32 +335,59 @@ interface VideoInfo {
 }
 
 async function serverMain(){
-    if(!await exists('17cache.json')) await Deno.writeTextFile('17cache.json', '{}');
-    const contentCache: Record<string, VideoInfo> = JSON.parse(Deno.readTextFileSync('17cache.json') || '{}');
+    // if(!await exists('17cache.json')) await Deno.writeTextFile('17cache.json', '{}');
+    const contentDB = await Deno.openKv("./17cache.db");
+    // const contentCache: Record<string, VideoInfo> = JSON.parse(Deno.readTextFileSync('17cache.json') || '{}');
     const pageCache = await Deno.readTextFile('17c.html');
 
     await ensureDir('webo');
 
     async function getInfo(video: string | URL) {
-        const id = new URL(video).searchParams.get('vid')!;
-        if(id in contentCache) return contentCache[id];
+        const id = typeof video == 'string' ? video : new URL(video).searchParams.get('vid')!;
+        const _cache = (await contentDB.get([id])).value;
+        if(_cache) return processInfo(_cache as VideoInfo);
         console.log('Cache not hit', id);
         const [m3, title, thumb] = await getM3U8(video);
         // https://www.uhsuvpj.com:2096/videoplay/0.html?category_id=1&category_child_id=14&vid=218829
-        contentCache[id] = { id, title, m3u8: m3, thumbnail: thumb };
-        await Deno.writeTextFile('17cache.json', JSON.stringify(contentCache));
-        return contentCache[id];
+        const res = { id, title, m3u8: m3, thumbnail: thumb };
+        contentDB.set([id], res);
+        return processInfo(res);
     } 
+
+    async function processInfo(info: VideoInfo) {
+        return {
+            ...info,
+            thumbnail: "/api/thumb?src=" + encodeURIComponent(info.thumbnail)
+        }
+    }
 
     const server = Deno.serve({
         'hostname': '[::]',
         'port': 8088
     }, async function(req, addr){
         const url = new URL(req.url, 'http://localhost:8088/');
-        console.log(req.method, url.pathname);
+        console.log(req.method, req.url);
 
         let ret: any;
         switch(url.pathname){
+            /**
+             * 获取缩略图
+             * /api/thumb
+             */
+            case '/api/thumb':{
+                const src = url.searchParams.get('src');
+                if(!src) throw new Error('缺少参数');
+
+                const realdata = await (await fetch2(decodeURIComponent(src))).bytes();
+                const data = decodeImage(realdata);
+                return new Response(data, {
+                    headers: {
+                        'Content-Type': 'image/jpeg',
+                        'Cache-Control': 'public, max-age=31536000'
+                    }
+                });
+            }
+
             /**
              * 2. 搜索视频
 
@@ -435,27 +464,28 @@ async function serverMain(){
                 // ws://localhost:8080/download/{video_id}
                 if(url.pathname.match(/^\/download\/(\d+)$/)){
                     const id = parseInt(url.pathname.match(/^\/download\/(\d+)$/)![1]);
-                    const url2 = contentCache[id].m3u8;
+                    const item = await getInfo(id.toString()),
+                        url2 = item.m3u8;
 
-                    console.log('Downloading', contentCache[id].title);
+                    console.log('Downloading', item.title);
                     const { response, socket } = Deno.upgradeWebSocket(req);
                     socket.onopen = function(){
                         if(!url2){
-                            socket.send(`\x1b[31m视频 ${id} 不存在\x1b[0m`);
+                            socket.send(`\x1b[31m视频 ${id} 不存在\x1b[0m\n`);
                             return socket.close();
                         }
 
                         // check if file exists
                         if(history.value.includes(url2)){
-                            socket.send(`\x1b[31m视频 ${id} 已经下载过了\x1b[0m`);
+                            socket.send(`\x1b[31m视频 ${id} 已经下载过了\x1b[0m\n`);
                             return socket.close();
                         }
 
-                        downloadAsync(url2, 'webo/' + contentCache[id].title + '.mp4', socket)
+                        downloadAsync(url2, 'webo/' + removeIllegalPath(item.title) + '.mp4', socket)
                             .then(_ => { 
                                 socket.close();
                                 history.value.push(url2);
-                                console.log('下载完毕');
+                                console.log(item.title, '下载完毕');
                             });
                     };
                     return response;
@@ -474,6 +504,11 @@ async function serverMain(){
             }
         });
     });
+
+    globalThis.onbeforeunload = () => {
+        contentDB.close();
+        server.shutdown();
+    }
 }
 
 if(import.meta.main){
