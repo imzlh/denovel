@@ -14,13 +14,13 @@ import t2cnMain from './t2cn.ts';
 import lanzouMain from './lanzoudl.ts';
 
 const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
-    // name: [function, description, mutexRequired]
+    // name: [function, description, asyncAble]
     "downovel": [dowNovel, "下载小说", false],
     "downcomic": [downComic, "下载漫画", false],
-    "conv": [convMain, "使用外置ffmpeg，转换文件格式", false],
-    "2epub": [epubMain, "转换txt文件到epub格式", false],
-    "2txt": [txtMain, "转换epub文件到txt格式", false],
-    "part": [partMain, "将txt文件分割成文件夹(每文件夹60个文件)", false],
+    "conv": [convMain, "使用外置ffmpeg，转换文件格式", true],
+    "2epub": [epubMain, "转换txt文件到epub格式", true],
+    "2txt": [txtMain, "转换epub文件到txt格式", true],
+    "part": [partMain, "将txt文件分割成文件夹(每文件夹60个文件)", true],
     "downmusic": [neastMain, "下载网易云音乐歌单", false],
     "server": [serverMain, "启动下载服务器(不稳定，待完整测试)", true],
     "t2cn": [t2cnMain, "将(带繁体文本的)txt文件转换为简体中文格式", false],
@@ -54,56 +54,130 @@ function splitShellCommand(cmd: string): string[] {
     return args;
 }
 
+const coRead = async (pipe: ReadableStream, cb: (data: Uint8Array) => any) => {
+    const rd = pipe.getReader();
+    let res;
+    while(!(res = await rd.read()).done) cb(res.value);
+}
+const resizeAndWrite = (data: Uint8Array, target: { value: Uint8Array }) => {
+    const rt = target.value;
+    console.log(new TextDecoder().decode(data));
+    target.value = new Uint8Array(data.length + rt.byteLength);
+    target.value.set(rt, 0);
+    target.value.set(data, rt.byteLength);
+}
+const coWrite = async (pipe: WritableStream, abort: AbortSignal) => {
+    const wr = pipe.getWriter();
+    const buf = new Uint8Array(1024);
+    let done = false;
+    wr.closed.then(() => done = true);
+    while(!abort.aborted && !done){
+        const read = await Deno.stdin.read(buf);
+        if(!read) break;
+        await wr.write(buf.subarray(0, read));
+    }
+}
+type BufRef = { value: Uint8Array, stdin: WritableStreamDefaultWriter };
+async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef, abort: AbortSignal = new AbortController().signal) {
+    const cmd = new Deno.Command(Deno.execPath(), {
+        args: args,
+        stdin: 'piped',
+        stdout: 'piped',
+        stderr: 'piped'
+    }).spawn();
+    console.log(Deno.execPath(), args);
+    if(asyncAble){
+        // @ts-ignore
+        if(!bufref) bufref = {};
+        bufref!.stdin = cmd.stdin.getWriter();
+        bufref!.value = new Uint8Array(0);
+        coRead(cmd.stdout, d => resizeAndWrite(d, bufref!));
+        coRead(cmd.stderr, d => resizeAndWrite(d, bufref!));
+    }else{
+        await Promise.all(
+            [
+                coRead(cmd.stdout, d => console.log(new TextDecoder().decode(d))),
+                coRead(cmd.stderr, d => console.error(new TextDecoder().decode(d))),
+                coWrite(cmd.stdin, abort)
+            ]
+        );
+    }
+}
+
 const args = Array.from(Deno.args);
 if (args.length == 0){
     // repl
-    const startedCorutine = {} as Record<string, Promise<any>[]>;
+    const startedCorutine = {} as Record<string, BufRef & { done: boolean | undefined } | undefined>;
     while (true) try{
         const input = prompt(">>");
         if (!input) continue;
-        const [cmd,...rest] = splitShellCommand(input);
+        const commands = splitShellCommand(input), cmd = commands[0];
         if(!cmd) continue;
         if(cmd === 'help'){
             showHelp();
+            console.log(`
+repl指令：
+    help            显示帮助
+    exit            退出repl
+    start <任务名>   启动异步任务（不会阻塞，之后你可以继续输入指令）
+    log <任务名>     显示异步任务日志
+    <任务名>         启动同步任务
+`);
             continue;
         }else if(cmd === 'exit'){
             Deno.exit(0);
-        }else if(cmd === 'wait'){
-            const waitCMD = rest[0];
-            if(!waitCMD){
-                console.error(`wait 命令需要指定子模块名`);
+        }else if(cmd === 'start'){
+            if(commands.length < 2){
+                console.error('缺少异步任务名');
                 continue;
             }
-            if(!startedCorutine[waitCMD]){
-                console.error(`找不到子模块${waitCMD}`);
+            const name = commands[1];
+            if(name in startedCorutine && !startedCorutine[name]?.done){
+                console.error(`异步任务${name}正在执行，请等待结束后再执行`);
                 continue;
             }
-            if(startedCorutine[waitCMD].length == 0){
-                console.log(`模块${waitCMD}已完成`);
+            if(!builtins[name]){
+                console.error(`异步执行错误：找不到子模块：${name}`);
                 continue;
             }
-            console.log(`等待模块${waitCMD}完成...`);
-            await Promise.all(startedCorutine[waitCMD]);
-            console.log(`模块${waitCMD}已完成`);
+            if(!builtins[name][2]){
+                console.error(`模块${name}不能并行执行，无法使用start指令`);
+                continue;
+            }
+
+            // @ts-ignore will be filled by spawn
+            startedCorutine[name] = {};
+            spawn(commands.slice(1), true, startedCorutine[name]).then(() => {
+                console.log(`异步任务${name}执行完毕`);
+                startedCorutine[name]!.done = true;
+            }).catch((e) => {
+                console.error(`异步任务${name}执行失败`, e);
+                startedCorutine[name]!.done = true;
+            });
+            continue;
+        }else if(cmd == 'log'){
+            if(commands.length < 2){
+                console.error('缺少异步任务名');
+                continue;
+            }
+            const name = commands[1];
+            if(!startedCorutine[name]){
+                console.error(`异步任务${name}不存在`);
+                continue;
+            }
+            const bufref = startedCorutine[name];
+            console.log(new TextDecoder().decode(bufref.value));
+            bufref.value = new Uint8Array(0);
             continue;
         }
+
         const fn = builtins[cmd]?.[0];
         if (!fn) {
             console.error(`找不到子模块：${cmd}`);
             continue;
         }
-        if(builtins[cmd][2] && startedCorutine[cmd]?.length == 0){
-            console.error(`模块${cmd}需要等待上一个任务结束才能执行，无法并行执行\n或者，尝试 "wait ${cmd}" 命令等待结束？`);
-            continue;
-        }
-        if(!(cmd in startedCorutine)) startedCorutine[cmd] = [];
         try {
-            Deno.args.splice(0);
-            Deno.args.push(...rest);
-            const prom = fn();
-            prom.then(() => startedCorutine[cmd].splice(startedCorutine[cmd].findIndex(p => p === prom)));
-            prom.catch(e => console.error(`模块${cmd}执行失败`, e));
-            startedCorutine[cmd].push(prom);
+            await spawn(commands, true);
         } catch (e) {
             console.error(`模块${cmd}执行失败`, e);
         }
@@ -135,7 +209,7 @@ if (args[0] == 'help') {
     Deno.exit(0);
 }
 
-const cmd = args.shift()!;
+const cmd = Deno.args.shift()!;
 const fn = builtins[cmd]?.[0];
 if (!fn) {
     console.error(`找不到子模块：${cmd}`);
