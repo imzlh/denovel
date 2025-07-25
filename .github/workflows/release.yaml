@@ -34,7 +34,7 @@ jobs:
         deno-version: latest
         
     - name: Install dependencies
-      run: deno cache exe.ts
+      run: deno cache --unstable-raw-imports --unstable-kv --allow-all exe.ts
       
     - name: Compile to binary
       run: deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --no-check --include templates --include static  --output=denovel${{ matrix.bin_ext }} exe.ts
