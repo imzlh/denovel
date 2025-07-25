@@ -37,13 +37,13 @@ jobs:
       run: deno cache --unstable-raw-imports --unstable-kv exe.ts
       
     - name: Compile to binary
-      run: deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --no-check --include templates --include static  --output=denovel_${{ matrix.os }}${{ matrix.bin_ext }} exe.ts
+      run: deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --no-check --include templates --include static  --output=${{ matrix.artifact_name }}${{ matrix.bin_ext }} exe.ts
       
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
-        path: denovel_${{ matrix.os }}${{ matrix.bin_ext }}
+        path: ${{ matrix.artifact_name }}${{ matrix.bin_ext }}
         if-no-files-found: error
         
   release:
@@ -73,8 +73,7 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          denovel
-          denovel.exe
+          denovel-*
         generate_release_notes: true
         tag_name: ${{ github.ref_name }}
       env:
