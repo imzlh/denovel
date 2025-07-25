@@ -14,7 +14,7 @@ export default {
     next_link: '#article > div.fn-btn > a:nth-child(2)',
 
     // https://book.sfacg.com/Novel/531521/
-    mainPageLike: /https:\/\/book\.sfacg\.com\/Novel\/\d+\/$/,
+    mainPageLike: /https:\/\/book\.sfacg\.com\/Novel\/\d+\/?$/,
     mainPageTitle: 'body > div.container > div:nth-child(5) > div > div.main-part.fl.previous-chapter > div.crumbs.clearfix > a:last-child',
     mainPageCover: 'body > div.container > div.d-normal-banner > div > div > div.summary-pic > img',
     mainPageSummary: 'body > div.container > div.d-normal-banner > div > div > div.summary-content > p',

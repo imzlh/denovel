@@ -1,209 +1,176 @@
-import { Application, Router } from "https://deno.land/x/oak@v17.1.4/mod.ts";
-import { WebSocketServer, WebSocketClient } from "https://deno.land/x/websocket@v0.1.4/mod.ts";
-import { downloadNovel, Status, exists } from "./main.ts";
-import { ensureDirSync } from "jsr:@std/fs@^1.0.10/ensure-dir";
-import html from './static/server.html' with { type: "text" };
+/**
+ * 小说服务器 v2
+ * POST /api/settings({"delay":1000,"outputDir":"./downloads"}) - 保存全局设置
+   GET /api/settings - 获取全局设置
+   POST /api/check-url - (body: {url})检查URL并返回是否需要更多信息
+   WebSocket /api/download?url=... - 下载接口，支持实时消息推送
+   第一条消息传输信息：
+   { novelName: string, coverUrl: string, options: {
+        toEpub: document.getElementById('toEpub').checked,
+        translate: document.getElementById('translate').checked,
+        autoPart: document.getElementById('autoPart').checked,
+        jpFormat: document.getElementById('jpFormat').checked,
+        mergeShort: document.getElementById('mergeShort').checked
+    }}
+    后续服务端传输HTML到前端，直接显示到dialog
+ */
 
-// 任务状态存储
-interface ITask {
-    status: Status;
-    message: string;
-    progress: number;
-    wsClients: Set<WebSocketClient>;
-    abortController: AbortController;
-    name: string;
-    url: string;
-    id: string;
+import { checkIsTraditional, downloadNovel, exists, removeIllegalPath, Status } from "./main.ts";
+import { toEpub } from "./2epub.ts";
+import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
+
+// 全局设置
+let settings = {
+    delay: 1000,
+    outputDir: "./downloads"
+};
+if (await exists('server.json')) {
+    settings = JSON.parse(await Deno.readTextFile('server.json'));
+    await ensureDir(settings.outputDir);
 }
 
-export default async function main(){
-    const tasks = new Map<string, ITask>();
+// 路由处理函数
+async function handleRequest(req: Request): Promise<Response> {
+    const url = new URL(req.url);
 
-    /**
-     * 队列，以主机为key
-     */
-    const hostQueues = new Map<string, Array<ITask>>();
-
-    const app = new Application();
-    const router = new Router();
-    const wss = new WebSocketServer(8080);
-
-    // 新增：处理host队列
-    let processing = false;
-    async function processHostQueue(host: string) {
-        if(processing) return;
-        processing = true;
-        const hostQueue = hostQueues.get(host);
-        if (!hostQueue || hostQueue.length === 0) return;
-
-        let nextTask: ITask;
-        while (nextTask = hostQueue[0]) {
-            const { id, url, name } = nextTask;
-
+    // API路由
+    if (url.pathname === "/api/settings") {
+        if (req.method === "POST") {
+            const body = await req.json();
+            settings = body;
+            await Deno.writeTextFile('server.json', JSON.stringify(settings));
+            await ensureDir(settings.outputDir);
+            return new Response(JSON.stringify({ success: true }), {
+                headers: { "Content-Type": "application/json" }
+            });
+        } else if (req.method === "GET") {
+            return new Response(JSON.stringify(settings), {
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+    } else if (url.pathname === "/api/check-url") {
+        if (req.method === "POST") {
             try {
-                const urlObj = new URL(url);
-                const isTraditional = await exists('lib/' + urlObj.hostname + '.t.ts');
-
-                await downloadNovel(
-                    url,
-                    isTraditional,
-                    createReporter(id),
-                    name,
-                    undefined,
-                    nextTask.abortController.signal
-                );
-            } catch (err) {
-                const reporter = createReporter(id);
-                reporter(Status.ERROR, `下载失败: ${(err as Error).message}`);
-            } finally {
-                hostQueue.shift();
+                const { url: novelUrl } = await req.json();
+                const needsMoreInfo = await downloadNovel(novelUrl, {
+                    check_needs_more_data: true,
+                    traditional: await checkIsTraditional(new URL(novelUrl))
+                });
+                return new Response(JSON.stringify({ needsMoreInfo }), {
+                    headers: { "Content-Type": "application/json" }
+                });
+            } catch (e) {
+                return new Response(JSON.stringify({ error: (e as Error).message }), {
+                    status: 400,
+                    headers: { "Content-Type": "application/json" }
+                });
             }
         }
-        processing = false;
+    } else if (url.pathname === "/") {
+        // 调试页面
+        return new Response(await Deno.readTextFile("static/server.html"), {
+            headers: { "Content-Type": "text/html" }
+        });
     }
 
-    ensureDirSync("out");
+    return new Response("Not Found", { status: 404 });
+}
+
+// 启动服务器
+console.log("Server running on http://localhost:8000");
+Deno.serve({
+    port: 8000,
+}, async (req) => {
+    const url = new URL(req.url);
+    console.log(req.url);
 
     // WebSocket处理
-    wss.on("connection", (ws) => {
-        ws.on('message', (e: string) => {
-            try {
-                const data = JSON.parse(e);
+    if (url.pathname === "/api/download") {
+        if (req.headers.get("upgrade") === "websocket") {
+            const { socket, response } = Deno.upgradeWebSocket(req);
+            const novelUrl = url.searchParams.get("url");
 
-                if (data.action === "subscribe" && data.taskId && tasks.has(data.taskId)) {
-                    const task = tasks.get(data.taskId)!;
-                    task.wsClients.add(ws);
-                    // 立即发送当前状态
-                    ws.send(JSON.stringify({
-                        taskId: data.taskId,
-                        status: Status[task.status],
-                        message: task.message,
-                        progress: task.progress,
-                        name: task.name,
-                        url: task.url
-                    }));
-                } else if (data.action === "cancel" && data.taskId && tasks.has(data.taskId)) {
-                    const task = tasks.get(data.taskId)!;
-                    task.abortController.abort();
-                    task.status = Status.CANCELLED;
-                    task.message = "用户取消下载";
-                    broadcastTaskUpdate(data.taskId);
-                }
-            } catch (err) {
-                console.error("WebSocket message error:", err);
-            }
-        });
-
-        ws.on('close', () => {
-            tasks.forEach(task => task.wsClients.delete(ws));
-        });
-    });
-
-    // 广播任务更新
-    function broadcastTaskUpdate(taskId: string) {
-        const task = tasks.get(taskId);
-        if (!task) return;
-
-        const update = JSON.stringify({
-            taskId,
-            status: Status[task.status],
-            message: task.message,
-            progress: task.progress,
-            name: task.name,
-            url: task.url
-        });
-
-        if(task.status == Status.ERROR || task.status == Status.DONE){
-            console.log(`[${Status[task.status]}] ${task.message}`);
-        }
-
-        task.wsClients.forEach(client => {
-            try {
-                if (client.isClosed) {
-                    task.wsClients.delete(client);
-                } else {
-                    client.send(update);
-                }
-            } catch (err) {
-                console.error("WebSocket send error:", err);
-                task.wsClients.delete(client);
-            }
-        });
-    }
-
-    // 状态报告函数
-    function createReporter(taskId: string) {
-        return (status: Status, message: string, error?: Error) => {
-            const task = tasks.get(taskId);
-            if (!task) return;
-
-            task.status = status;
-            task.message = message;
-            if(error) {
-                task.message += ` (${error.message})`;
+            if (!novelUrl) {
+                socket.close(1008, "Missing URL parameter");
+                return response;
             }
 
-            if (status === Status.DONE || status === Status.ERROR || status === Status.CANCELLED) {
-                task.progress = 100;
-            } else {
-                task.progress = Math.min(task.progress + 5, 95);
-            }
-
-            broadcastTaskUpdate(taskId);
-        };
-    }
-
-    // HTML界面
-    router.get("/", (ctx) => {
-        ctx.response.type = "text/html";
-        ctx.response.body = html;
-    });
-
-    router
-        .post("/api/start", async (ctx) => {
-            try {
-                const { url, name, outdir } = await ctx.request.body.json();
-                const taskId = crypto.randomUUID();
-                const abortController = new AbortController();
-                const wsClients = new Set<WebSocketClient>();
-                const task: ITask = {
-                    status: Status.QUEUED,
-                    message: "等待开始...",
-                    progress: 0,
-                    wsClients,
-                    abortController,
-                    name,
-                    url,
-                    id: taskId
+            // 接收第一条消息
+            let firstMessageReceived = false;
+            let novelOptions: {
+                novelName: string;
+                coverUrl: string;
+                options: {
+                    toEpub: boolean;
+                    translate: boolean;
+                    autoPart: boolean;
+                    jpFormat: boolean;
+                    mergeShort: boolean;
                 };
+            };
 
-                tasks.set(taskId, task);
+            console.log(`[ NEW ] WebSocket连接成功，准备下载 ${novelUrl}`);
 
-                // 获取host
-                const urlObj = new URL(url);
-                const host = urlObj.hostname;
+            socket.onmessage = async (event) => {
+                if (!firstMessageReceived && typeof event.data === "string") {
+                    novelOptions = JSON.parse(event.data);
+                    firstMessageReceived = true;
+                    console.log(`[ INFO ] 开始下载 ${novelOptions.novelName}`);
 
-                // 初始化host队列（如果不存在）
-                if (!hostQueues.has(host)) {
-                    hostQueues.set(host, [ task ]);
-                }else{
-                    hostQueues.get(host)!.push(task);
+                    try {
+                        await downloadNovel(novelUrl, {
+                            reporter: async (status, message) => {
+                                socket.send(JSON.stringify({
+                                    status: Status[status],
+                                    log: message
+                                }));
+                            },
+                            book_name: novelOptions.novelName,
+                            cover: novelOptions.coverUrl,
+                            sig_abort: new AbortController().signal,
+                            parted_chapters: !novelOptions.options.autoPart,
+                            to_epub: novelOptions.options.toEpub,
+                            traditional: await checkIsTraditional(new URL(novelUrl)),
+                            epub_options: {
+                                thenCB: async () => {
+                                    socket.send(JSON.stringify({
+                                        status: 'DONE',
+                                        log: '转换完成'
+                                    }));
+                                },
+                                jpFormat: novelOptions.options.jpFormat,
+                                merge: novelOptions.options.mergeShort
+                            },
+                            info_generated: async (info) => {
+                                socket.send(JSON.stringify({
+                                    status: 'sync',
+                                    info
+                                }));
+                            },
+                            sleep_time: settings.delay / 1000,
+                            outdir: settings.outputDir,
+                            no_input: true
+                        });
+                        socket.close(1000);
+                    } catch (error) {
+                        socket.send(JSON.stringify({
+                            status: 'ERROR',
+                            log: error instanceof Error ? error.message : 'Unknown error'
+                        }));
+                    } finally {
+                        socket.close();
+                    }
                 }
+            };
 
-                // 启动队列处理
-                processHostQueue(host);
-                ctx.response.body = { taskId };
-            } catch (err) {
-                ctx.response.status = 400;
-                ctx.response.body = { error: (err as Error).message };
-            }
-        });
+            socket.onclose = () => {
+                console.log('WebSocket连接关闭');
+            };
 
-    app.use(router.routes());
-    app.use(router.allowedMethods());
+            return response;
+        }
+    }
 
-    console.log("Server running on http://localhost:8000");
-    await app.listen({ port: 8000 });
-}
-
-if(import.meta.main) main();
+    // 普通HTTP请求处理
+    return handleRequest(req);
+});

@@ -538,20 +538,45 @@ async function* tWrapper(url: URL) {
     }
 }
 
+const __traditional_cache: Record<string, boolean> = {};
+async function checkIsTraditional(siteURL: URL) {
+    if(siteURL.hostname in __traditional_cache) return __traditional_cache[siteURL.hostname];
+    let res = false;
+    if(await exists('./lib/' + siteURL.hostname + '.t.ts')) res = true;
+    else if(!await exists('./lib/' + siteURL.hostname + '.n.ts')) throw new Error(`找不到站点配置文件：${siteURL.hostname}`);
+    __traditional_cache[siteURL.hostname] = res;
+    return res;
+}
+
 async function downloadNovel(
     start_url = '',
-    isTraditional: boolean = true,
-    report_status: (status: Status, message: string, error?: Error) => void = (status, msg, e) =>
-        console.log(`[ ${Status[status]} ] ${msg}`, e?.message),
-    book_name: string = args.name!,
-    cover?: string,
-    sig_abort?: AbortSignal
+    options: {
+        traditional?: boolean,
+        reporter?: (status: Status, message: string, error?: Error) => void,
+        book_name?: string,
+        cover?: string,
+        sig_abort?: AbortSignal,
+        check_needs_more_data?: boolean,
+        translate?: boolean,
+        outdir?: string,
+        parted_chapters?: boolean,
+        to_epub?: boolean,
+        epub_options?: Parameters<typeof toEpub>[3],
+        info_generated?: (info: MainInfoResult) => void,
+        sleep_time?: number,
+        no_input?: boolean
+    }
 ) {
     let url = new URL(start_url);
+    if(!options.reporter) options.reporter = (status, msg, e) =>
+            console.log(`[ ${Status[status]} ] ${msg}`, e?.message);
+    if(!options.outdir) options.outdir = args.outdir ?? 'out'; 
+    if(undefined === options.parted_chapters) options.parted_chapters = true;
+    if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
     const callbacks: {
         default: Callback;
         getInfo?: (url: URL) => Promise<MainInfoResult | null>;
-    } = isTraditional ? {
+    } = options.traditional ? {
         default: tWrapper,
         getInfo: defaultGetInfo2
     } : await import('./lib/' + url.hostname + '.n.ts');
@@ -561,16 +586,28 @@ async function downloadNovel(
     const info = await callbacks.getInfo?.(url);
     if(info){
         summary = info.summary;
-        (!cover && info.cover) && (cover = info.cover);
-        (!book_name && info.book_name) && (book_name = info.book_name);
+        (!options.cover && info.cover) && (options.cover = info.cover);
+        (!options.book_name && info.book_name) && (options.book_name = info.book_name);
         info.firstPage && (url = info.firstPage);
+        if(options.check_needs_more_data) return false;
     }else{
-        !cover && (cover = prompt("请输入封面URL(可选) >> ") || '');
-        !book_name && (book_name = prompt("请输入书名 >> ") || '');
+        if(options.check_needs_more_data)
+            if(!options.cover || !options.book_name)
+                return true;
+            else
+                return false;
+        !options.cover && !options.no_input && (options.cover = prompt("请输入封面URL(可选) >> ") || '');
+        !options.book_name && !options.no_input && (options.book_name = prompt("请输入书名 >> ") || '');
+        if(!options.book_name){
+            throw new Error('请输入书名');
+        }
     }
 
+    // info_generated
+    if(options.info_generated && info) options.info_generated(info);
+
     // 打开文件
-    const fpath = (args.outdir || 'out') + '/' + removeIllegalPath(book_name) + '.txt';
+    const fpath = (options.outdir || 'out') + '/' + removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt';
     const file = await Deno.open(fpath, {
         create: true, write: true, truncate: true
     });
@@ -578,16 +615,16 @@ async function downloadNovel(
 
     let chapter_id = 1, previous_title = '';
 
-    if(cover){
-        file.write(new TextEncoder().encode(`封面: ${cover}\r\n`));
+    if(options.cover){
+        file.write(new TextEncoder().encode(`封面: ${options.cover}\r\n`));
     }
 
     // 开始循环
     try{
         let errorcount = 0;
         for await (let { title, content } of callbacks.default(url)) {
-            if (sig_abort?.aborted) {
-                report_status(Status.CANCELLED, '下载被用户终止');
+            if (options.sig_abort?.aborted) {
+                options.reporter(Status.CANCELLED, '下载被用户终止');
                 break;
             }
 
@@ -598,63 +635,66 @@ async function downloadNovel(
                     // 移除不可见字符
                     // content = removeNonVisibleChars(content);
                     // 翻译
-                    if (args.translate) content = convert(content);
+                    if (options.translate) content = convert(content);
                     // 移除空格
                     content = content.trim();
                     errorcount = 0;
                 } else {
-                    report_status(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
+                    options.reporter(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
                     errorcount++;
                 }
             }else{
-                report_status(Status.ERROR, `ID: ${chapter_id} 内容为空`);
+                options.reporter(Status.ERROR, `ID: ${chapter_id} 内容为空`);
                 errorcount++;
             }
 
             if(errorcount >= MAX_ERROR_COUNT){
-                report_status(Status.ERROR, `ID: ${chapter_id} 连续错误${MAX_ERROR_COUNT}次，放弃下载`);
+                options.reporter(Status.ERROR, `ID: ${chapter_id} 连续错误${MAX_ERROR_COUNT}次，放弃下载`);
                 break;
             }
 
             // 翻译标题
-            if(title && args.translate){
+            if(title && options.translate){
                 title = convert(title);
             }
 
             // 章节分卷？
             let text = '';
-            if (!args.parted && previous_title && title && similarTitle(title, previous_title)) {
+            if (!options.parted_chapters && previous_title && title && similarTitle(title, previous_title)) {
                 // 直接写入
                 text += '\n' + content;
             } else {
-                text = (args.parted ? '' : (`第${chapter_id++}章 ${title ?? ''}\r\n`))
+                text = (options.parted_chapters ? '' : (`第${chapter_id++}章 ${title ?? ''}\r\n`))
                     + (content ?? '[ERROR: 内容获取失败]') + '\r\n\r\n';
                 previous_title = title;
             }
 
-            report_status(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
+            options.reporter(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
-            if (sig_abort?.aborted) {
-                report_status(Status.CANCELLED, '下载被用户终止');
+            if (options.sig_abort?.aborted) {
+                options.reporter(Status.CANCELLED, '下载被用户终止');
                 break;
             }
 
             await Promise.all([
-                file.write(new TextEncoder().encode(args.parted ? text.trim() : text)),
-                sleep(Math.random() * SLEEP_INTERVAL),
+                file.write(new TextEncoder().encode(options.parted_chapters ? text.trim() : text)),
+                sleep(Math.random() * options.sleep_time!),
             ]);
         }
     }catch(e){
-        report_status(Status.WARNING, '发生错误,下载结束', e as Error);
+        options.reporter(Status.WARNING, '发生错误,下载结束', e as Error);
     }
 
     await file.sync();
     file.close();
 
-    if (!sig_abort?.aborted && args.epub) {
+    if (!options.sig_abort?.aborted && options.to_epub) {
+        options.reporter(Status.CONVERTING, '开始生成epub文件');
         const text = await Deno.readTextFile(fpath);
         toEpub(text, fpath, fpath.replace('.txt', '.epub'), {
             jpFormat: info?.jpStyle,
+            reporter: options.reporter,
+            ...(options.epub_options || {})
         });
     }
 }
@@ -725,17 +765,27 @@ export default async function main(){
     if (!start_url) Deno.exit(1);
 
     const host = new URL(start_url).hostname;
-    if (await exists('lib/' + host + '.t.ts'))
-        downloadNovel(start_url, true, undefined, undefined, undefined);
-    else if (await exists('lib/' + host + '.n.ts'))
-        downloadNovel(start_url, false, undefined, undefined, undefined);
+    if (await checkIsTraditional(new URL(start_url)))
+        downloadNovel(start_url, {
+            traditional: false,
+            to_epub: args.epub,
+            outdir: args.outdir,
+            parted_chapters: !args.parted,
+            translate: args.translate
+        });
     else
-        console.error('未找到' + host + '的配置，站点不受支持');
+        downloadNovel(start_url, {
+            traditional: true,
+            to_epub: args.epub,
+            outdir: args.outdir,
+            parted_chapters: !args.parted,
+            translate: args.translate
+        });
 }
 
 export { 
     NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, 
-    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep,
+    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
     forceSaveConfig,
     processContent, defaultGetInfo
 };

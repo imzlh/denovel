@@ -1,7 +1,7 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename, dirname } from "jsr:@std/path";
 import { EPub, EpubContentOptions, EpubOptions } from "./genepub.ts";
-import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL, fromHTML } from "./main.ts";
+import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL, fromHTML, Status } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // deno-lint-ignore no-control-regex
@@ -224,15 +224,17 @@ let PRESEL: string[];
  * @param output 输出位置
  */
 export function toEpub(data: string, input: string, output: string, option: {
-    thenCB?: () => any, per_page_max?: number, merge?: boolean, jpFormat?: boolean
+    thenCB?: () => any, per_page_max?: number, merge?: boolean, jpFormat?: boolean,
+    reporter?: (status: Status, message: string) => void,
 }): boolean {
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
     if(!PRESEL) PRESEL = PRESERVE_EL.concat(WRAP_EL);
+    if(!option.reporter) option.reporter = (s, m) => console.log(`[ ${Status[s]} ] ${m}`);
 
     // 检查是否是zComicLib?
     if (data.trimStart().startsWith('zComicLib/')) {
-        throw new Error('请使用comic.ts处理zComicLib漫画缓存文件!');
+        option.reporter(Status.ERROR, '请使用comic.ts处理zComicLib漫画缓存文件!');
     }
 
     // 分卷
@@ -263,11 +265,11 @@ export function toEpub(data: string, input: string, output: string, option: {
     if (pregmatches.length * per_page_max < data.length) {
         const idParsed = splitByIndent(data);
         if (idParsed.length * per_page_max < data.length) {
-            console.error(`章节数过少，疑似分片错误，请确保章节数 >= 1且遵循 “第x章 ....”`);
-            console.error(input, '生成失败', 'count: ', max, 'length: ', data.length, 'adv: ', data.length / max);
+            option.reporter(Status.ERROR, `章节数过少，疑似分片错误，请确保章节数 >= 1且遵循 “第x章 ....”`);
+            option.reporter(Status.ERROR, '生成失败' + 'count: ' + max +  ' length: ' + data.length + 'adv: ' + (data.length / max));
             return false;
         } else {
-            console.warn('使用缩进分卷风险很大，请小心删除，检查内容是否有效');
+            option.reporter(Status.WARNING, '使用缩进分卷风险很大，请小心删除，检查内容是否有效');
             chaps.push(...idParsed);
         }
     } else {
@@ -294,7 +296,7 @@ export function toEpub(data: string, input: string, output: string, option: {
                     return `<${tag}>`;
                 })
             }catch(e){
-                console.warn(`ParseError: `, (e as Error).message, '\n', 'content declare tag will be preserved');
+                option.reporter(Status.WARNING, `ParseError: ` + (e as Error).message + '\n' + 'content declare tag will be preserved');
             }
             chaps.push({
                 title: maxC(c[0].replaceAll(/\s+/g, ' '), 60) || (first ? '前言' : ''),
