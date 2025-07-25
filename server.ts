@@ -77,100 +77,102 @@ async function handleRequest(req: Request): Promise<Response> {
 }
 
 // 启动服务器
-console.log("Server running on http://localhost:8000");
-Deno.serve({
-    port: 8000,
-}, async (req) => {
-    const url = new URL(req.url);
-    console.log(req.url);
+export default async function main(){
+    console.log("Server running on http://localhost:8000");
+    Deno.serve({
+        port: 8000,
+    }, async (req) => {
+        const url = new URL(req.url);
+        console.log(req.url);
 
-    // WebSocket处理
-    if (url.pathname === "/api/download") {
-        if (req.headers.get("upgrade") === "websocket") {
-            const { socket, response } = Deno.upgradeWebSocket(req);
-            const novelUrl = url.searchParams.get("url");
+        // WebSocket处理
+        if (url.pathname === "/api/download") {
+            if (req.headers.get("upgrade") === "websocket") {
+                const { socket, response } = Deno.upgradeWebSocket(req);
+                const novelUrl = url.searchParams.get("url");
 
-            if (!novelUrl) {
-                socket.close(1008, "Missing URL parameter");
-                return response;
-            }
+                if (!novelUrl) {
+                    socket.close(1008, "Missing URL parameter");
+                    return response;
+                }
 
-            // 接收第一条消息
-            let firstMessageReceived = false;
-            let novelOptions: {
-                novelName: string;
-                coverUrl: string;
-                options: {
-                    toEpub: boolean;
-                    translate: boolean;
-                    autoPart: boolean;
-                    jpFormat: boolean;
-                    mergeShort: boolean;
+                // 接收第一条消息
+                let firstMessageReceived = false;
+                let novelOptions: {
+                    novelName: string;
+                    coverUrl: string;
+                    options: {
+                        toEpub: boolean;
+                        translate: boolean;
+                        autoPart: boolean;
+                        jpFormat: boolean;
+                        mergeShort: boolean;
+                    };
                 };
-            };
 
-            console.log(`[ NEW ] WebSocket连接成功，准备下载 ${novelUrl}`);
+                console.log(`[ NEW ] WebSocket连接成功，准备下载 ${novelUrl}`);
 
-            socket.onmessage = async (event) => {
-                if (!firstMessageReceived && typeof event.data === "string") {
-                    novelOptions = JSON.parse(event.data);
-                    firstMessageReceived = true;
-                    console.log(`[ INFO ] 开始下载 ${novelOptions.novelName}`);
+                socket.onmessage = async (event) => {
+                    if (!firstMessageReceived && typeof event.data === "string") {
+                        novelOptions = JSON.parse(event.data);
+                        firstMessageReceived = true;
+                        console.log(`[ INFO ] 开始下载 ${novelOptions.novelName}`);
 
-                    try {
-                        await downloadNovel(novelUrl, {
-                            reporter: async (status, message) => {
-                                socket.send(JSON.stringify({
-                                    status: Status[status],
-                                    log: message
-                                }));
-                            },
-                            book_name: novelOptions.novelName,
-                            cover: novelOptions.coverUrl,
-                            sig_abort: new AbortController().signal,
-                            parted_chapters: !novelOptions.options.autoPart,
-                            to_epub: novelOptions.options.toEpub,
-                            traditional: await checkIsTraditional(new URL(novelUrl)),
-                            epub_options: {
-                                thenCB: async () => {
+                        try {
+                            await downloadNovel(novelUrl, {
+                                reporter: async (status, message) => {
                                     socket.send(JSON.stringify({
-                                        status: 'DONE',
-                                        log: '转换完成'
+                                        status: Status[status],
+                                        log: message
                                     }));
                                 },
-                                jpFormat: novelOptions.options.jpFormat,
-                                merge: novelOptions.options.mergeShort
-                            },
-                            info_generated: async (info) => {
-                                socket.send(JSON.stringify({
-                                    status: 'sync',
-                                    info
-                                }));
-                            },
-                            sleep_time: settings.delay / 1000,
-                            outdir: settings.outputDir,
-                            no_input: true
-                        });
-                        socket.close(1000);
-                    } catch (error) {
-                        socket.send(JSON.stringify({
-                            status: 'ERROR',
-                            log: error instanceof Error ? error.message : 'Unknown error'
-                        }));
-                    } finally {
-                        socket.close();
+                                book_name: novelOptions.novelName,
+                                cover: novelOptions.coverUrl,
+                                sig_abort: new AbortController().signal,
+                                parted_chapters: !novelOptions.options.autoPart,
+                                to_epub: novelOptions.options.toEpub,
+                                traditional: await checkIsTraditional(new URL(novelUrl)),
+                                epub_options: {
+                                    thenCB: async () => {
+                                        socket.send(JSON.stringify({
+                                            status: 'DONE',
+                                            log: '转换完成'
+                                        }));
+                                    },
+                                    jpFormat: novelOptions.options.jpFormat,
+                                    merge: novelOptions.options.mergeShort
+                                },
+                                info_generated: async (info) => {
+                                    socket.send(JSON.stringify({
+                                        status: 'sync',
+                                        info
+                                    }));
+                                },
+                                sleep_time: settings.delay / 1000,
+                                outdir: settings.outputDir,
+                                no_input: true
+                            });
+                            socket.close(1000);
+                        } catch (error) {
+                            socket.send(JSON.stringify({
+                                status: 'ERROR',
+                                log: error instanceof Error ? error.message : 'Unknown error'
+                            }));
+                        } finally {
+                            socket.close();
+                        }
                     }
-                }
-            };
+                };
 
-            socket.onclose = () => {
-                console.log('WebSocket连接关闭');
-            };
+                socket.onclose = () => {
+                    console.log('WebSocket连接关闭');
+                };
 
-            return response;
+                return response;
+            }
         }
-    }
 
-    // 普通HTTP请求处理
-    return handleRequest(req);
-});
+        // 普通HTTP请求处理
+        return handleRequest(req);
+    });
+}

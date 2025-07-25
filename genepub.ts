@@ -612,7 +612,7 @@ export class EPub {
                 }
                 return;
             }
-            mediaArray.push({ id, url, dir, mediaType, extension });
+            mediaArray.push({ id, url, dir, mediaType: mediaType as string, extension });
         }
         node.properties!.src = `${subfolder}/${id}.${extension}`;
     }
