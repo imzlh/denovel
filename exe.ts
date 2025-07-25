@@ -12,6 +12,7 @@ import neastMain from './neast.ts';
 import serverMain from './server.ts';
 import t2cnMain from './t2cn.ts';
 import lanzouMain from './lanzoudl.ts';
+import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 
 const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
     // name: [function, description, asyncAble]
@@ -61,7 +62,6 @@ const coRead = async (pipe: ReadableStream, cb: (data: Uint8Array) => any) => {
 }
 const resizeAndWrite = (data: Uint8Array, target: { value: Uint8Array }) => {
     const rt = target.value;
-    console.log(new TextDecoder().decode(data));
     target.value = new Uint8Array(data.length + rt.byteLength);
     target.value.set(rt, 0);
     target.value.set(data, rt.byteLength);
@@ -85,22 +85,37 @@ async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef
         stdout: 'piped',
         stderr: 'piped'
     }).spawn();
-    console.log(Deno.execPath(), args);
     if(asyncAble){
         // @ts-ignore
-        if(!bufref) bufref = {};
+        assert(bufref instanceof Object);
         bufref!.stdin = cmd.stdin.getWriter();
         bufref!.value = new Uint8Array(0);
-        coRead(cmd.stdout, d => resizeAndWrite(d, bufref!));
-        coRead(cmd.stderr, d => resizeAndWrite(d, bufref!));
+        await Promise.all([
+            coRead(cmd.stdout, d => resizeAndWrite(d, bufref!)),
+            coRead(cmd.stderr, d => resizeAndWrite(d, bufref!))
+        ]);
     }else{
-        await Promise.all(
-            [
-                coRead(cmd.stdout, d => console.log(new TextDecoder().decode(d))),
-                coRead(cmd.stderr, d => console.error(new TextDecoder().decode(d))),
-                coWrite(cmd.stdin, abort)
-            ]
-        );
+        coRead(cmd.stderr, d => console.error(new TextDecoder().decode(d))),
+        coWrite(cmd.stdin, abort);
+        await coRead(cmd.stdout, d => console.log(new TextDecoder().decode(d)));
+    }
+}
+
+async function readline(prompt: string) {
+    await Deno.stdout.write(new TextEncoder().encode(prompt + ' '));
+    const CRLF = new TextEncoder().encode("\r\n");
+    const buf = new Uint8Array(1024);
+    let offset = 0;
+    while(true){
+        const data = await Deno.stdin.read(buf.subarray(offset));
+        if(!data) continue;
+        for(let i = offset; i < offset + data; i++){
+            if(buf[i] == CRLF[1] || buf[i] == CRLF[0]){
+                const line = new TextDecoder().decode(buf.subarray(0, i));
+                return line;
+            }
+        }
+        offset += data;
     }
 }
 
@@ -109,7 +124,7 @@ if (args.length == 0){
     // repl
     const startedCorutine = {} as Record<string, BufRef & { done: boolean | undefined } | undefined>;
     while (true) try{
-        const input = prompt(">>");
+        const input = await readline(">>");
         if (!input) continue;
         const commands = splitShellCommand(input), cmd = commands[0];
         if(!cmd) continue;
@@ -148,12 +163,13 @@ repl指令：
             // @ts-ignore will be filled by spawn
             startedCorutine[name] = {};
             spawn(commands.slice(1), true, startedCorutine[name]).then(() => {
-                console.log(`异步任务${name}执行完毕`);
+                console.log(`[i] 异步任务${name}执行完毕`);
                 startedCorutine[name]!.done = true;
             }).catch((e) => {
-                console.error(`异步任务${name}执行失败`, e);
+                console.error(`[!] 异步任务${name}执行失败`, e);
                 startedCorutine[name]!.done = true;
             });
+            console.log(`异步任务 ${name} 启动成功，输入"log ${name}"获取日志`);
             continue;
         }else if(cmd == 'log'){
             if(commands.length < 2){
@@ -177,7 +193,7 @@ repl指令：
             continue;
         }
         try {
-            await spawn(commands, true);
+            await spawn(commands, false);
         } catch (e) {
             console.error(`模块${cmd}执行失败`, e);
         }
