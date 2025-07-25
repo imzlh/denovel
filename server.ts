@@ -15,8 +15,8 @@
     后续服务端传输HTML到前端，直接显示到dialog
  */
 
-import { checkIsTraditional, downloadNovel, exists, removeIllegalPath, Status } from "./main.ts";
-import { toEpub } from "./2epub.ts";
+import { checkIsTraditional, downloadNovel, exists, Status } from "./main.ts";
+import mainPage from "./static/server.html" with { type: "text" };
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 // 全局设置
@@ -68,7 +68,7 @@ async function handleRequest(req: Request): Promise<Response> {
         }
     } else if (url.pathname === "/") {
         // 调试页面
-        return new Response(await Deno.readTextFile("static/server.html"), {
+        return new Response(mainPage, {
             headers: { "Content-Type": "text/html" }
         });
     }
