@@ -1,7 +1,6 @@
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { getDocument, removeIllegalPath, fetch2 } from "./main.ts";
-import { parseArgs } from "https://deno.land/std@0.224.0/cli/parse_args.ts";
-import { exists } from "https://deno.land/std@0.224.0/fs/exists.ts";
+import pageCache from './static/17c.html' with { type: "text" };
 
 const ENTRY_LINK = "https://17c.com",
     APP_ENTRY_LINK = "https://www.17capp2.com:6688/100.html",
@@ -338,7 +337,6 @@ async function serverMain(){
     // if(!await exists('17cache.json')) await Deno.writeTextFile('17cache.json', '{}');
     const contentDB = await Deno.openKv("./17cache.db");
     // const contentCache: Record<string, VideoInfo> = JSON.parse(Deno.readTextFileSync('17cache.json') || '{}');
-    const pageCache = await Deno.readTextFile('17c.html');
 
     await ensureDir('webo');
 

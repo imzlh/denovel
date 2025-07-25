@@ -2,6 +2,7 @@ import { Application, Router } from "https://deno.land/x/oak@v17.1.4/mod.ts";
 import { WebSocketServer, WebSocketClient } from "https://deno.land/x/websocket@v0.1.4/mod.ts";
 import { downloadNovel, Status, exists } from "./main.ts";
 import { ensureDirSync } from "jsr:@std/fs@^1.0.10/ensure-dir";
+import html from './static/server.html' with { type: "text" };
 
 // 任务状态存储
 interface ITask {
@@ -153,7 +154,6 @@ export default async function main(){
     }
 
     // HTML界面
-    const html = Deno.readTextFileSync("server.html");
     router.get("/", (ctx) => {
         ctx.response.type = "text/html";
         ctx.response.body = html;
