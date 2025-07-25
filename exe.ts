@@ -2,30 +2,21 @@
  * denovel可执行
  */
 
-import dowNovel from "./main.ts";
-import downComic from "./comic.ts";
-import convMain from './conv.ts';
-import epubMain from './2epub.ts';
-import txtMain from './2txt.ts';
-import partMain from './part.ts';
-import neastMain from './neast.ts';
-import serverMain from './server.ts';
-import t2cnMain from './t2cn.ts';
-import lanzouMain from './lanzoudl.ts';
 import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 
+const useModule = (m: string) => () => import(`./${m}.ts`).then(m => m.default());
 const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
     // name: [function, description, asyncAble]
-    "downovel": [dowNovel, "下载小说", false],
-    "downcomic": [downComic, "下载漫画", false],
-    "conv": [convMain, "使用外置ffmpeg，转换文件格式", true],
-    "2epub": [epubMain, "转换txt文件到epub格式", true],
-    "2txt": [txtMain, "转换epub文件到txt格式", true],
-    "part": [partMain, "将txt文件分割成文件夹(每文件夹60个文件)", true],
-    "downmusic": [neastMain, "下载网易云音乐歌单", false],
-    "server": [serverMain, "启动下载服务器(不稳定，待完整测试)", true],
-    "t2cn": [t2cnMain, "将(带繁体文本的)txt文件转换为简体中文格式", false],
-    'lanzou': [lanzouMain, '下载蓝奏云分享文件', false]
+    "downovel": [useModule("main"), "下载小说", false],
+    "downcomic": [useModule("comic"), "下载漫画", false],
+    "conv": [useModule("conv"), "转换文件格式", true],
+    "2epub": [useModule("2epub"), "转换txt文件到epub格式", true],
+    "2txt": [useModule("2txt"), "转换epub文件到txt格式", true],
+    "part": [useModule("part"), "将txt文件分割成文件夹(每文件夹60个文件)", true],
+    "downmusic": [useModule("neast"), "下载网易云音乐歌单", false],
+    "server": [useModule("server"), "启动下载服务器(不稳定，待完整测试)", true],
+    "t2cn": [useModule("t2cn"), "将(带繁体文本的)txt文件转换为简体中文格式", false],
+    'lanzou': [useModule("lanzoudl"), '下载蓝奏云分享文件', false]
 };
 
 function splitShellCommand(cmd: string): string[] {
@@ -83,7 +74,10 @@ async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef
         args: args,
         stdin: 'piped',
         stdout: 'piped',
-        stderr: 'piped'
+        stderr: 'piped',
+        env: {
+            DENOVEL_TERMINAL: "true"
+        }
     }).spawn();
     if(asyncAble){
         // @ts-ignore
@@ -233,6 +227,7 @@ if (!fn) {
 }
 
 try {
+    console.log('执行', Deno.args);
     fn();
 } catch (e) {
     console.error(`模块${cmd}执行失败`, e);

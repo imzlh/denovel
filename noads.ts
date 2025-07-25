@@ -9,7 +9,7 @@ import { exists } from "./main.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import pinyin from "https://cdn.skypack.dev/pinyin@2.9.1";
 
-throw new Error('不要使用！目前还不可用！');
+// throw new Error('不要使用！目前还不可用！');
 
 // 灵/m@e-*/n#g/首^发
 const sc = '\/@-*/#^%$&~`!'.split('').map(c => '\\' + c).join('');

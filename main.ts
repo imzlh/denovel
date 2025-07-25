@@ -559,7 +559,7 @@ async function downloadNovel(
         check_needs_more_data?: boolean,
         translate?: boolean,
         outdir?: string,
-        parted_chapters?: boolean,
+        disable_parted?: boolean,
         to_epub?: boolean,
         epub_options?: Parameters<typeof toEpub>[3],
         info_generated?: (info: MainInfoResult) => void,
@@ -571,7 +571,6 @@ async function downloadNovel(
     if(!options.reporter) options.reporter = (status, msg, e) =>
             console.log(`[ ${Status[status]} ] ${msg}`, e?.message);
     if(!options.outdir) options.outdir = args.outdir ?? 'out'; 
-    if(undefined === options.parted_chapters) options.parted_chapters = true;
     if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
     const callbacks: {
         default: Callback;
@@ -660,11 +659,11 @@ async function downloadNovel(
 
             // 章节分卷？
             let text = '';
-            if (!options.parted_chapters && previous_title && title && similarTitle(title, previous_title)) {
+            if (options.disable_parted || !title || similarTitle(title, previous_title)) {
                 // 直接写入
                 text += '\n' + content;
             } else {
-                text = (options.parted_chapters ? '' : (`第${chapter_id++}章 ${title ?? ''}\r\n`))
+                text = (options.disable_parted ? '' : (`第${chapter_id++}章 ${title ?? ''}\r\n`))
                     + (content ?? '[ERROR: 内容获取失败]') + '\r\n\r\n';
                 previous_title = title;
             }
@@ -677,7 +676,7 @@ async function downloadNovel(
             }
 
             await Promise.all([
-                file.write(new TextEncoder().encode(options.parted_chapters ? text.trim() : text)),
+                file.write(new TextEncoder().encode(options.disable_parted ? text : text.trim())),
                 sleep(Math.random() * options.sleep_time!),
             ]);
         }
@@ -691,11 +690,14 @@ async function downloadNovel(
     if (!options.sig_abort?.aborted && options.to_epub) {
         options.reporter(Status.CONVERTING, '开始生成epub文件');
         const text = await Deno.readTextFile(fpath);
-        toEpub(text, fpath, fpath.replace('.txt', '.epub'), {
-            jpFormat: info?.jpStyle,
-            reporter: options.reporter,
-            ...(options.epub_options || {})
-        });
+        return new Promise(resolve => 
+            toEpub(text, fpath, fpath.replace('.txt', '.epub'), {
+                jpFormat: info?.jpStyle,
+                reporter: options.reporter,
+                ...(options.epub_options || {}),
+                thenCB: () => resolve(undefined)
+            })
+        );
     }
 }
 
@@ -755,7 +757,7 @@ export default async function main(){
     if(!args.sleep) console.warn('警告：缺少-s参数，可能导致DDOS防护拦截');
     console.log.apply(console, logs);
 
-    if (Deno.stdin.isTerminal()){
+    if (Deno.stdin.isTerminal() || Deno.env.has('DENOVEL_TERMINAL')){
         start_url = args._[0] || prompt("请输入起始URL >> ") || '';
         // cover = args.cover || prompt("请输入封面URL(可选,自动) >> ");
     } else {
@@ -770,7 +772,7 @@ export default async function main(){
             traditional: false,
             to_epub: args.epub,
             outdir: args.outdir,
-            parted_chapters: !args.parted,
+            disable_parted: args.parted,
             translate: args.translate
         });
     else
@@ -778,7 +780,7 @@ export default async function main(){
             traditional: true,
             to_epub: args.epub,
             outdir: args.outdir,
-            parted_chapters: !args.parted,
+            disable_parted: args.parted,
             translate: args.translate
         });
 }

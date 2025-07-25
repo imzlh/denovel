@@ -242,14 +242,6 @@ export const defaultAllowedXhtml11Tags = [
     "var",
 ];
 
-// UUID generation
-function uuid() {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-        const r = (Math.random() * 16) | 0;
-        return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-    });
-}
-
 // Current directory
 const __dirname = import.meta.dirname!;
 
@@ -290,6 +282,7 @@ export interface EpubOptions {
     allowedAttributes?: string[];
     allowedXhtml11Tags?: string[];
     networkHandler?: typeof fetch2;
+    logHandler?: (type: "info" | "warn" | "error", message: string) => void;
 }
 
 interface EpubContent {
@@ -355,10 +348,11 @@ export class EPub {
     coverMetaContent: string | null;
     startOfContentHref: string;
     networkHandler: typeof fetch2;
+    logHandler: (type: "info" | "warn" | "error", message: string) => void;
 
     constructor(options: EpubOptions, output: string) {
         // File ID
-        this.uuid = uuid();
+        this.uuid = crypto.randomUUID();
 
         // Required options
         this.title = options.title;
@@ -398,9 +392,10 @@ export class EPub {
         this.allowedXhtml11Tags = options.allowedXhtml11Tags ?? defaultAllowedXhtml11Tags;
 
         // Temporary folder for work
-        this.tempDir = options.tempDir ?? resolve(__dirname, "./tempDir/");
+        this.tempDir = options.tempDir ?? Deno.makeTempDirSync();
         this.tempEpubDir = resolve(this.tempDir, this.uuid);
         this.networkHandler = options.networkHandler ?? fetch2;
+        this.logHandler = options.logHandler ?? console.log;
 
         // Check the cover image
         if (this.cover !== null) {
@@ -483,12 +478,12 @@ export class EPub {
 
                 // Parse the content
                 const html = loadHtml(content.data, [
-                    () => (tree) => {
+                    () => (tree: any) => {
                         visit(tree, "element", (node: Element) => {
                             this.validateElement(index, node);
                         });
                     },
-                    () => (tree) => {
+                    () => (tree: any) => {
                         visit(tree, "element", (node: Element) => {
                             if (["img", "input"].includes(node.tagName)) {
                                 this.processMediaTag(index, dir, node, this.images, "images");
@@ -564,8 +559,9 @@ export class EPub {
         if (this.version === 2) {
             if (!this.allowedXhtml11Tags.includes(node.tagName)) {
                 if (this.verbose) {
-                    console.log(
-                        `[Warning] (content[${contentIndex}]) ${node.tagName} tag isn't allowed on EPUB 2/XHTML 1.1 DTD.`
+                    this.logHandler(
+                        'warn',
+                        `(content[${contentIndex}]) ${node.tagName} 标签不被 ePUB2 支持，将被替换为 <div>.`
                     );
                 }
                 node.tagName = "div";
@@ -594,11 +590,12 @@ export class EPub {
             id = media.id;
             extension = media.extension;
         } else {
-            id = uuid();
+            id = crypto.randomUUID();
             const mediaType = mime.getType(url.replace(/\?.*/, ""));
             if (mediaType === null) {
-                console.warn(
-                   `[Media Warn] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
+                this.logHandler(
+                    'warn',
+                   `(i=[${contentIndex}]) (subfolder=${subfolder}) 此资源无法自动识别类型 : ${url}`
                 );
             }
             // 适配novelpia file结尾文件
@@ -606,8 +603,9 @@ export class EPub {
             if (extension === null) {
                 extension = getExtensionFromDataUrl(url);
                 if (!extension) {
-                    console.error(
-                        `[Media Error] (content[${contentIndex}]) (subfolder=${subfolder}) The media can't be processed : ${url}`
+                    this.logHandler(
+                        'error',
+                        `(content[${contentIndex}]) (subfolder=${subfolder}) 此资源无法自动识别类型 : ${url}`
                     );
                 }
                 return;
@@ -626,27 +624,27 @@ export class EPub {
         await Deno.mkdir(resolve(this.tempEpubDir, "./OEBPS"), { recursive: true });
 
         if (this.verbose) {
-            console.log("Downloading Media...");
+            this.logHandler('info', "下载epub内资源 ...");
         }
         await this.downloadAllMedia();
 
         if (this.verbose) {
-            console.log("Making Cover...");
+            this.logHandler('info', "制作封面...");
         }
         await this.makeCover();
 
         if (this.verbose) {
-            console.log("Generating Template Files.....");
+            this.logHandler('info', "生成模板文件.....");
         }
         await this.generateTemplateFiles();
 
         if (this.verbose) {
-            console.log("Generating Epub Files...");
+            this.logHandler('info', "生成epub文件...");
         }
         await this.generate();
 
         if (this.verbose) {
-            console.log("Done.");
+            this.logHandler('info', "一切就绪！");
         }
         return { result: "ok" };
     }
@@ -758,10 +756,10 @@ export class EPub {
                 if(!httpRequest.ok || !httpRequest.body)
                     throw new Error("Failed to fetch cover image(status code: " + httpRequest.status + ")");
                 await Deno.writeFile(destPath, httpRequest.body);
-                console.log('成功下载封面：', this.cover);
+                this.logHandler('info', '成功下载封面：' + this.cover);
             } catch (err) {
                 if (true) {
-                    console.error(`The cover image can't be processed : ${this.cover}, ${err}`);
+                    this.logHandler('error', `封面处理失败 : ${this.cover}, ${err}`);
                 }
                 try{
                     await Deno.remove(destPath);
@@ -773,7 +771,7 @@ export class EPub {
         }
 
         if (this.verbose) {
-            console.log("[Success] cover image downloaded successfully!");
+            this.logHandler('info', "成功下载封面图片!");
         }
 
         const sizeOf = promisify(imageSize);
@@ -788,7 +786,7 @@ export class EPub {
         this.coverDimensions.height = result.height;
 
         if (this.verbose) {
-            console.log(`cover image dimensions: ${this.coverDimensions.width} x ${this.coverDimensions.height}`);
+            this.logHandler('info', `封面尺寸: ${this.coverDimensions.width} x ${this.coverDimensions.height}`);
         }
     }
 
@@ -800,7 +798,7 @@ export class EPub {
             await Deno.copyFile(auxpath, filename);
             return;
         }catch{
-            return console.error(`无法处理文件(格式错误?) : ${media.url}`);
+            return this.logHandler('error', `无法处理文件(格式错误?) : ${media.url}`);
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -812,10 +810,10 @@ export class EPub {
                 if(!httpRequest.ok || !httpRequest.body)
                     throw new Error("下载内嵌资源失败(HTTP  " + httpRequest.status + ")");
                 await Deno.writeFile(filename, httpRequest.body);
-                console.log('成功下载：', media.url);
+                this.logHandler('info', '成功下载：' + media.url);
             } catch (err) {
                 if (true) {
-                    console.error(`无法处理文件(格式错误?) : ${media.url}, ${err}`);
+                    this.logHandler('error', `无法处理文件(格式错误?) : ${media.url}, ${err}`);
                 }
                 return;
             }
@@ -851,7 +849,7 @@ export class EPub {
             const archive = archiver("zip", { zlib: { level: 9 } });
             const output = createWriteStream(this.output);
             if (this.verbose) {
-                console.log("Zipping temp dir to", this.output);
+                this.logHandler('info', "开始压缩文件，目标：" + this.output);
             }
             archive.append("application/epub+zip", { store: true, name: "mimetype" });
             archive.directory(`${cwd}/META-INF`, "META-INF");
@@ -860,16 +858,15 @@ export class EPub {
             archive.on("end", () => {
                 output.end(() => {
                     if (this.verbose) {
-                        console.log("Done zipping, clearing temp dir...");
+                        this.logHandler('info', "压缩结束...");
                     }
-                    Deno.removeSync(cwd, { recursive: true });
                     resolve();
                 });
             });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             archive.on("error", (err: any) => reject(err));
             archive.finalize();
-            console.log('All done with', this.audioVideo.length, 'audio/video files and', this.images.length, 'images.')
+            this.logHandler('info', '完成！总计 ' +  this.audioVideo.length + ' 多媒体文件和 ' + this.images.length + ' 图片');
         });
     }
 }

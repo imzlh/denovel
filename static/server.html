@@ -94,7 +94,6 @@
         .checkbox-group {
             display: flex;
             flex-wrap: wrap;
-            flex-direction: column;
             gap: 15px;
             margin-top: 15px;
         }
@@ -758,6 +757,11 @@
                 return;
             }
 
+            if (!novelName){
+                showToast('请输入小说名称', 'error');
+                return;
+            }
+
             const options = {
                 toEpub: document.getElementById('toEpub').checked,
                 translate: document.getElementById('translate').checked,
@@ -861,11 +865,18 @@
                         task.novelName = data.info.book_name || '未知';
                         task.coverUrl = data.info.cover || '';
                         updateQueueDisplay();
+                    }else if(data.finalChunk){
+                        // 下载完成
+                        task.status = 'completed';
+                        logTaskMessage(task.id, `下载完成: ${task.novelName || task.url}`, 'success');
+                        resolve();
+                    }else{
+                        logTaskMessage(task.id, data.log, data.status.toLowerCase());
                     }
-                    logTaskMessage(task.id, data.log, data.status.toLowerCase());
                 };
 
                 ws.onclose = (event) => {
+                    if (task.status === 'completed') return;
                     if (event.code === 1000) {
                         task.status = 'completed';
                         logTaskMessage(task.id, `下载完成: ${task.novelName || task.url}`, 'success');

@@ -248,6 +248,7 @@ export function toEpub(data: string, input: string, output: string, option: {
         // verbose: true,
         downloadAudioVideoFiles: true,
         lang: "zh-CN",
+        logHandler: (level, message) => option.reporter!(Status.DOWNLOADING, `[${level}] ${message}`),
     };
 
     let matches: Array<[string, string]> = [];
@@ -329,9 +330,9 @@ export function toEpub(data: string, input: string, output: string, option: {
     }
 
     // 生成 epub 文件
-    console.log('Generating EPub file to ', output, option.jpFormat ? 'using jp format' : '', '...');
+    option.reporter(Status.CONVERTING, 'Generating EPub file to ' + output + option.jpFormat ? 'using jp format' : '' + '...');
     new EPub(options, output).render().then(a => {
-        console.log('EPub has been generated to ', output, a.result);
+        option.reporter!(Status.DONE, '生成成功: ' + output + " " + a.result);
         if (option.thenCB) option.thenCB();
     });
 

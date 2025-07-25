@@ -11,6 +11,11 @@ export default async function* main(page1: string) {
     const response = await getDocument(page, undefined, header),
         title = response.querySelector('body > div.Reduction_top > div > div.Reduction_left')?.innerText
             .split('>').at(-1)?.trim() || '未知';
+
+    if(page1.includes('manhua.sfacg.com/mh/')){
+        console.error('复制“点击浏览”的链接，而不是首页!');
+    }
+
     for (const script of response.querySelectorAll('script')) {
         const text = script.textContent;
         if (text.includes('chapId') && text.includes('nextChap')) {

@@ -56,7 +56,7 @@ async function handleRequest(req: Request): Promise<Response> {
                     check_needs_more_data: true,
                     traditional: await checkIsTraditional(new URL(novelUrl))
                 });
-                return new Response(JSON.stringify({ needsMoreInfo }), {
+                return new Response(JSON.stringify({ needsInfo: needsMoreInfo }), {
                     headers: { "Content-Type": "application/json" }
                 });
             } catch (e) {
@@ -129,7 +129,7 @@ export default async function main(){
                                 book_name: novelOptions.novelName,
                                 cover: novelOptions.coverUrl,
                                 sig_abort: new AbortController().signal,
-                                parted_chapters: !novelOptions.options.autoPart,
+                                disable_parted: !novelOptions.options.autoPart,
                                 to_epub: novelOptions.options.toEpub,
                                 traditional: await checkIsTraditional(new URL(novelUrl)),
                                 epub_options: {
@@ -152,13 +152,15 @@ export default async function main(){
                                 outdir: settings.outputDir,
                                 no_input: true
                             });
+                            socket.send(JSON.stringify({
+                                finalChunk: true
+                            }));
                             socket.close(1000);
                         } catch (error) {
                             socket.send(JSON.stringify({
                                 status: 'ERROR',
                                 log: error instanceof Error ? error.message : 'Unknown error'
                             }));
-                        } finally {
                             socket.close();
                         }
                     }
@@ -176,3 +178,5 @@ export default async function main(){
         return handleRequest(req);
     });
 }
+
+if(import.meta.main) main();

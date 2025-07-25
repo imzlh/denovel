@@ -100,7 +100,7 @@ export default async function main(){
         console.log(`INFO 从文件中读取了${chaps.length}章`);
     }else{
         let start: string | null;
-        if(Deno.stdin.isTerminal())
+        if(Deno.stdin.isTerminal() || Deno.env.has('DENOVEL_TERMINAL'))
             start = args._[0] as string || prompt('输入起始URL >> ');
         else
             start = JSON.parse(Deno.readTextFileSync('debug.json')).url;
