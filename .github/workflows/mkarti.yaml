@@ -17,16 +17,11 @@ jobs:
 
     - name: Build for Windows (x86_64)
       run: |
-        deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --no-check --include templates --include static  --output=app.exe exe.ts
+        deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --include templates --include static  --output=app.exe exe.ts
         # 如果你的入口文件不是main.ts，请替换为你的实际入口文件
-        
-    - name: Create artifacts directory
-      run: |
-        if not exist "artifacts" mkdir artifacts
-        move app.exe artifacts\
         
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: windows-executable
-        path: artifacts\app.exe
+        path: app.exe
