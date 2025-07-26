@@ -49,13 +49,24 @@ function splitShellCommand(cmd: string): string[] {
 const coRead = async (pipe: ReadableStream, cb: (data: Uint8Array) => any) => {
     const rd = pipe.getReader();
     let res;
-    while(!(res = await rd.read()).done) cb(res.value);
+    while(!(res = await rd.read()).done) await cb(res.value);
 }
 const resizeAndWrite = (data: Uint8Array, target: { value: Uint8Array }) => {
     const rt = target.value;
     target.value = new Uint8Array(data.length + rt.byteLength);
     target.value.set(rt, 0);
     target.value.set(data, rt.byteLength);
+}
+const decode = async (data: Uint8Array) => {
+    const text = new TextDecoder().decode(data);
+    text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    let pos = 0, prevpos = 0;
+    while(-1 != (pos = text.indexOf("\n", prevpos))){
+        await Deno.stdout.write(new TextEncoder().encode(
+            text.substring(prevpos, pos +1)
+        ));
+        prevpos = pos +1;
+    }
 }
 const coWrite = async (pipe: WritableStream, abort: AbortSignal) => {
     const wr = pipe.getWriter();
@@ -64,8 +75,10 @@ const coWrite = async (pipe: WritableStream, abort: AbortSignal) => {
     wr.closed.then(() => done = true);
     while(!abort.aborted && !done){
         const read = await Deno.stdin.read(buf);
-        if(!read) break;
-        await wr.write(buf.subarray(0, read));
+        if(!read || done) break;
+        try{
+            await wr.write(buf.subarray(0, read));
+        }catch{ /* broken pipe */ }
     }
 }
 type BufRef = { value: Uint8Array, stdin: WritableStreamDefaultWriter };
@@ -89,13 +102,13 @@ async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef
             coRead(cmd.stderr, d => resizeAndWrite(d, bufref!))
         ]);
     }else{
-        coRead(cmd.stderr, d => console.error(new TextDecoder().decode(d))),
+        coRead(cmd.stderr, d => decode(d)),
         coWrite(cmd.stdin, abort);
-        await coRead(cmd.stdout, d => console.log(new TextDecoder().decode(d)));
+        await coRead(cmd.stdout, d => decode(d));
     }
 }
 
-async function readline(prompt: string) {
+export async function readline(prompt: string) {
     await Deno.stdout.write(new TextEncoder().encode(prompt + ' '));
     const CRLF = new TextEncoder().encode("\r\n");
     const buf = new Uint8Array(1024);
@@ -118,7 +131,7 @@ if (args.length == 0){
     // repl
     const startedCorutine = {} as Record<string, BufRef & { done: boolean | undefined } | undefined>;
     while (true) try{
-        const input = await readline(">>");
+        const input = await readline("densh # ");
         if (!input) continue;
         const commands = splitShellCommand(input), cmd = commands[0];
         if(!cmd) continue;

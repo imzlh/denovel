@@ -3,6 +3,7 @@ import { EPub, EpubContentOptions } from './genepub.ts';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename } from "jsr:@std/path@^1.0.8";
 import { parseArgs } from "jsr:@std/cli/parse-args";
+import { readline } from "./exe.ts";
 // import { Zip }
 
 const out = 'out/', retry_count = 3;
@@ -101,7 +102,7 @@ export default async function main(){
     }else{
         let start: string | null;
         if(Deno.stdin.isTerminal() || Deno.env.has('DENOVEL_TERMINAL'))
-            start = args._[0] as string || prompt('输入起始URL >> ');
+            start = args._[0] as string || await readline('输入起始URL >> ');
         else
             start = JSON.parse(Deno.readTextFileSync('debug.json')).url;
         if(!start) Deno.exit(0);
@@ -116,8 +117,8 @@ export default async function main(){
         mod = await import(`./comiclib/${site}.ts`);
         const funcNext = mod.default as (input: string) => AsyncGenerator<string, [string, string], string>;
 
-        name = args.name || prompt('输入漫画名 >> ');
-        cover = args.cover || prompt('输入封面URL >> ');
+        name = args.name || await readline('输入漫画名 >> ');
+        cover = args.cover || await readline('输入封面URL >> ');
 
         // 缓冲TXT文件
         const txt = await Deno.open(`${out}/${name}.${site}.txt`, { create: true, write: true }),

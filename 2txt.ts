@@ -7,6 +7,7 @@ import { parse as parseXML, XmlNode, RegularTagNode, OrphanTagNode } from 'jsr:@
 import { toEpub } from "./2epub.ts";
 import { exists, processContent, tryReadTextFile } from "./main.ts";
 import { ensure } from "./_dep.ts";
+import { readline } from "./exe.ts";
 
 class ElementArray<T extends XmlNode> extends Array<T> {
     static fromXML(xml: string) {
@@ -254,7 +255,7 @@ EPUB/TXT转换工具 v1.2
         Deno.exit(0);
     }
     // 获取输入路径参数
-    const inputPath = args._[0] || prompt("请输入输入文件或目录：") || "E:\\docs\\Documents\\6.1\\潘小姐想变回男孩子.txt.epub";
+    const inputPath = args._[0] || await readline("请输入输入文件或目录：") || "E:\\docs\\Documents\\6.1\\潘小姐想变回男孩子.txt.epub";
     if (!inputPath) {
         console.error("错误：必须指定输入文件或目录");
         Deno.exit(1);

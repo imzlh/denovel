@@ -9,6 +9,7 @@ import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename, dirname } from "jsr:@std/path@^1.0";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { DOMParser } from "jsr:@b-fuze/deno-dom";
+import { readline } from "./exe.ts";
 
 interface LanZouFile {
     icon: string;
@@ -470,7 +471,7 @@ export default async function main() {
     let files: LanZouFile[] = [];
     
     if(!Deno.args.length){
-        const link = prompt('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
+        const link = await readline('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
         if (!link) return;
         
         const intv = setInterval(() => Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4)), 10000);

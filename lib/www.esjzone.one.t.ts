@@ -1,7 +1,5 @@
-import { setRawCookie, getDocument, fetch2, forceSaveConfig } from "../main.ts";
-
-const cookie = prompt('输入esjzone.one的cookie > ') || '_ga=GA1.1.1213900809.1743921237; msg_alert=10; ws_last_visit_code=96f7fa806ebxyWfzb5j8oTabSI4xQvRYiXgA0DFjrD-VtgeqtTyu5XzNc6jw; ws_last_visit_post=4ff1d0bc677eIeV4hYMTHXpl-ZS1bo0j58ZVqVl0PvrSjf3BLMUWCuYEP7bCH3h8xPNcwX94luarpCbr2O; _ga_6N355XR0Y6=GS2.1.s1749536450$o3$g0$t1749536450$j60$l0$h0';
-if(cookie) setRawCookie('esjzone.one', cookie);
+import { readline } from "../exe.ts";
+import { getDocument, fetch2, forceSaveConfig } from "../main.ts";
 
 // Get Login State
 while(true){
@@ -15,8 +13,8 @@ while(true){
         console.log('未登录，正在尝试登录...');
         await fetch2('https://www.esjzone.one/my/login');
 
-        const username = prompt('请输入用户名 > ') || '2131601562@qq.com';
-        const password = prompt('请输入密码 > ') || 'sbsb1234';
+        const username = await readline('请输入用户名 > ') || '2131601562@qq.com';
+        const password = await readline('请输入密码 > ') || 'sbsb1234';
         if(!username ||!password) throw new Error('用户名或密码不能为空！');
 
         // 获取登录token

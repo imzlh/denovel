@@ -3,6 +3,7 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 import { toEpub } from "./2epub.ts";
 import { Converter } from './t2cn.js';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
+import { readline } from "./exe.ts";
 
 class NoRetryError extends Error { }
 
@@ -606,8 +607,8 @@ async function downloadNovel(
                 return true;
             else
                 return false;
-        !options.cover && !options.no_input && (options.cover = prompt("请输入封面URL(可选) >> ") || '');
-        !options.book_name && !options.no_input && (options.book_name = prompt("请输入书名 >> ") || '');
+        !options.cover && !options.no_input && (options.cover = await readline("请输入封面URL(可选) >> ") || '');
+        !options.book_name && !options.no_input && (options.book_name = await readline("请输入书名 >> ") || '');
         if(!options.book_name){
             throw new Error('请输入书名');
         }
@@ -674,8 +675,8 @@ async function downloadNovel(
                 // 直接写入
                 text += '\n' + content;
             } else {
-                text = (options.disable_parted ? '' : (`第${chapter_id++}章 ${title ?? ''}\r\n`))
-                    + (content ?? '[ERROR: 内容获取失败]') + '\r\n\r\n';
+                text = (options.disable_parted ? '' : (`\r\n第${chapter_id++}章 ${title ?? ''}\r\n`))
+                    + (content ?? '[ERROR: 内容获取失败]') + '\r\n';
                 previous_title = title;
             }
 
@@ -687,7 +688,7 @@ async function downloadNovel(
             }
 
             await Promise.all([
-                file.write(new TextEncoder().encode(options.disable_parted ? text : text.trim())),
+                file.write(new TextEncoder().encode(text)),
                 sleep(Math.random() * options.sleep_time!),
             ]);
         }
@@ -769,8 +770,8 @@ export default async function main(){
     console.log.apply(console, logs);
 
     if (Deno.stdin.isTerminal() || Deno.env.has('DENOVEL_TERMINAL')){
-        start_url = args._[0] || prompt("请输入起始URL >> ") || '';
-        // cover = args.cover || prompt("请输入封面URL(可选,自动) >> ");
+        start_url = args._[0] || await readline("请输入起始URL >> ") || '';
+        // cover = args.cover || await readline("请输入封面URL(可选,自动) >> ");
     } else {
         start_url = JSON.parse(Deno.readTextFileSync('debug.json')).url;
         console.log('从debug.json中读取url:', start_url);

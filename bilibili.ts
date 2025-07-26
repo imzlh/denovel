@@ -1,7 +1,9 @@
+import { readline } from "./exe.ts";
+
 if(Deno.args.length === 0){
     while(true){
         let link: string | null;
-        while(link = prompt(' >> ')){
+        while(link = await readline(' >> ')){
             console.log('Start', link);
             new Deno.Command('BBDown', {
                 args: [link, '--dfn-priority', '720P 高清'],

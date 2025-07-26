@@ -1,6 +1,7 @@
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { removeIllegalPath } from './main.ts'
 import { fetch2 } from "./main.ts";
+import { readline } from "./exe.ts";
 
 // const frontEnd = 'http://localhost:3000';
 const frontEnd = 'https://fn.music.163.com/g/quickapp/xtc';
@@ -101,7 +102,7 @@ interface Song {
 
 export default async function main(){
     while (true) {
-        const idstr = prompt("请输入歌单ID：");
+        const idstr = await readline("请输入歌单ID：");
         if (!idstr || !/\d+$/.test(idstr)) {
             console.log("ID格式错误(至少末尾是数字)");
             Deno.exit(1);
