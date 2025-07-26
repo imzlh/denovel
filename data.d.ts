@@ -17,6 +17,12 @@ declare interface MainInfoResult {
     jpStyle?: boolean;
 }
 
+declare interface ComicMainInfo{
+    title: string;
+    cover?: string;
+    firstPage: string | URL;
+}
+
 declare interface TraditionalConfig extends Partial<MainInfo> {
     title: string;
     content: string;

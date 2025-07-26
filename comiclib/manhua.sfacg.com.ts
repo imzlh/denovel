@@ -1,3 +1,4 @@
+import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 import { fetch2, getDocument } from "../main.ts";
 
 const base = 'https://manhua.sfacg.com/ajax/Common.ashx';
@@ -12,7 +13,8 @@ export default async function* main(page1: string) {
         title = response.querySelector('body > div.Reduction_top > div > div.Reduction_left')?.innerText
             .split('>').at(-1)?.trim() || '未知';
 
-    if(page1.includes('manhua.sfacg.com/mh/')){
+    // https://manhua.sfacg.com/mh/BZELW/113358/
+    if(!page1.match(/\/mh\/\w+\/\d+\/?/)){
         console.error('复制“点击浏览”的链接，而不是首页!');
     }
 
@@ -40,4 +42,18 @@ export default async function* main(page1: string) {
         }
     }
     throw new Error('Failed to find chapters');
+}
+
+export const getInfo = async (page: string) => {
+    // https://manhua.sfacg.com/mh/BZELW/
+    assert(/https:\/\/manhua.sfacg.com\/mh\/\w+\/?$/.test(page), '此链接非漫画首页');
+    const response = await getDocument(page),
+        title = response.querySelector('body > div:nth-child(6) > h1')?.innerText,
+        cover = response.querySelector('body > div:nth-child(6) > div.plate_top > ul.synopsises_font > li.cover > img')?.getAttribute('src'),
+        next = response.querySelector('body > div:nth-child(6) > div.plate_top > ul.synopsises_font > li:nth-child(2) > div > a');
+    return {
+        title,
+        cover,
+        firstPage: new URL(next?.getAttribute('href')!, page)
+    };
 }

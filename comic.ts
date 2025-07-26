@@ -19,6 +19,9 @@ const args = parseArgs(Deno.args, {
         s: 'sleep',
         f: 'format',
         c: 'cover'
+    },
+    default: {
+        format: 'epub'
     }
 });
 
@@ -51,7 +54,7 @@ export default async function main(){
         Deno.exit(0);
     }
 
-    let name: string | null, cover: string | null, site: string;
+    let name: string | undefined, cover: string | undefined, site: string;
     const chaps: EpubContentOptions[] = [];
     let mod: Record<string, any>;
     let sleeptime = args.sleep ? parseFloat(args.sleep) : 1;
@@ -115,10 +118,17 @@ export default async function main(){
             Deno.exit(1);
         }
         mod = await import(`./comiclib/${site}.ts`);
-        const funcNext = mod.default as (input: string) => AsyncGenerator<string, [string, string], string>;
+        const funcNext = mod.default as (url: string) => AsyncGenerator<string, [string, string], string>;
 
-        name = args.name || await readline('输入漫画名 >> ');
-        cover = args.cover || await readline('输入封面URL >> ');
+        if('getInfo' in mod) try{
+            const { title: _name, cover: _cover, firstPage } = await mod.getInfo(start) as ComicMainInfo;
+            name = _name;
+            cover = _cover;
+            if(!firstPage) throw new Error('未找到漫画第一页');
+            start = String(firstPage);
+        }catch(e){ console.error(`自动化获取漫画信息失败: ${(e as Error).message}`); }
+        !name && (name = args.name || await readline('输入漫画名 >> '));
+        !cover && (cover = args.cover || await readline('输入封面URL >> '));
 
         // 缓冲TXT文件
         const txt = await Deno.open(`${out}/${name}.${site}.txt`, { create: true, write: true }),
@@ -127,7 +137,7 @@ export default async function main(){
         // meta
         txt.writeSync(txtWriter.encode('zComicLib V1 - ' + Date.now().toString() + '\n' + cover + '\n\n'));
 
-        let urlNext = urlStart.href, chaptitle = '';
+        let chaptitle = '', urlNext = start;
         mainLoop: while(urlNext){
             const iter = funcNext(urlNext);
             let chapTxt = '', i = 0, retry = 0;
@@ -157,7 +167,7 @@ export default async function main(){
             console.log(`INFO ${chaptitle}(${i})`);
 
             await Promise.all([ sleep(
-                sleeptime * Math.random() + 500
+                sleeptime * Math.random()
             ), txt.write(txtWriter.encode('\n# ' + chaptitle + '\n\n')) ]);
         }
 
@@ -180,6 +190,7 @@ export default async function main(){
         }, out + '/' + filename).render();
     }else{
         // not supported yet
+        console.log(`暂不支持输出${args.format}格式.`);
     }
 
     // 保存
