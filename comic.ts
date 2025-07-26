@@ -163,8 +163,8 @@ export default async function main(){
 
         if('getInfo' in mod) try{
             const { title: _name, cover: _cover, firstPage } = await mod.getInfo(start) as ComicMainInfo;
-            name = _name;
-            cover = _cover;
+            name = _name.trim();
+            cover = _cover?.trim();
             if(!firstPage) throw new Error('未找到漫画第一页');
             start = String(firstPage);
         }catch(e){ console.error(`自动化获取漫画信息失败: ${(e as Error).message}`); }
@@ -172,7 +172,7 @@ export default async function main(){
         !cover && (cover = args.cover || await readline('输入封面URL >> '));
 
         // 缓冲TXT文件
-        const txt = await Deno.open(`${out}/${name}.${site}.txt`, { create: true, write: true }),
+        const txt = await Deno.open(`${out}/${removeIllegalPath(name)}.${site}.txt`, { create: true, write: true }),
             txtWriter = new TextEncoder();
 
         // meta
