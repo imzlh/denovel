@@ -769,7 +769,7 @@ export default async function main(){
     const host = new URL(start_url).hostname;
     if (await checkIsTraditional(new URL(start_url)))
         downloadNovel(start_url, {
-            traditional: false,
+            traditional: true,
             to_epub: args.epub,
             outdir: args.outdir,
             disable_parted: args.parted,
@@ -777,7 +777,7 @@ export default async function main(){
         });
     else
         downloadNovel(start_url, {
-            traditional: true,
+            traditional: false,
             to_epub: args.epub,
             outdir: args.outdir,
             disable_parted: args.parted,
