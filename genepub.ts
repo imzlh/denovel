@@ -303,7 +303,8 @@ async function processCover(
 
     // 获取图片尺寸
     const result: { width: number, height: number, type: string } = 
-        await new Promise(rs => rs(imageSize(content, rs)));
+    // @ts-ignore typecheck
+        await new Promise(rs => rs(imageSize(content, rs))) as any;
     
     if (!result || !result.width || !result.height) {
         throw new Error(`Failed to retrieve cover image dimensions`);
@@ -388,13 +389,14 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     const contentOffset = content.length;
     for (let i = 0; i < options.content.length; i++) {
         const contentItem = options.content[i];
-        const index = (contentOffset + i).toString().padStart(3, '0');
+        const index = contentOffset + i;
+        const indexStr = index.toString().padStart(3, '0');
 
         // 生成文件名
         let href, filePath;
         if (contentItem.filename === undefined) {
-            href = `${index}.xhtml`;
-            filePath = `OEBPS/${index}.xhtml`;
+            href = `${indexStr}.xhtml`;
+            filePath = `OEBPS/${indexStr}.xhtml`;
         } else {
             href = contentItem.filename.match(/\.xhtml$/) ? contentItem.filename : `${contentItem.filename}.xhtml`;
             filePath = contentItem.filename.match(/\.xhtml$/) 
@@ -402,7 +404,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
                 : `OEBPS/${contentItem.filename}.xhtml`;
         }
 
-        const id = `item_${index}`;
+        const id = `item_${indexStr}`;
 
         // 处理HTML内容
         const html = loadHtml(contentItem.data, [
