@@ -82,7 +82,7 @@ const coWrite = async (pipe: WritableStream, abort: AbortSignal) => {
     }
 }
 type BufRef = { value: Uint8Array, stdin: WritableStreamDefaultWriter };
-async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef, abort: AbortSignal = new AbortController().signal) {
+async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef, abort?: AbortSignal) {
     const cmd = new Deno.Command(Deno.execPath(), {
         args: args,
         stdin: 'piped',
@@ -102,9 +102,15 @@ async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef
             coRead(cmd.stderr, d => resizeAndWrite(d, bufref!))
         ]);
     }else{
-        coRead(cmd.stderr, d => decode(d)),
+        coRead(cmd.stderr, d => decode(d));
+        let ctrl;
+        if(!abort) {
+            ctrl = new AbortController();
+            abort = ctrl.signal;
+        }
         coWrite(cmd.stdin, abort);
         await coRead(cmd.stdout, d => decode(d));
+        if(ctrl) ctrl.abort();
     }
 }
 
