@@ -154,7 +154,6 @@ export default async function main(){
                             socket.send(JSON.stringify({
                                 finalChunk: true
                             }));
-                            socket.close(1000);
                         } catch (error) {
                             socket.send(JSON.stringify({
                                 status: 'ERROR',

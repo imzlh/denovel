@@ -509,10 +509,11 @@ async function serverMain(){
     }
 }
 
-if(import.meta.main){
+export default async function main(){
     if(Deno.args.includes('--server')){
         serverMain();
     }else{
         consoleMain();
     }
 }
+if(import.meta.main) main();

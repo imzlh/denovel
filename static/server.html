@@ -575,7 +575,6 @@
     <script>
         let downloadQueue = [];
         let currentDownload = null;
-        let ws = null;
         let taskLogs = {}; // 存储每个任务的日志
 
         // 页面加载时初始化
@@ -795,49 +794,77 @@
             }
         }
 
+        // 按域名分组任务
+        function groupByDomain(tasks) {
+            const groups = {};
+            tasks.forEach(task => {
+                try {
+                    const domain = new URL(task.url).hostname;
+                    if (!groups[domain]) {
+                        groups[domain] = [];
+                    }
+                    groups[domain].push(task);
+                } catch {
+                    // 无效URL放入默认组
+                    if (!groups['default']) {
+                        groups['default'] = [];
+                    }
+                    groups['default'].push(task);
+                }
+            });
+            return groups;
+        }
+
+        // 当前各域名组的下载状态
+        const domainDownloads = {};
+
         // 处理下载队列
         async function processQueue() {
-            if (downloadQueue.length === 0 || currentDownload) {
-                return;
-            }
+            // 按域名分组
+            const groups = groupByDomain(downloadQueue.filter(t => t.status === 'waiting'));
+            
+            // 并行处理不同域名组的任务
+            await Promise.all(Object.entries(groups).map(async ([domain, tasks]) => {
+                // 如果该域名组已经在下载中，跳过
+                if (domainDownloads[domain]) return;
+                
+                // 标记该域名组为下载中
+                domainDownloads[domain] = true;
+                
+                try {
+                    // 串行处理该域名组的任务
+                    for (const task of tasks) {
+                        task.status = 'downloading';
+                        updateQueueDisplay();
 
-            const task = downloadQueue.find(t => t.status === 'waiting');
-            if (!task) {
-                return;
-            }
+                        try {
+                            await startDownload(task);
+                        } catch (error) {
+                            task.status = 'error';
+                            logTaskMessage(task.id, `下载失败: ${error.message}`, 'error');
+                        } finally {
+                            updateQueueDisplay();
+                        }
+                    }
+                } finally {
+                    // 下载完成，释放该域名组
+                    delete domainDownloads[domain];
+                }
+            }));
 
-            currentDownload = task;
-            task.status = 'downloading';
-            updateQueueDisplay();
-
-            try {
-                await startDownload(task);
-            } catch (error) {
-                task.status = 'error';
-                logTaskMessage(task.id, `下载失败: ${error.message}`, 'error');
-            } finally {
-                currentDownload = null;
-                updateQueueDisplay();
-                // 处理下一个任务
-                setTimeout(processQueue, 1000);
-            }
+            // 检查是否有新任务需要处理
+            setTimeout(processQueue, 1000);
         }
 
         // 开始下载
         async function startDownload(task) {
             return new Promise((resolve, reject) => {
                 const wsUrl = `ws://${location.host}/api/download?url=${encodeURIComponent(task.url)}`;
-                
-                if (ws) {
-                    ws.close();
-                }
-
-                ws = new WebSocket(wsUrl);
+                const ws = new WebSocket(wsUrl);
+                let isCompleted = false;
 
                 ws.onopen = () => {
                     logTaskMessage(task.id, `开始下载: ${task.novelName || task.url}`, 'info');
-                    
-                    // 发送下载配置
                     ws.send(JSON.stringify({
                         novelName: task.novelName,
                         coverUrl: task.coverUrl,
@@ -849,21 +876,14 @@
                     if(typeof event.data != 'string') return;
                     const data = JSON.parse(event.data);
                     if(data.status == 'sync'){
-                        // 同步小说信息
-                        /**
-                            firstPage: URL;
-                            cover?: string;
-                            book_name?: string;
-                            summary?: string;
-                            jpStyle?: boolean;
-                        */
                         task.novelName = data.info.book_name || '未知';
                         task.coverUrl = data.info.cover || '';
                         updateQueueDisplay();
                     }else if(data.finalChunk){
-                        // 下载完成
+                        isCompleted = true;
                         task.status = 'completed';
                         logTaskMessage(task.id, `下载完成: ${task.novelName || task.url}`, 'success');
+                        ws.close();
                         resolve();
                     }else{
                         logTaskMessage(task.id, data.log, data.status.toLowerCase());
@@ -871,7 +891,7 @@
                 };
 
                 ws.onclose = (event) => {
-                    if (task.status === 'completed') return;
+                    if (isCompleted) return;
                     if (event.code === 1000) {
                         task.status = 'completed';
                         logTaskMessage(task.id, `下载完成: ${task.novelName || task.url}`, 'success');

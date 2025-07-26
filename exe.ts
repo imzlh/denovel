@@ -16,7 +16,8 @@ const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
     "downmusic": [useModule("neast"), "下载网易云音乐歌单", false],
     "server": [useModule("server"), "启动下载服务器(不稳定，待完整测试)", true],
     "t2cn": [useModule("t2cn"), "将(带繁体文本的)txt文件转换为简体中文格式", false],
-    'lanzou': [useModule("lanzoudl"), '下载蓝奏云分享文件', false]
+    'lanzou': [useModule("lanzoudl"), '下载蓝奏云分享文件', false],
+    "17c": [useModule("17c"), "猜猜看，这是什么", false],
 };
 
 function splitShellCommand(cmd: string): string[] {
@@ -132,123 +133,129 @@ export async function readline(prompt: string) {
     }
 }
 
-const args = Array.from(Deno.args);
-if (args.length == 0){
-    // repl
-    const startedCorutine = {} as Record<string, BufRef & { done: boolean | undefined } | undefined>;
-    while (true) try{
-        const input = await readline("densh # ");
-        if (!input) continue;
-        const commands = splitShellCommand(input), cmd = commands[0];
-        if(!cmd) continue;
-        if(cmd === 'help'){
-            showHelp();
-            console.log(`
-repl指令：
-    help            显示帮助
-    exit            退出repl
-    start <任务名>   启动异步任务（不会阻塞，之后你可以继续输入指令）
-    log <任务名>     显示异步任务日志
-    <任务名>         启动同步任务
-`);
-            continue;
-        }else if(cmd === 'exit'){
-            Deno.exit(0);
-        }else if(cmd === 'start'){
-            if(commands.length < 2){
-                console.error('缺少异步任务名');
+async function exeMain(){
+    const args = Array.from(Deno.args);
+    if (args.length == 0){
+        // repl
+        const startedCorutine = {} as Record<string, BufRef & { done: boolean | undefined } | undefined>;
+        while (true) try{
+            const input = await readline("densh # ");
+            if (!input) continue;
+            const commands = splitShellCommand(input), cmd = commands[0];
+            if(!cmd) continue;
+            if(cmd === 'help'){
+                showHelp();
+                console.log(`
+    repl指令：
+        help            显示帮助
+        exit            退出repl
+        start <任务名>   启动异步任务（不会阻塞，之后你可以继续输入指令）
+        log <任务名>     显示异步任务日志
+        <任务名>         启动同步任务
+    `);
                 continue;
-            }
-            const name = commands[1];
-            if(name in startedCorutine && !startedCorutine[name]?.done){
-                console.error(`异步任务${name}正在执行，请等待结束后再执行`);
+            }else if(cmd === 'exit'){
+                Deno.exit(0);
+            }else if(cmd === 'start'){
+                if(commands.length < 2){
+                    console.error('缺少异步任务名');
+                    continue;
+                }
+                const name = commands[1];
+                if(name in startedCorutine && !startedCorutine[name]?.done){
+                    console.error(`异步任务${name}正在执行，请等待结束后再执行`);
+                    continue;
+                }
+                if(!builtins[name]){
+                    console.error(`异步执行错误：找不到子模块：${name}`);
+                    continue;
+                }
+                if(!builtins[name][2]){
+                    console.error(`模块${name}不能并行执行，无法使用start指令`);
+                    continue;
+                }
+
+                // @ts-ignore will be filled by spawn
+                startedCorutine[name] = {};
+                spawn(commands.slice(1), true, startedCorutine[name]).then(() => {
+                    console.log(`[i] 异步任务${name}执行完毕`);
+                    startedCorutine[name]!.done = true;
+                }).catch((e) => {
+                    console.error(`[!] 异步任务${name}执行失败`, e);
+                    startedCorutine[name]!.done = true;
+                });
+                console.log(`异步任务 ${name} 启动成功，输入"log ${name}"获取日志`);
                 continue;
-            }
-            if(!builtins[name]){
-                console.error(`异步执行错误：找不到子模块：${name}`);
-                continue;
-            }
-            if(!builtins[name][2]){
-                console.error(`模块${name}不能并行执行，无法使用start指令`);
+            }else if(cmd == 'log'){
+                if(commands.length < 2){
+                    console.error('缺少异步任务名');
+                    continue;
+                }
+                const name = commands[1];
+                if(!startedCorutine[name]){
+                    console.error(`异步任务${name}不存在`);
+                    continue;
+                }
+                const bufref = startedCorutine[name];
+                console.log(new TextDecoder().decode(bufref.value));
+                bufref.value = new Uint8Array(0);
                 continue;
             }
 
-            // @ts-ignore will be filled by spawn
-            startedCorutine[name] = {};
-            spawn(commands.slice(1), true, startedCorutine[name]).then(() => {
-                console.log(`[i] 异步任务${name}执行完毕`);
-                startedCorutine[name]!.done = true;
-            }).catch((e) => {
-                console.error(`[!] 异步任务${name}执行失败`, e);
-                startedCorutine[name]!.done = true;
-            });
-            console.log(`异步任务 ${name} 启动成功，输入"log ${name}"获取日志`);
-            continue;
-        }else if(cmd == 'log'){
-            if(commands.length < 2){
-                console.error('缺少异步任务名');
+            const fn = builtins[cmd]?.[0];
+            if (!fn) {
+                console.error(`找不到子模块：${cmd}`);
                 continue;
             }
-            const name = commands[1];
-            if(!startedCorutine[name]){
-                console.error(`异步任务${name}不存在`);
-                continue;
+            try {
+                await spawn(commands, false);
+            } catch (e) {
+                console.error(`模块${cmd}执行失败`, e);
             }
-            const bufref = startedCorutine[name];
-            console.log(new TextDecoder().decode(bufref.value));
-            bufref.value = new Uint8Array(0);
-            continue;
+        }catch(e){
+            console.error(e);
         }
+    }
 
-        const fn = builtins[cmd]?.[0];
-        if (!fn) {
-            console.error(`找不到子模块：${cmd}`);
-            continue;
-        }
-        try {
-            await spawn(commands, false);
-        } catch (e) {
-            console.error(`模块${cmd}执行失败`, e);
-        }
-    }catch(e){
-        console.error(e);
+    function showHelp(){
+        console.log(
+    `@imzlh/denovel
+    Copyright (c) 2025-${new Date().getFullYear()} imzlh
+
+    用法：
+        denovel <子模块名> [模块参数]
+        
+    可用模块：
+    ${Object.entries(builtins).map(([name, [fn, desc]]) => `    ${name}\t${desc}`).join('\n')}
+    详细帮助请使用 \`denovel <子模块名> -h\`
+
+    示例：
+        denovel downovel -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
+    ` 
+        );
+    }
+
+    if (args[0] == 'help') {
+        showHelp();
+        Deno.exit(0);
+    }
+
+    const cmd = Deno.args.shift()!;
+    const fn = builtins[cmd]?.[0];
+    if (!fn) {
+        console.error(`找不到子模块：${cmd}`);
+        Deno.exit(1);
+    }
+
+    try {
+        console.log('执行', Deno.args);
+        fn();
+    } catch (e) {
+        console.error(`模块${cmd}执行失败`, e);
+        Deno.exit(1);
     }
 }
 
-function showHelp(){
-    console.log(
-`@imzlh/denovel
-Copyright (c) 2025-${new Date().getFullYear()} imzlh
-
-用法：
-    denovel <子模块名> [模块参数]
-    
-可用模块：
-${Object.entries(builtins).map(([name, [fn, desc]]) => `    ${name}\t${desc}`).join('\n')}
-详细帮助请使用 \`denovel <子模块名> -h\`
-
-示例：
-    denovel downovel -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
-` 
-    );
-}
-
-if (args[0] == 'help') {
-    showHelp();
-    Deno.exit(0);
-}
-
-const cmd = Deno.args.shift()!;
-const fn = builtins[cmd]?.[0];
-if (!fn) {
-    console.error(`找不到子模块：${cmd}`);
-    Deno.exit(1);
-}
-
-try {
-    console.log('执行', Deno.args);
-    fn();
-} catch (e) {
-    console.error(`模块${cmd}执行失败`, e);
-    Deno.exit(1);
+if (import.meta.main) {
+    exeMain();
 }

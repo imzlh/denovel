@@ -89,6 +89,26 @@ const forceSaveConfig = globalThis.onbeforeunload = function () {
     Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
 } as () => void;
 
+const LOOKUP_API = 'https://www.nslookup.io/api/v1/records';
+async function lookupIP(domain: string) {
+    // {"domain":"google.com","dnsServer":"cloudflare"}
+    const fe = await fetch2(LOOKUP_API, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            domain,
+            dnsServer: 'cloudflare'
+        })
+    });
+    if(!fe.ok) throw new Error(`Lookup IP failed for ${domain}`);
+    const data = await fe.json();
+    const ips = (data.records.a.response.answer.map((i: any) => i.ipInfo.query) as string[])
+        .concat(data.records.aaaa.response.answer.map((i: any) => '[' + i.ipInfo.query + ']') as string[]);
+    return ips;
+}
+
 // 改进后的fetch2函数
 async function fetch2(
     url: string | URL,
@@ -107,8 +127,7 @@ async function fetch2(
         if (!ipCache[hostname] || Date.now() - ipCache[hostname].updated > CACHE_TTL) {
             console.log(`[ INFO ] Measure IP for ${hostname}`);
 
-            const validIPs = (await Deno.resolveDns(hostname, "A").catch(() => [] as string[]))
-                .concat(await Deno.resolveDns(hostname, "AAAA").catch(() => [] as string[]));
+            const validIPs = await lookupIP(hostname);
             
             console.log(`[ INFO ] Valid IPs for ${hostname}:`, validIPs);
 
@@ -266,7 +285,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
     }
 
     if (charset != charsetRaw) {
-        console.log(`[ INFO ] Document charset: ${charset}`);
+        // console.log(`[ INFO ] Document charset: ${charset}`);
         charsetRaw = charset;
     }
 
