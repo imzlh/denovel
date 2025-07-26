@@ -1,4 +1,4 @@
-import { exists, fetch2, sleep } from "./main.ts";
+import { exists, moduleExists, sleep } from "./main.ts";
 import { EPub, EpubContentOptions } from './genepub.ts';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename } from "jsr:@std/path@^1.0.8";
@@ -109,7 +109,7 @@ export default async function main(){
         // 解析
         const urlStart = new URL(start);
         site = urlStart.hostname;
-        if(!await exists(`./comiclib/${site}.ts`)){
+        if(!await moduleExists(`./comiclib/${site}.ts`)){
             console.error(`没有找到站点 ${site} 的漫画下载脚本.`);
             Deno.exit(1);
         }

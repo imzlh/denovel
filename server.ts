@@ -60,9 +60,8 @@ async function handleRequest(req: Request): Promise<Response> {
                     headers: { "Content-Type": "application/json" }
                 });
             } catch (e) {
-                return new Response(JSON.stringify({ error: (e as Error).message }), {
-                    status: 400,
-                    headers: { "Content-Type": "application/json" }
+                return new Response((e as Error).message , {
+                    status: 400
                 });
             }
         }

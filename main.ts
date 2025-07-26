@@ -2,6 +2,7 @@ import { DOMParser, Element, HTMLDocument } from "jsr:@b-fuze/deno-dom";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { toEpub } from "./2epub.ts";
 import { Converter } from './t2cn.js';
+import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
 class NoRetryError extends Error { }
 
@@ -539,15 +540,24 @@ async function* tWrapper(url: URL) {
 }
 
 const __traditional_cache: Record<string, boolean> = {};
+const moduleExists = async (name: string) => {
+    try{
+        await import(name);
+        return true;
+    }catch{
+        return false;
+    }
+}
 async function checkIsTraditional(siteURL: URL) {
     if(siteURL.hostname in __traditional_cache) return __traditional_cache[siteURL.hostname];
     let res = false;
-    if(await exists('./lib/' + siteURL.hostname + '.t.ts')) res = true;
-    else if(!await exists('./lib/' + siteURL.hostname + '.n.ts')) throw new Error(`找不到站点配置文件：${siteURL.hostname}`);
+    if(await moduleExists('./lib/' + siteURL.hostname + '.t.ts')) res = true;
+    else if(!await moduleExists('./lib/' + siteURL.hostname + '.n.ts')) throw new Error(`找不到站点配置文件：${siteURL.hostname}`);
     __traditional_cache[siteURL.hostname] = res;
     return res;
 }
 
+let ensured = false;
 async function downloadNovel(
     start_url = '',
     options: {
@@ -570,7 +580,8 @@ async function downloadNovel(
     let url = new URL(start_url);
     if(!options.reporter) options.reporter = (status, msg, e) =>
             console.log(`[ ${Status[status]} ] ${msg}`, e?.message);
-    if(!options.outdir) options.outdir = args.outdir ?? 'out'; 
+    if(!options.outdir) options.outdir = args.outdir ?? 'downloads';
+    if(!ensured) await ensureDir(options.outdir); 
     if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
     const callbacks: {
         default: Callback;
@@ -786,7 +797,7 @@ export default async function main(){
 }
 
 export { 
-    NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, 
+    NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
     args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
     forceSaveConfig,
     processContent, defaultGetInfo
