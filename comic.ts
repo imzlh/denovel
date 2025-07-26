@@ -1,4 +1,4 @@
-import { exists, fetch2, moduleExists, removeIllegalPath, sleep } from "./main.ts";
+import { exists, fetch2, moduleExists, removeIllegalPath, sleep, timeout } from "./main.ts";
 import { generateEpub, EpubContentOptions } from './genepub.ts';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename } from "jsr:@std/path@^1.0.8";
@@ -52,7 +52,9 @@ export async function mkCbz(data: EpubContentOptions[], origin: string, outFolde
         const imageres = [] as Uint8Array[];
         for(const img of images) try{
             const startTime = Date.now();
-            const res = await fetchFunc(img, undefined, false, false);
+            const res = await fetchFunc(img, {
+                signal: timeout(20000)  // 20s
+            }, false, false);
             if(!res.ok) throw new Error(`下载失败: ${img}`);
 
             imageres.push(await res.bytes());
@@ -79,7 +81,7 @@ export default async function main(){
 下载漫画，支持输出cbz(ComicInfo.xml)或者epub格式。
 
 用法:
-    comic [起始URL] [漫画名] [封面URL]
+    comic [起始URL] -n [漫画名] -c [封面URL]
 
 参数:
     -n, --name <name>    漫画名，默认为当前时间戳
@@ -89,7 +91,7 @@ export default async function main(){
     -c, --cover <url>    封面URL，默认为无
 
 示例:
-    comic https://www.example.com/comic/ 无名漫画 https://www.example.com/comic/cover.jpg
+    comic https://www.example.com/comic/ -n 无名漫画 -c https://www.example.com/comic/cover.jpg -f epub
 `);
         Deno.exit(0);
     }
