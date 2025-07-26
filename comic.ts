@@ -155,10 +155,13 @@ export default async function main(){
 
         // 解析
         const urlStart = new URL(start);
-        site = urlStart.hostname;
+        site = urlStart.hostname.split('.').slice(-2).join('.');
         if(!await moduleExists(`./comiclib/${site}.ts`)){
-            console.error(`没有找到站点 ${site} 的漫画下载脚本.`);
-            Deno.exit(1);
+            site = urlStart.hostname;
+            if(!await moduleExists(`./comiclib/${site}.ts`)){
+                console.error(`没有找到站点 ${site} 的漫画下载脚本.`);
+                Deno.exit(1);
+            }
         }
         mod = await import(`./comiclib/${site}.ts`);
         const funcNext = mod.default as (url: string) => AsyncGenerator<string, [string, string], string>;

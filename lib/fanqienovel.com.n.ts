@@ -13,7 +13,6 @@ const CONFIG = {    // 2025/7/1
     "status_file": "chapter.json",
     "request_rate_limit": 0.4,
     "auth_token": "wcnmd91jb",
-    "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
     "api_endpoints": [],
     "batch_config": {
         "name": "qyuing",
