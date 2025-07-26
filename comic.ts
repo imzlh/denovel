@@ -1,5 +1,5 @@
 import { exists, fetch2, moduleExists, removeIllegalPath, sleep } from "./main.ts";
-import { EPub, EpubContentOptions } from './genepub.ts';
+import { generateEpub, EpubContentOptions } from './genepub.ts';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename } from "jsr:@std/path@^1.0.8";
 import { parseArgs } from "jsr:@std/cli/parse-args";
@@ -219,7 +219,7 @@ export default async function main(){
     // 生成epub
     const filename = (name || Date.now().toString()).replace(/[\\/:*?"<>|]/g, '_') + '.' + (args.format || 'epub');
     if(args.format == 'epub'){
-        await new EPub({
+        await generateEpub({
             "cover": cover ?? undefined,
             "title": name ?? '无名漫画',
             "tocTitle": name + "目录",
@@ -228,7 +228,7 @@ export default async function main(){
             "content": chaps,
             "verbose": true,
             "networkHandler": mod.networkHandler    // 自定义网络请求函数
-        }, out + '/' + filename).render();
+        }, out + '/' + filename);
     }else if(args.format == 'cbz'){
         await ensureDir(out + '/' + name);
         await mkCbz(chaps, start, out + '/' + name, mod.networkHandler ?? fetch2);

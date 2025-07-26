@@ -1,6 +1,6 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename, dirname } from "jsr:@std/path";
-import { EPub, EpubContentOptions, EpubOptions } from "./genepub.ts";
+import { generateEpub, EpubContentOptions, EpubOptions } from "./genepub.ts";
 import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL, fromHTML, Status } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 
@@ -331,8 +331,8 @@ export function toEpub(data: string, input: string, output: string, option: {
 
     // 生成 epub 文件
     option.reporter(Status.CONVERTING, 'Generating EPub file to ' + output + option.jpFormat ? 'using jp format' : '' + '...');
-    new EPub(options, output).render().then(a => {
-        option.reporter!(Status.DONE, '生成成功: ' + output + " " + a.result);
+    generateEpub(options, output).then(() => {
+        option.reporter!(Status.DONE, '生成成功: ' + output);
         if (option.thenCB) option.thenCB();
     });
 
@@ -408,7 +408,7 @@ Example:
         Deno.exit(1);
     }
 
-    const input = args._[0];
+    const input = args._[0] ?? 'E:\\docs\\Documents\\novelout\\downloads\\战败后诞下勇者的未亡人魔王小姐.txt';
     const output = dirname(args.output || input as string);
     if (typeof input !== 'string')
         throw new Error('Input file is required');
