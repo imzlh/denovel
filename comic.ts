@@ -1,9 +1,10 @@
-import { exists, moduleExists, sleep } from "./main.ts";
+import { exists, fetch2, moduleExists, removeIllegalPath, sleep } from "./main.ts";
 import { EPub, EpubContentOptions } from './genepub.ts';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename } from "jsr:@std/path@^1.0.8";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { readline } from "./exe.ts";
+import { create } from 'jsr:@quentinadam/zip';
 // import { Zip }
 
 const out = 'out/', retry_count = 3;
@@ -21,17 +22,56 @@ const args = parseArgs(Deno.args, {
         c: 'cover'
     },
     default: {
-        format: 'epub'
+        format: 'cbz'
     }
 });
 
-// export async function downloadCbz(data: EpubContentOptions[], outFolder: string, fetchFunc: typeof fetch2 = fetch2) {
-//     for(let chap = 1; chap <= data.length; chap++){
-//         const chapter = data[chap - 1];
+const xmlEncode = (str: string) => str.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
+export async function mkCbz(data: EpubContentOptions[], origin: string, outFolder: string, fetchFunc: typeof fetch2 = fetch2) {
+    for(let chap = 1; chap <= data.length; chap++){
+        const chapter = data[chap - 1], name = chap + '_' + removeIllegalPath(chapter.title) + '.cbz',
+            path = outFolder + '/' + name;
 
-//         // ?? 是否应该分文件？
-//     }
-// }
+        // create ComicInfo.xml
+        const images = Array.from(chapter.data.matchAll(/<img src="([^"]+)"/g)).map(m => m[1]);
+        const xml =`
+<ComicInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <Title>${xmlEncode(chapter.title)}</Title>
+    <Notes>Created by @imzlh/denovel zComicLib V1.0.0, ${new Date().toISOString()}</Notes>
+    <Web>${origin}</Web>
+    <PageCount>${images.length}</PageCount>
+    <LanguageISO>zh</LanguageISO>
+    <Format>TBP</Format>
+    <Manga>Yes</Manga>
+    <Pages>
+        ${images.map((img, i) => `<Page Image="${(i +1).toString().padStart(3, '0')}" />`).join('')}
+    </Pages>
+</ComicInfo>`.trim();
+
+        // download images
+        const imageres = [] as Uint8Array[];
+        for(const img of images) try{
+            const startTime = Date.now();
+            const res = await fetchFunc(img, undefined, false, false);
+            if(!res.ok) throw new Error(`下载失败: ${img}`);
+
+            imageres.push(await res.bytes());
+            console.log(`DOWNLOADING 下载 ${img} in ${Date.now() - startTime}ms`);
+        }catch(e){
+            console.warn(`下载失败: ${img} ${(e as Error).message}`);
+            imageres.push(new Uint8Array(0));
+        }
+
+        // create cbz
+        const res = await create(imageres.map((img, i) => ({
+            name: (i + 1).toString().padStart(3, '0') + '.' + images[i].split('.').pop()!,
+            data: img,
+            lastModification: new Date()
+        })).concat([ { name: 'ComicInfo.xml', data: new TextEncoder().encode(xml), lastModification: new Date() } ]));
+        await Deno.writeFile(path, res);
+        console.log(`INFO (${chap})已保存${name}`);
+    }
+}
 
 export default async function main(){
     if(args.help){
@@ -63,6 +103,7 @@ export default async function main(){
         throw new Error('输出格式指定错误,目前只支持cbz或epub。');
     }
 
+    let start: string | null;
     if(typeof args._[0] == 'string' && await exists(args._[0])){
         // read exported file
         const file = Deno.readTextFileSync(args._[0]);
@@ -83,8 +124,9 @@ export default async function main(){
         if(!lines.shift()?.startsWith('zComicLib V1')){
             throw new Error('文件格式错误(版本：zComicLib V1).');
         }
+        start = lines.shift()!;
         cover = lines.shift()!;
-        if(!cover) throw new Error('文件过早结束，格式错误');
+        if(!cover || !start) throw new Error('文件过早结束，格式错误');
 
         for(let line of lines){
             line = line.trim();
@@ -103,7 +145,6 @@ export default async function main(){
 
         console.log(`INFO 从文件中读取了${chaps.length}章`);
     }else{
-        let start: string | null;
         if(Deno.stdin.isTerminal() || Deno.env.has('DENOVEL_TERMINAL'))
             start = args._[0] as string || await readline('输入起始URL >> ');
         else
@@ -135,7 +176,7 @@ export default async function main(){
             txtWriter = new TextEncoder();
 
         // meta
-        txt.writeSync(txtWriter.encode('zComicLib V1 - ' + Date.now().toString() + '\n' + cover + '\n\n'));
+        txt.writeSync(txtWriter.encode('zComicLib V1 - ' + Date.now().toString() + '\n' + start + '\n' + cover + '\n\n'));
 
         let chaptitle = '', urlNext = start;
         mainLoop: while(urlNext){
@@ -188,6 +229,9 @@ export default async function main(){
             "verbose": true,
             "networkHandler": mod.networkHandler    // 自定义网络请求函数
         }, out + '/' + filename).render();
+    }else if(args.format == 'cbz'){
+        await ensureDir(out + '/' + name);
+        await mkCbz(chaps, start, out + '/' + name, mod.networkHandler ?? fetch2);
     }else{
         // not supported yet
         console.log(`暂不支持输出${args.format}格式.`);
