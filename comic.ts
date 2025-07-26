@@ -1,4 +1,4 @@
-import { exists, fetch2, moduleExists, removeIllegalPath, sleep, timeout } from "./main.ts";
+import { exists, fetch2, moduleExists, removeIllegalPath, similarTitle, sleep, timeout } from "./main.ts";
 import { generateEpub, EpubContentOptions } from './genepub.ts';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename } from "jsr:@std/path@^1.0.8";
@@ -180,10 +180,10 @@ export default async function main(){
         // meta
         txt.writeSync(txtWriter.encode('zComicLib V1 - ' + Date.now().toString() + '\n' + start + '\n' + cover + '\n\n'));
 
-        let chaptitle = '', urlNext = start;
+        let chaptitle = '', urlNext = start, prevChap = '', chapTxt = '';
         mainLoop: while(urlNext){
             const iter = funcNext(urlNext);
-            let chapTxt = '', i = 0, retry = 0;
+            let i = 0, retry = 0;
             while(true) try{
                 const { value, done } = await iter.next();
                 if(done) {
@@ -202,12 +202,16 @@ export default async function main(){
                 }
             }
 
-            chaps.push({
-                data: chapTxt,
-                title: chaptitle
-            });
+            if(!similarTitle(prevChap, chaptitle)){
+                chaps.push({
+                    data: chapTxt,
+                    title: chaptitle
+                });
+                chapTxt = '';
+            }
+            prevChap = chaptitle;
             
-            console.log(`INFO ${chaptitle}(${i})`);
+            console.log(`INFO ${chaps.length} ${chaptitle}(${i})`);
 
             await Promise.all([ sleep(
                 sleeptime * Math.random()
