@@ -114,7 +114,7 @@ export async function mkCbz(data: EpubContentOptions[], meta: EpubOptions, origi
             const res = await bd.fetch(meta.cover, {}, false, false);
             if (!res.ok) throw new Error(`下载失败: ${(await res.text()).substring(0, 60)}`);
 
-            Deno.writeFile(outFolder + '/cover.' + (meta.cover.split('.').pop()?.substring(0, 5) || 'jpg')!, await res.bytes());
+            Deno.writeFile(outFolder + '/cover.' + (new URL(meta.cover).pathname.split('.').pop()?.substring(0, 5) || 'jpg')!, await res.bytes());
             console.log(`DOWNLOADING 下载 ${meta.cover} in ${Date.now() - startTime}ms`);
         } catch (e) {
             console.warn(`下载失败: ${meta.cover} ${(e as Error).message}`);
@@ -261,14 +261,13 @@ export default async function main(){
                     title: chaptitle
                 });
                 chapTxt = '';
+                await txt.write(txtWriter.encode('\n# ' + chaptitle + '\n\n'));
             }
             prevChap = chaptitle;
             
             console.log(`INFO ${chaps.length} ${chaptitle}(${i})`);
 
-            await Promise.all([ sleep(
-                sleeptime * Math.random()
-            ), txt.write(txtWriter.encode('\n# ' + chaptitle + '\n\n')) ]);
+            await sleep(sleeptime * Math.random());
         }
 
         await txt.sync();
