@@ -267,12 +267,9 @@ async function processCover(
         return { content: null, dimensions: null, mediaType: null, extension: null };
     }
 
-    const mediaType = mime.getType(cover);
-    const extension = mediaType ? mime.getExtension(mediaType) : null;
-    
-    if (mediaType === null || extension === null) {
-        throw new Error(`The cover image can't be processed : ${cover}`);
-    }
+    // fix: ?x=xx url
+    const mediaType = mime.getType(cover.split('?')[0]) ?? "image/jpeg";
+    const extension = mediaType ? mime.getExtension(mediaType) : ".jpg";
 
     let content: Uint8Array;
 
