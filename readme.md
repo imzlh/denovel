@@ -12,7 +12,7 @@
 
 # 目前已经支持？
 看`lib/`文件夹都是已经支持的
- - 番茄：参考@POf-L/Fanqie-novel-Downloader
+ - 番茄：目前有3个可用源(1个需要登陆)，1个未知源。**且用且珍惜！**
  - sfacg：web
  - 刺猬猫(实验性)：WebAPI
  - esjZone：web + WebAPI
