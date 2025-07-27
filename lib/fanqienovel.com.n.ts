@@ -5,26 +5,8 @@
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { defaultGetInfo, fetch2 } from "../main.ts";
 
-const True = true, False = false, None = null;
-const CONFIG = {    // 2025/7/1
-    "max_workers": 4,
-    "max_retries": 3,
-    "request_timeout": 15,
-    "status_file": "chapter.json",
-    "request_rate_limit": 0.4,
-    "auth_token": "wcnmd91jb",
-    "server_url": "https://dlbkltos.s7123.xyz:5080/api/sources",
-    "api_endpoints": [],
-    "batch_config": {
-        "name": "qyuing",
-        "base_url": None,
-        "batch_endpoint": None,
-        "token": None,
-        "max_batch_size": 290,
-        "timeout": 10,
-        "enabled": True
-    }
-};
+// 且用且珍惜
+import * as LANGGE_API from './fqapi/langge.ts';
 
 console.log('请知晓，为了防止被封，本爬虫会在每次请求之后随机等待几秒');
 
@@ -50,106 +32,64 @@ interface ISource{
     token: string
 }
 
-const getNodes = () => fetch2(CONFIG.server_url, {
-    headers: {
-        "X-Auth-Token": CONFIG.auth_token
-    }
-}).then(r => r.json())
-   .then(r => {
-        if('sources' in r) return r.sources as Array<ISource>;
-        else throw new Error(`Failed to fetch sources: ${r.msg}`);
-    });
+const APIS: Array<{ download: (item_id: string, book_id: string) => Promise<string>, downloadAll?: (item_ids: string[], book_id: string) => Promise<Record<string, string>> }> = [
+    LANGGE_API,
+];
+let current_api_id = 0;
 
-async function tryBatchNode(cids: Array<string>, node: ISource) {
-    // FIXME: 这里的batch_endpoint可能有问题
-    const url = new URL(node.single_url);
-    const kname = Array.from(url.searchParams.entries()).find(v => v[1] == '{chapter_id}');
-    if(kname) url.searchParams.delete(kname[0]);
-    const fe = await fetch2(url, {
-        headers: {
-            'token': node.token,
-            'Content-Type': 'application/json'
-        },
-        method: 'POST',
-        body: JSON.stringify({
-            "item_ids": cids
-        })
-    });
-    if(fe.ok){
-        const res = (await fe.json()).data as Record<string, string>[];
-        if(!res) throw new Error('Failed to fetch chapter content');
-        
-        const ret: Record<string, string> = {};
-        for(const id in res){
-            const content = res[id].content;
-            if(!content){
-                throw new Error(`Failed to fetch chapter content from ${node.name}: ${res[id].msg} ${await fe.text()}`);
+async function* getChapterContent(ids: string[], book_id: string) {
+    const originalApiId = current_api_id;
+    let currentAttempt = 0;
+
+    while (currentAttempt < APIS.length) {
+        const api = APIS[current_api_id];
+        try {
+            // 尝试批量获取所有章节内容
+            let contents: Record<string, string>;
+            if (api.downloadAll) {
+                console.log(`尝试使用API [${current_api_id}] 批量获取 ${ids.length} 章节内容，可能会花费大量时间`);
+                contents = await api.downloadAll(ids, book_id);
+            } 
+            // 没有批量接口时逐个获取
+            else {
+                contents = {};
+                for (const id of ids) {
+                    await delay(1000 * Math.random() + 400);
+                    contents[id] = await api.download(id, book_id);
+                }
             }
-            ret[id] = content;
-        }
-        return ret;
-    }else{
-        throw new Error(`Failed to fetch chapter content from ${node.name}: ${fe.status} ${await fe.text()}`);
-    }
-}
 
-async function tryNode(cid: string, node: ISource) {
-    const url = node.single_url.replace('{chapter_id}', cid);
-    const fe = await fetch2(url, {
-        timeoutSec: CONFIG.request_timeout
-    });
-    if(fe.ok){
-        const res = (await fe.json()).data as string;
-        if(!res) throw new Error('Failed to fetch chapter content');
-
-        switch(node.name){
-            case 'fqphp':
-                return res.substring(20);
-
-            case 'qyuing':
-                return res;
-
-            case 'lsjk':
-                return res;
-
-            default:
-                return res;
-        }
-    }else{
-        throw new Error(`Failed to fetch chapter content from ${node.name}: ${fe.status}`);
-    }
-}
-
-let nodes: Array<ISource> = [];
-async function* getChapterContent(cid: string[]): AsyncGenerator<string, void, string> {
-    if(!nodes.length){
-        nodes = await getNodes();
-    }
-
-    for(const node of nodes){
-        if(node.enabled) try{
-            if(node.name == CONFIG.batch_config.name){
-                console.log('尝试批量下载，耗时可能较长，请耐心等待');
-                yield* Object.entries(await tryBatchNode(cid, node))
-                    .sort((v1, v2) => cid.indexOf(v1[0]) - cid.indexOf(v2[0]))
-                    .map(v => v[1]);
-            }else {
-                for(const c of cid)
-                    yield await tryNode(c, node);
+            // 按原始ID顺序生成内容
+            const failed = ids.every(id => !contents[id]);
+            if (failed) {
+                throw new Error(`没有内容返回，可能API已失效`);
+            }
+            for (const id of ids) {
+                if (!contents[id]) {
+                    console.warn(`API [${current_api_id}] 未返回 [ID=${id}] 内容`);
+                    // batchSingle
+                    contents[id] = await api.download(id, book_id);
+                    if (!contents[id]) {
+                        throw new Error(`API [${current_api_id}] 依旧未返回 [ID=${id}] 内容`);
+                    }
+                }
+                yield contents[id];
             }
             return;
-        }catch(e){
-            console.error(`Failed to fetch chapter content from ${node.name}: ${(e as Error).message}`);
+        } catch (error) {
+            console.error(`API [${current_api_id}] 请求失败: ${error instanceof Error? error.message : error}`);
+            // 切换下一个API并增加延迟
+            current_api_id = (current_api_id + 1) % APIS.length;
+            currentAttempt++;
+            await delay(3000 * Math.random() + 2000);
         }
     }
-    throw new Error('Failed to fetch chapter content');
+
+    // 所有API都失败后恢复初始API设置
+    current_api_id = originalApiId;
+    throw new Error(`所有API请求失败，共尝试${currentAttempt}次`);
 }
 
-function batchable(){
-    if(CONFIG.batch_config.enabled && CONFIG.batch_config.token && CONFIG.batch_config.batch_endpoint)
-        return true;
-    else return false;
-}
 
 export default (async function* (urlStart: URL | string) {
     const urlPreg = /^https?\:\/\/.*fanqienovel\.com\/page\/(\d+)\/?/i;
@@ -157,34 +97,24 @@ export default (async function* (urlStart: URL | string) {
     
     // 验证初始URL
     const match = urlPreg.exec(url);
-    if (!match) throw new Error("Invalid url");
+    if (!match) throw new Error("无效的URL");
     
     // 初始化章节数据
     const chapters = await detail(match[1]);
-    let chapterBatched = await Array.fromAsync(
-        getChapterContent(chapters.map(v => v.itemId))
-    );
-    
-    // 遍历章节生成内容
-    for (let i = 0; i < chapters.length; i++) {
-        // 批量获取失败时的补偿逻辑
-        if (!chapterBatched?.[i]) {
-            await delay(2000 * Math.random() + 1000);
-            const [content] = await Array.fromAsync(
-                getChapterContent([chapters[i].itemId])
-            );
-            if (!content) throw new Error('Failed to fetch chapter content');
-            
-            // 更新批量缓存
-            chapterBatched = chapterBatched || [];
-            chapterBatched[i] = content;
+
+    // 分批下载，防止阻塞过长
+    const STEP = 1;
+    for(let i = 0; i < chapters.length; ){
+        for await(const item of getChapterContent(
+            chapters.slice(i, i + STEP).map(c => c.itemId),
+            match[1]
+        )){
+            yield {
+                title: chapters[i ++].title,
+                content: item
+            };
         }
-        
-        // 生成章节数据
-        yield {
-            title: chapters[i].title,
-            content: chapterBatched[i]
-        };
+        await delay(1000 * Math.random() + 500);
     }
 } satisfies Callback);
 
