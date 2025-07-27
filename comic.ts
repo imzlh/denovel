@@ -1,5 +1,5 @@
-import { exists, fetch2, moduleExists, removeIllegalPath, similarTitle, sleep, timeout } from "./main.ts";
-import { generateEpub, EpubContentOptions } from './genepub.ts';
+import { BatchDownloader, exists, fetch2, moduleExists, removeIllegalPath, similarTitle, sleep } from "./main.ts";
+import { generateEpub, EpubContentOptions, EpubOptions } from './genepub.ts';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename } from "jsr:@std/path@^1.0.8";
 import { parseArgs } from "jsr:@std/cli/parse-args";
@@ -12,14 +12,15 @@ await ensureDir(out);
 
 const args = parseArgs(Deno.args, {
     string: ['name', 'outdir', 'sleep', 'format', 'cover'],
-    boolean: ['help'],
+    boolean: ['help', 'no-multi'],
     alias: {
         h: 'help',
         n: 'name',
         o: 'outdir',
         s: 'sleep',
         f: 'format',
-        c: 'cover'
+        c: 'cover',
+        m: 'no-multi'
     },
     default: {
         format: 'cbz'
@@ -27,42 +28,74 @@ const args = parseArgs(Deno.args, {
 });
 
 const xmlEncode = (str: string) => str.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
-export async function mkCbz(data: EpubContentOptions[], origin: string, outFolder: string, fetchFunc: typeof fetch2 = fetch2) {
+export async function mkCbz(data: EpubContentOptions[], meta: EpubOptions, origin: string, outFolder: string) {
+    const fetchFunc = meta.networkHandler ?? fetch2;
+    const bd = new BatchDownloader(1, 10, fetchFunc, undefined, (param, timeStart, timeEnd) => {
+        console.log(`DOWNLOADING 下载 ${String(param[0])} in ${timeEnd - timeStart}ms`);
+    });   // 初始单协程，当过慢时再增加协程数
+    const bootTime = Date.now();
+    const imageArray = data.map(chapter => Array.from(chapter.data.matchAll(/<img src="([^"]+)"/g)).map(m => m[1]));
+    let downloadedSize = 0, downloadedCount = 0, restImages = imageArray.reduce((acc, cur) => acc + cur.length, 0);
+    console.log(`INFO 开始下载 ${data.length} 章，共 ${restImages} 张图片`);
     for(let chap = 1; chap <= data.length; chap++){
         const chapter = data[chap - 1], name = chap + '_' + removeIllegalPath(chapter.title) + '.cbz',
-            path = outFolder + '/' + name;
+            path = outFolder + '/' + name,
+            images = imageArray[chap - 1];
 
         // create ComicInfo.xml
-        const images = Array.from(chapter.data.matchAll(/<img src="([^"]+)"/g)).map(m => m[1]);
         const xml =`
 <ComicInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
     <Title>${xmlEncode(chapter.title)}</Title>
     <Notes>Created by @imzlh/denovel zComicLib V1.0.0, ${new Date().toISOString()}</Notes>
     <Web>${origin}</Web>
+    <Authors>${meta.author}</Authors>
+    <Publisher>${meta.publisher || ''}</Publisher>
     <PageCount>${images.length}</PageCount>
     <LanguageISO>zh</LanguageISO>
     <Format>TBP</Format>
     <Manga>Yes</Manga>
     <Pages>
-        ${images.map((img, i) => `<Page Image="${(i +1).toString().padStart(3, '0')}" />`).join('')}
+        ${images.map((_, i) => `<Page Image="${(i +1).toString().padStart(3, '0')}" />`).join('')}
     </Pages>
 </ComicInfo>`.trim();
 
         // download images
         const imageres = [] as Uint8Array[];
-        for(const img of images) try{
-            const startTime = Date.now();
-            const res = await fetchFunc(img, {
-                signal: timeout(20000)  // 20s
+        await Promise.all(images.map(async (img, i) => { try{
+            const res = await bd.fetch(img, {
+                maxRetries: 10
             }, false, false);
-            if(!res.ok) throw new Error(`下载失败: ${img}`);
+            if(!res || !res.ok) throw new Error(`下载失败: ${img}`);
 
-            imageres.push(await res.bytes());
-            console.log(`DOWNLOADING 下载 ${img} in ${Date.now() - startTime}ms`);
+            const downloaded = (imageres[i] = await res.bytes()).byteLength;
+            restImages --;
+
+            // use average of last 4 speeds to estimate remaining time
+            if(downloadedCount % 8 == 0){
+                const time = (Date.now() - bootTime) / downloadedCount,
+                    avgSpeed = downloadedSize / (Date.now() - bootTime) * 1000 / 1024;
+
+                console.clear();
+
+                // 64k/s or 10s
+                if( avgSpeed < 64 || time > 10 * 1000 ){
+                    if(args["no-multi"]){
+                        console.log(`WARN (time: ${time / 1000}s) 下载速度 ${avgSpeed.toFixed(2)}KB/s低于预期，建议删除"--no-multi"提升下载体验！`);
+                    }else{
+                        bd.maxCoroutine += 2;
+                        console.log(`INFO (time: ${time / 1000}s) 下载速度 ${avgSpeed.toFixed(2)}KB/s低于预期，提升并发数: ${bd.maxCoroutine}`);
+                    }
+                }else{
+                    const eta = (restImages / downloadedCount) * (Date.now() - bootTime) / 1000;
+                    console.log(`INFO 下载速度 ${avgSpeed.toFixed(2)}KB/s，预计剩余${eta.toFixed(2)}s`);
+                }
+            }
+            downloadedCount ++;
+            downloadedSize += downloaded;
         }catch(e){
-            console.warn(`下载失败: ${img} ${(e as Error).message}`);
-            imageres.push(new Uint8Array(0));
-        }
+            console.warn(`下载错误: ${img} ${e instanceof Error ? e.message : e}`);
+            imageres[i] = new Uint8Array(0);
+        }}));
 
         // create cbz
         const res = await create(imageres.map((img, i) => ({
@@ -72,6 +105,20 @@ export async function mkCbz(data: EpubContentOptions[], origin: string, outFolde
         })).concat([ { name: 'ComicInfo.xml', data: new TextEncoder().encode(xml), lastModification: new Date() } ]));
         await Deno.writeFile(path, res);
         console.log(`INFO (${chap})已保存${name}`);
+    }
+
+    // download cover
+    if (meta.cover) {
+        try {
+            const startTime = Date.now();
+            const res = await bd.fetch(meta.cover, {}, false, false);
+            if (!res.ok) throw new Error(`下载失败: ${(await res.text()).substring(0, 60)}`);
+
+            Deno.writeFile(outFolder + '/cover.' + (meta.cover.split('.').pop()?.substring(0, 5) || 'jpg')!, await res.bytes());
+            console.log(`DOWNLOADING 下载 ${meta.cover} in ${Date.now() - startTime}ms`);
+        } catch (e) {
+            console.warn(`下载失败: ${meta.cover} ${(e as Error).message}`);
+        }
     }
 }
 
@@ -89,6 +136,7 @@ export default async function main(){
     -s, --sleep <sec>    指定最大下载间隔，默认为1秒（0~1）
     -f, --format <fmt>   输出格式(cbz/epub)，默认为epub
     -c, --cover <url>    封面URL，默认为无
+    -m, --no-multi       禁用并发下载，默认为启用
 
 示例:
     comic https://www.example.com/comic/ -n 无名漫画 -c https://www.example.com/comic/cover.jpg -f epub
@@ -115,7 +163,9 @@ export default async function main(){
         const __dot = fname.indexOf('.');
         name = fname.slice(0, __dot);
         site = fname.slice(__dot + 1, fname.lastIndexOf('.'));
-        mod = await import(`./comiclib/${site}.ts`);
+        mod = await moduleExists(`./comiclib/${site}.ts`)
+            ? await import(`./comiclib/${site}.ts`)
+            : await import(`./comiclib/${site.split('.').slice(-2).join('.')}.ts`);
 
         // parse
         let currentChap = {
@@ -240,7 +290,16 @@ export default async function main(){
         }, out + '/' + filename);
     }else if(args.format == 'cbz'){
         await ensureDir(out + '/' + name);
-        await mkCbz(chaps, start, out + '/' + name, mod.networkHandler ?? fetch2);
+        await mkCbz(chaps, {
+            "cover": cover ?? undefined,
+            "title": name ?? '无名漫画',
+            "tocTitle": name + "目录",
+            "lang": "zh-CN",
+            "description": "来自于 " + site + "的漫画",
+            "content": chaps,
+            "verbose": true,
+            "networkHandler": mod.networkHandler    // 自定义网络请求函数
+        }, start, out + '/' + name);
     }else{
         // not supported yet
         console.log(`暂不支持输出${args.format}格式.`);

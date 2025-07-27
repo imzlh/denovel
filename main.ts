@@ -32,13 +32,6 @@ const parser = new DOMParser(),
 
 const sleep = (sec = SLEEP_INTERVAL) => new Promise(resolve => setTimeout(resolve, sec * 1000));
 
-function timeout(sec: number, abort?: AbortSignal) {
-    const sig = new AbortController();
-    setTimeout(() => sig.abort("Fetch timeout"), sec * 1000);
-    abort?.addEventListener("abort", () => sig.abort("User abort"));
-    return sig.signal;
-}
-
 const removeNonVisibleChars = String;
 
 // 用于存储 Cookie 的全局对象
@@ -109,10 +102,71 @@ async function lookupIP(domain: string) {
     return ips;
 }
 
-// 改进后的fetch2函数
+class BatchDownloader {
+    // running coruntines
+    private promises: Promise<void>[] = [];
+    private queued: Parameters<typeof fetch2>[] = [];
+    private queuedPromise: PromiseWithResolvers<Response>[] = [];
+
+    constructor(
+        private maxCo: number = 10,
+        private timeoutSec = 10,
+        private fetchProxy = fetch2,
+        private debugLogger = (_: string) => void(0),
+        private timeLogger = (_param: Parameters<typeof fetch2>, _timeStart: number, _timeEnd: number) => void(0)
+    ){}
+
+    fetch(...opts: Parameters<typeof fetch2>): Promise<Response> {
+        this.queued.push(opts);
+        this.queuedPromise.push(Promise.withResolvers());
+        // next tick
+        new Promise(rs => rs(undefined)).then(() => this.boot());
+        this.debugLogger(`[ BATCH ] Queued ${opts[0]}`);
+        return this.queuedPromise.at(-1)!.promise;
+    }
+
+    private async downloadCo(task: Parameters<typeof fetch2>, promise: PromiseWithResolvers<Response>){
+        this.debugLogger(`[ BATCH ] Start ${task[0]}`);
+        const startTime = Date.now();
+        if(!task[1]) task[1] = {};
+        task[1].timeoutSec = task[1].timeoutSec ?? this.timeoutSec;
+        await this.fetchProxy.apply(null, task).then(r => promise.resolve(r), e => promise.reject(e));
+        this.debugLogger(`[ BATCH ] End ${task[0]} in ${Date.now() - startTime}ms`);
+        this.timeLogger(task, startTime, Date.now());
+    }
+
+    private boot() {
+        if(this.promises.length >= this.maxCo) return;
+
+        // fill & start
+        while(this.queued.length && this.promises.length < this.maxCo) {
+            const fetchOpts = this.queued.shift()!;
+            const promise = this.queuedPromise.shift()!;
+            const rtpromise = this.downloadCo(fetchOpts, promise)
+                    .then(() => {
+                        this.promises.splice(this.promises.indexOf(rtpromise), 1);
+                        this.boot();
+                    })
+            this.promises.push(rtpromise);
+        }
+    }
+
+    set maxCoroutine(max: number) {
+        this.maxCo = max;
+        this.boot();
+    }
+
+    get maxCoroutine() {
+        return this.maxCo;
+    }
+}
+
+/**
+ * Note: 不要使用timeout函数！
+ */
 async function fetch2(
     url: string | URL,
-    options: RequestInit = {},
+    options: RequestInit & { timeoutSec?: number, maxRetries?: number } = {},
     measureIP: boolean = false,
     ignoreStatus = false
 ): Promise<Response> {
@@ -185,18 +239,29 @@ async function fetch2(
         options.method = 'POST';
     }
 
+    function timeout(sec: number, abort?: AbortSignal) {
+        const sig = new AbortController();
+        setTimeout(() => sig.abort("Fetch timeout"), sec * 1000);
+        abort?.addEventListener("abort", () => sig.abort("User abort"));
+        return sig.signal;
+    }
+
     // 重试逻辑（保持原有）
     let response: Response | undefined;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < (options.maxRetries ?? MAX_RETRY) || 3; i++) {
         try {
-            response = await fetch(targetUrl, { ...options, headers, redirect: 'manual' });
+            response = await fetch(targetUrl, { 
+                ...options, headers, 
+                redirect: 'manual',
+                signal: options.timeoutSec ? timeout(options.timeoutSec, options.signal ?? undefined) : options.signal
+            });
             if(Math.floor(response.status / 100) == 5 && !ignoreStatus){
                 Deno.writeTextFileSync('error.html', await response.text())
                 throw new Error('Server Error: status ' + response.status);
             }
             break;
         } catch (e) {
-            console.warn(`Fetch failed (attempt ${i + 1}):`, (e as Error).message);
+            console.warn(`Fetch failed (attempt ${i + 1}):`, e instanceof Error ? e.message : e);
             await new Promise(r => setTimeout(r, 1000 * (i + 1)));
         }
     }
@@ -259,7 +324,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
             ...additionalHeaders
         },
         keepalive: true,
-        signal: timeout(t_timeout, abort),
+        timeoutSec: t_timeout,
         redirect: 'follow',
         credentials: 'include',
         referrer: url.protocol + '://' + url.host + '/',
@@ -819,10 +884,10 @@ export default async function main(){
 }
 
 export { 
-    NoRetryError, timeout, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
+    NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
     args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
     forceSaveConfig,
-    processContent, defaultGetInfo
+    processContent, defaultGetInfo, BatchDownloader
 };
 
 if (import.meta.main) main();

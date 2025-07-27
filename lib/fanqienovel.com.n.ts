@@ -3,7 +3,7 @@
  */
 
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
-import { defaultGetInfo, fetch2, timeout } from "../main.ts";
+import { defaultGetInfo, fetch2 } from "../main.ts";
 
 const True = true, False = false, None = null;
 const CONFIG = {    // 2025/7/1
@@ -96,7 +96,7 @@ async function tryBatchNode(cids: Array<string>, node: ISource) {
 async function tryNode(cid: string, node: ISource) {
     const url = node.single_url.replace('{chapter_id}', cid);
     const fe = await fetch2(url, {
-        signal: timeout(CONFIG.request_timeout)
+        timeoutSec: CONFIG.request_timeout
     });
     if(fe.ok){
         const res = (await fe.json()).data as string;
