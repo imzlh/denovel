@@ -61,13 +61,17 @@ export async function mkCbz(data: EpubContentOptions[], meta: EpubOptions, origi
 
         // download images
         const imageres = [] as Uint8Array[];
-        await Promise.all(images.map(async (img, i) => { try{
+        await Promise.all(images.map(async (img, i) => { try{ while(true){
             const res = await bd.fetch(img, {
                 maxRetries: 10
             }, false, false);
             if(!res || !res.ok) throw new Error(`下载失败: ${img}`);
 
             const downloaded = (imageres[i] = await res.bytes()).byteLength;
+            if(downloaded < 16 * 1024){
+                console.log('WARN 文件大小过小，正在重试(', downloaded ,'B)');
+                continue;
+            }
             restImages --;
 
             // use average of last 4 speeds to estimate remaining time
@@ -92,7 +96,8 @@ export async function mkCbz(data: EpubContentOptions[], meta: EpubOptions, origi
             }
             downloadedCount ++;
             downloadedSize += downloaded;
-        }catch(e){
+            break;
+        }}catch(e){
             console.warn(`下载错误: ${img} ${e instanceof Error ? e.message : e}`);
             imageres[i] = new Uint8Array(0);
         }}));
