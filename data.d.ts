@@ -21,6 +21,9 @@ declare interface ComicMainInfo{
     title: string;
     cover?: string;
     firstPage: string | URL;
+    tags?: string[];
+    summary?: string;
+    author?: string;
 }
 
 declare interface TraditionalConfig extends Partial<MainInfo> {

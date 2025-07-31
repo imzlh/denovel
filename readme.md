@@ -17,10 +17,11 @@
  - 刺猬猫(实验性)：WebAPI
  - esjZone：web + WebAPI
 
-漫画支持
+漫画支持(`cbz` / `epub`)
  - 包子漫画(baozimh.org www.baozimhcn.com manhuafree.com)
  - dm5漫画人 (tel.dm5.com)
  - sfacg漫画(manhua.sfacg.com)
+ - 拷贝漫画(www.mangacopy.com)
 
 # 怎么用？
 **注意** 有部分网站有CC保护，请合理安排间隔时间 "-s"
