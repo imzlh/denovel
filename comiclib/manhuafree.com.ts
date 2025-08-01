@@ -31,7 +31,7 @@ async function getEverything(url: string){
         if (n && o && c) {
             const d = `${c}/api/chapter/getinfo?m=${n}&c=${o}`;
             const i = document.getElementById("backManga");
-            const res = await fetch(d, {
+            const res = await fetch2(d, {
                 headers: {
                     "Referer": "https://manhuafree.com/",
                     "Origin": "https://manhuafree.com",

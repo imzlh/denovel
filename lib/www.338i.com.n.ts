@@ -1,4 +1,4 @@
-import { getDocument } from "../main.ts";
+import { fetch2, getDocument } from "../main.ts";
 
 console.log('同学，请尝试Github开源项目爬取番茄小说吧！');
 console.log('不建议使用这个文件获取！');
@@ -54,7 +54,7 @@ export default (async function* (url: string | URL) {
     // 获取数据
     async function getData(body: string) {
         const url = `https://www.338i.com/api/reader_js.php`;
-        const fe = await fetch(url, {
+        const fe = await fetch2(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'

@@ -68,7 +68,7 @@ export async function mkCbz(data: EpubContentOptions[], meta: ComicOptions, outF
 
         // download images
         const imageres = [] as Uint8Array[];
-        await Promise.all(images.map(async (img, i) => { try{ while(true){
+        await Promise.all(images.map(async (img, i) => { while(true){ try{
             const res = await bd.fetch(img, {
                 maxRetries: 10
             }, false, false);
@@ -98,16 +98,16 @@ export async function mkCbz(data: EpubContentOptions[], meta: ComicOptions, outF
                     }
                 }else{
                     const eta = (restImages / downloadedCount) * (Date.now() - bootTime) / 1000;
-                    console.log(`INFO 下载速度 ${avgSpeed.toFixed(2)}KB/s，预计剩余${eta.toFixed(2)}s`);
+                    console.log(`INFO 下载速度 ${avgSpeed.toFixed(2)}KB/s，协程 ${bd.maxCoroutine}，预计剩余${eta.toFixed(2)}s`);
                 }
             }
             downloadedCount ++;
             downloadedSize += downloaded;
             break;
-        }}catch(e){
+        }catch(e){
             console.warn(`下载错误: ${img} ${e instanceof Error ? e.message : e}`);
             imageres[i] = new Uint8Array(0);
-        }}));
+        }}}));
 
         // create cbz
         const res = await create(imageres.map((img, i) => ({
@@ -194,6 +194,7 @@ export default async function main(){
         start = lines.shift()!;
         try{
             Object.assign(info, JSON.parse(lines.shift()!));
+            name = info.title;
             if(!start) throw 1;
         }catch{
             throw new Error('文件过早结束或格式错误，无法继续');

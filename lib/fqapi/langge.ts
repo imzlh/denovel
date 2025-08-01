@@ -2,6 +2,8 @@
  * https://api.langge.cf/user
  */
 
+import { fetch2 } from "../../main.ts";
+
 const devUUID = 'ea7a2be2-10a6-4d0f-995e-ecc8ef680a7c';
 const contentURL = `https://api.langge.cf/content?item_id={{$.item_id}}&source=番茄&device=${devUUID}&tab=小说&version=4.6.29`
 const contentsURL = `https://api.langge.cf/content?item_ids={{$.item_ids}}&source=番茄&device=${devUUID}&tab=小说&version=4.6.29`
@@ -18,10 +20,10 @@ const contentsURL = `https://api.langge.cf/content?item_ids={{$.item_ids}}&sourc
 
 export function download(item_id: string): Promise<string> {
     const url = contentURL.replace('{{$.item_id}}', item_id);
-    return fetch(url).then(res => res.json()).then(data => data.content);
+    return fetch2(url).then(res => res.json()).then(data => data.content);
 }
 
 export function downloadAll(item_ids: string[]): Promise<Record<string, string>> {
     const url = contentsURL.replace('{{$.item_ids}}', item_ids.join(','));
-    return fetch(url).then(res => res.json()).then(data => data.contents);
+    return fetch2(url).then(res => res.json()).then(data => data.contents);
 }

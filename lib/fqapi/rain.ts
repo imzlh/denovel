@@ -3,7 +3,7 @@
  * 免费用户每天可阅读200章节（不可下书），赞助后可下书
  */
 
-import { getSiteCookie, setRawCookie, NoRetryError } from "../../main.ts";
+import { getSiteCookie, setRawCookie, NoRetryError, fetch2 } from "../../main.ts";
 
 const API = 'http://v3.rain.ink/fanqie/?apikey={{$.apikey}}&type=4&itemid={{$.item_id}}';
 
@@ -39,7 +39,7 @@ export function download(item_id: string): Promise<string> {
     const apikey = getSiteCookie("rain.ink", "apikey");
     const REALAPI = API.replace('{{$.apikey}}', apikey!);
     const url = REALAPI.replace('{{$.item_id}}', item_id);
-    return fetch(url).then(res => res.json()).then(data => {
+    return fetch2(url).then(res => res.json()).then(data => {
         if(data.success === false) throw new NoRetryError(data.message);
         return data.data.content
     });

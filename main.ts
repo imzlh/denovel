@@ -128,7 +128,7 @@ class BatchDownloader {
     private async downloadCo(task: Parameters<typeof fetch2>, promise: PromiseWithResolvers<Response>){
         this.debugLogger(`[ BATCH ] Start ${task[0]}`);
         const startTime = Date.now();
-        if(!task[1]) task[1] = {};
+        if(!task[1]) task[1] = { maxRetries: 10 };
         task[1].timeoutSec = task[1].timeoutSec ?? this.timeoutSec;
         await this.fetchProxy.apply(null, task).then(r => promise.resolve(r), e => promise.reject(e));
         this.debugLogger(`[ BATCH ] End ${task[0]} in ${Date.now() - startTime}ms`);
@@ -248,7 +248,7 @@ async function fetch2(
 
     // 重试逻辑（保持原有）
     let response: Response | undefined;
-    for (let i = 0; i < (options.maxRetries ?? MAX_RETRY) || 3; i++) {
+    for (var i = 0; i < (options.maxRetries ?? MAX_RETRY ?? 3); i++) {
         try {
             response = await fetch(targetUrl, { 
                 ...options, headers, 
@@ -266,7 +266,7 @@ async function fetch2(
         }
     }
 
-    if (!response) throw new Error(`Fetch failed for ${originalUrl.href}`);
+    if (!response) throw new Error(`Fetch failed for ${originalUrl.href} after ${i} attempts`);
 
     // 从响应头中提取 Set-Cookie 并更新 cookieStore
     const setCookieHeader = response.headers.getSetCookie();

@@ -7,6 +7,8 @@
  * 网络导入
  */
 
+import { fetch2 } from "../../main.ts";
+
 const API = 'http://nuu2.jingluo.love/content?item_id=';
 
 let init = false;
@@ -21,7 +23,7 @@ export async function download(id: string) {
     "data": {
         "content": 
      */
-    const res = await fetch(API + id);
+    const res = await fetch2(API + id);
     const data = await res.json();
     return data.data.content;
 }
