@@ -303,7 +303,8 @@ export default async function main(){
     const info2: typeof info = {
         ...info,
         publisher: typeof info.author == 'string' ? info.author : info.author?.join(', ') ?? 'annoymous',
-        originSite: start ?? info.originSite
+        originSite: start ?? info.originSite,
+        networkHandler: mod.fetchHandler ?? fetch2
     };
 
     // 生成epub

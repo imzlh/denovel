@@ -2,25 +2,6 @@ import { Document } from "jsr:@b-fuze/deno-dom";
 import { getDocument, fetch2, sleep, setRawCookie } from "../main.ts";
 import CryptoJS from 'npm:crypto-js';
 
-interface Chapter {
-    mangatitle: string;
-    title: string;
-    slug: string;
-    id: string;
-    images: {
-        images: {
-            order: number;
-            url: string;
-        }[];
-        line: number;
-    };
-    isad: number;
-    prevtitle: string;
-    nexttitle: string;
-    prevslug: string;
-    nextslug: string;
-};
-
 const API_CHAPTER = 'https://www.mangacopy.com/comicdetail/{{name}}/chapters?format=json';
 setRawCookie('mangacopy.com', 'webp=1');    // 启用webp
 
@@ -31,7 +12,7 @@ async function getEverything(page: URL | string) {
     const result = decryptChapterData(await getCCXY(new URL(page), document), encrypted?.getAttribute('contentKey')!);
     return [ 
         result.map((el: any) => el.url as string), 
-        document.querySelector('body > h4')?.innerHTML,
+        document.querySelector('body > h4')?.innerHTML.split('/')[1],
         nextLink ? new URL(nextLink, page) : undefined
     ];
 }
@@ -75,10 +56,24 @@ function decryptChapterData(ccxy: string, encryptedStr: string) {
     return JSON.parse(decrypted.toString(CryptoJS.enc.Utf8));
 }
 
-const processChapterList = (result: any) => result.groups.default.chapters
-    .map((el: { name: string, id: string }) => 
-        `https://www.mangacopy.com/comic/${result.build.path_word}/chapter/${el.id}`
-    ) as string[];
+const processChapterList = (result: any) =>{ 
+    const types: { id: number, name: string } = result.build.type;
+    const groups = {} as Record<number, { name: string, id: string, type: number }[]>;
+    for(const item of result.groups.default.chapters){
+        if(!groups[item.type]) groups[item.type] = [];
+        groups[item.type].push(item);
+    }
+
+    // 如果有话，优先使用话而不是卷
+    let items;
+    if(groups[1]) items = groups[1].concat(groups[0] ?? []);
+    else items = groups[0].concat(groups[1] ?? []);
+
+    return items
+        .map(el => 
+            `https://www.mangacopy.com/comic/${result.build.path_word}/chapter/${el.id}`
+        ) as string[];
+}
 
 const getChapterList = (url: URL) => fetch2(API_CHAPTER.replace('{{name}}', url.pathname.split('/').filter(Boolean).at(-1)!), {
     headers: {
