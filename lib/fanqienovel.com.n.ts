@@ -35,8 +35,8 @@ interface ISource{
 }
 
 const APIS: Array<{ download: (item_id: string, book_id: string) => Promise<string>, downloadAll?: (item_ids: string[], book_id: string) => Promise<Record<string, string>> }> = [
-    // LANGGE_API,
-    // JINGLUO_API,
+    LANGGE_API,
+    JINGLUO_API,
     RAIN_API
 ];
 let current_api_id = 0;
@@ -107,7 +107,7 @@ export default (async function* (urlStart: URL | string) {
     const chapters = await detail(match[1]);
 
     // 分批下载，防止阻塞过长
-    const STEP = 1;
+    const STEP = 8;
     for(let i = 0; i < chapters.length; ){
         for await(const item of getChapterContent(
             chapters.slice(i, i + STEP).map(c => c.itemId),
@@ -118,7 +118,7 @@ export default (async function* (urlStart: URL | string) {
                 content: item
             };
         }
-        await delay(1000 * Math.random() + 500);
+        await delay(6000 * Math.random() + 1500);
     }
 } satisfies Callback);
 

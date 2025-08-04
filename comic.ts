@@ -70,26 +70,29 @@ export async function mkCbz(data: EpubContentOptions[], meta: ComicOptions, outF
         const imageres = [] as Uint8Array[];
         await Promise.all(images.map(async (img, i) => { while(true){ try{
             const res = await bd.fetch(img, {
-                maxRetries: 10
+                maxRetries: 10,
+                timeoutSec: 10
             }, false, false);
             if(!res || !res.ok) throw new Error(`下载失败: ${img}`);
 
             const downloaded = (imageres[i] = await res.bytes()).byteLength;
-            if(downloaded < 16 * 1024){
+            if(downloaded < 1 * 1024){
                 console.log('WARN 文件大小过小，正在重试(', downloaded ,'B)');
+                await sleep(retry_count * 3000);
                 continue;
             }
             restImages --;
 
             // use average of last 4 speeds to estimate remaining time
-            if(downloadedCount % 8 == 0){
+            downloadedSize += downloaded;
+            if((downloadedCount ++) % 8 == 0){
                 const time = (Date.now() - bootTime) / downloadedCount,
                     avgSpeed = downloadedSize / (Date.now() - bootTime) * 1000 / 1024;
 
                 console.clear();
 
                 // 64k/s or 10s
-                if( avgSpeed < 64 || time > 10 * 1000 ){
+                if( (avgSpeed < 64 || time > 40 * 1000) && bd.maxCoroutine <= 8 ){
                     if(args["no-multi"]){
                         console.log(`WARN (time: ${time / 1000}s) 下载速度 ${avgSpeed.toFixed(2)}KB/s低于预期，建议删除"--no-multi"提升下载体验！`);
                     }else{
@@ -101,8 +104,6 @@ export async function mkCbz(data: EpubContentOptions[], meta: ComicOptions, outF
                     console.log(`INFO 下载速度 ${avgSpeed.toFixed(2)}KB/s，协程 ${bd.maxCoroutine}，预计剩余${eta.toFixed(2)}s`);
                 }
             }
-            downloadedCount ++;
-            downloadedSize += downloaded;
             break;
         }catch(e){
             console.warn(`下载错误: ${img} ${e instanceof Error ? e.message : e}`);
