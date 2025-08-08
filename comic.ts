@@ -92,7 +92,7 @@ export async function mkCbz(data: EpubContentOptions[], meta: ComicOptions, outF
                 console.clear();
 
                 // 64k/s or 10s
-                if( (avgSpeed < 64 || time > 40 * 1000) && bd.maxCoroutine <= 8 ){
+                if( avgSpeed < 64 && bd.maxCoroutine <= 8 ){
                     if(args["no-multi"]){
                         console.log(`WARN (time: ${time / 1000}s) 下载速度 ${avgSpeed.toFixed(2)}KB/s低于预期，建议删除"--no-multi"提升下载体验！`);
                     }else{

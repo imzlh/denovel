@@ -3,7 +3,8 @@ import { getDocument, fetch2, sleep, setRawCookie } from "../main.ts";
 import CryptoJS from 'npm:crypto-js';
 
 const API_CHAPTER = 'https://www.mangacopy.com/comicdetail/{{name}}/chapters?format=json';
-setRawCookie('mangacopy.com', 'webp=1');    // 启用webp
+// setRawCookie('mangacopy.com', 'webp=1');    // 启用webp
+setRawCookie('mangacopy.com', 'webp=0');
 
 async function getEverything(page: URL | string) {
     const document = await getDocument(page);
@@ -102,10 +103,13 @@ export async function networkHandler(url: string | URL, options?: RequestInit){
     return res;
 }
 
+// https://hi77-overseas.mangafuna.xyz/tenseipandeMikku1/cover/1651422855.jpg.328x422.jpg
+const removeDimension = (url: string | null | undefined) => url?.replace(/\.(jpg|png|webp)\.\d+x\d+\.(?:jpg|png|webp)$/, '.$1');
+
 export const getInfo = (url:  URL) => getDocument(url).then(async doc => ({
     firstPage: (await getChapterList(new URL(url)))[0],
     title: doc.querySelector('body > main > div.container.comicParticulars-title > div > div.col-9.comicParticulars-title-right > ul > li:nth-child(1) > h6')?.innerHTML,
-    cover: doc.querySelector('body > main > div.container.comicParticulars-title > div > div.col-auto.comicParticulars-title-left > div > img')?.getAttribute('data-src'),
+    cover: removeDimension(doc.querySelector('body > main > div.container.comicParticulars-title > div > div.col-auto.comicParticulars-title-left > div > img')?.getAttribute('data-src')),
     tags: Array.from(
         doc.querySelectorAll('body > main > div.container.comicParticulars-title > div > div.col-9.comicParticulars-title-right > ul > li:nth-child(7) > span.comicParticulars-left-theme-all.comicParticulars-tag > a')
     ).map(e => e.innerHTML),
