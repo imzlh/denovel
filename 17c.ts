@@ -1,6 +1,7 @@
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { getDocument, removeIllegalPath, fetch2 } from "./main.ts";
 import pageCache from './static/17c.html' with { type: "text" };
+import { ensureFile } from "jsr:@std/fs@^1.0.17";
 
 const ENTRY_LINK = "https://17c.com",
     APP_ENTRY_LINK = "https://www.17capp2.com:6688/100.html",
@@ -91,6 +92,7 @@ const ENTRY_LINK = "https://17c.com",
         'D': 'w',
         ';': 'O'
     };
+await ensureFile('history.json');
 const history = {
     get value(){
         const res = JSON.parse(Deno.readTextFileSync('history.json') || '[]') as string[];
@@ -217,7 +219,7 @@ function download(m3u8: string, out: string) {
             '-i', m3u8,
             '-c:a', 'copy',
             '-c:v', 'copy',
-            out
+            removeIllegalPath(out)
         ],
         stdout: 'inherit',
         stderr: 'inherit',

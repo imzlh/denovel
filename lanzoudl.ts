@@ -3,10 +3,10 @@
  */
 
 import { _TextDecoder } from "https://deno.land/std@0.92.0/node/_utils.ts";
-import { fetch2, getDocument, removeIllegalPath } from "./main.ts";
+import { exists, fetch2, getDocument, removeIllegalPath } from "./main.ts";
 import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
-import { basename, dirname } from "jsr:@std/path@^1.0";
+import { basename, dirname, join } from "jsr:@std/path@^1.0";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { DOMParser } from "jsr:@b-fuze/deno-dom";
 import { readline } from "./exe.ts";
@@ -139,173 +139,6 @@ function extractFunctionByName(source: string, functionName: string): string | n
         : null;
 }
 
-Deno.test('extractFunctionByName', () => {
-    const example = `	var search_lock = 2;//search lock
-	var pwd;
-	var pgs;
-	var ibfc8b = '1752930910';
-	var _hdoa4 = '3af752e6e67a2c350f5826359f925355';
-	pgs =1;
-		document.getElementById("load2").style.display="block";
-	file();
-		document.getElementById('rpt').innerHTML='举报';
-function sms(stx){
-	document.getElementById("sms").style.display="none";
-	$("#smsspan").text(stx);
-	document.getElementById("sms").style.display="block";
-	setTimeout('document.getElementById("sms").style.display="none";',5000);
-}
-function file(){
-		$.ajax({
-			type : 'post',
-			url : '/filemoreajax.php?file=7536580',
-			data : { 
-			'lx':2,
-			'fid':7536580,
-			'uid':'3035387',
-			'pg':pgs,
-			'rep':'0',
-			't':ibfc8b,
-			'k':_hdoa4,
-			'up':1,
-			'vip':'0',
-			'webfoldersign':'',
-						},
-			dataType : 'json',
-			success:function(msg){
-				//隐藏
-				document.getElementById("load2").style.display="none";
-				if(msg.zt == '1'){
-										var data = msg.text;
-					$.each(data, function(i, n){
-						search_lock = 2;//解除回车锁
-						var str;
-						var file_ico;
-						var alink = '/' + n.id;
-						var file_time ='';
-												if(n.t ==1){ //style 1
-							alink = n.id;
-							n.name_all = n.name_all + '<span class="s_ad">推广</span>';
-						}
-												file_ico = '<div class=fileimg><img src=https://assets.woozooo.com/assets/images/type/'+ n.icon +'.gif align=absmiddle border=0></div>';
-						if(n.p_ico ==1){
-							file_ico = '<div class=fileimg style=background:url(https://image.woozooo.com/image/ico/'+ n.ico +'?x-oss-process=image/auto-orient,1/resize,m_fill,w_100,h_100/format,png);background-size:100%;background-repeat:no-repeat;background-position:50%;></div>';
-						}
-						str ='<div id=ready><div class=mbx><a href=' + alink + ' target=_blank class="mlink minPx-top">'+ file_ico +'<div class=filename>' + n.name_all + '<div class=filesize>'+ file_time + '<div>' + n.size +'</div></div></div><div class=filedown><div class=filedown-1></div><div class=filedown-2></div></div></a></div></div>';
-												if(n.id != '-1'){
-							$(str).appendTo("#infos");
-						}
-					});
-					pgs++;
-					//少于50条，隐"more"
-					if(data.length<50){
-						document.getElementById("filemore").style.display="none";
-					}
-					//alert(data.length);
-
-				}else if(msg.zt == '2'){
-					//sms(msg.info);
-					document.getElementById("filemore").style.display="none";
-									}else if(msg.zt == '3'){
-									}else if(msg.zt == '6'){
-					document.getElementById("filemore").style.display="none";
-					sms(msg.info);
-									}else{
-					sms(msg.info);
-				}
-			},
-			error:function(){
-				//隐藏
-				document.getElementById("load2").style.display="none";
-				$("#infos").text("获取失败，请重试");
-			}
-	
-	});
-}
-function more(){
-				$("#filemore").text("文件获取中...");
-		$.ajax({
-			type : 'post',
-			url : '/filemoreajax.php?file=7536580',
-			data : { 
-			'lx':2,
-			'fid':7536580,
-			'uid':'3035387',
-			'pg':pgs,
-			'rep':'0',
-			't':ibfc8b,
-			'k':_hdoa4,
-			'up':1,
-			'vip':'0',
-			'webfoldersign':'',
-						},
-			dataType : 'json',
-			success:function(msg){
-				if(msg.zt == '1'){
-					var data = msg.text;
-					$.each(data, function(i, n){
-						var str;
-						var file_ico;
-						var alink = '/' + n.id;
-						var file_time ='';
-												if(n.t ==1){ //style 1
-							alink = n.id;
-							n.name_all = n.name_all + '<span class="s_ad">推广</span>';
-						}
-												file_ico = '<div class=fileimg><img src=https://assets.woozooo.com/assets/images/type/'+ n.icon +'.gif align=absmiddle border=0></div>';
-						if(n.p_ico ==1){
-							file_ico = '<div class=fileimg style=background:url(https://image.woozooo.com/image/ico/'+ n.ico +'?x-oss-process=image/auto-orient,1/resize,m_fill,w_100,h_100/format,png);background-size:100%;background-repeat:no-repeat;background-position:50%;></div>';
-						}
-						str ='<div id=ready><div class=mbx><a href=' + alink + ' target=_blank class="mlink minPx-top">'+ file_ico +'<div class=filename>' + n.name_all + '<div class=filesize>'+ file_time + '<div>' + n.size +'</div></div></div><div class=filedown><div class=filedown-1></div><div class=filedown-2></div></div></a></div></div>';
-												if(n.id != '-1'){
-							$(str).appendTo("#infos");
-						}
-					});
-					if(data.length<50){
-						document.getElementById("filemore").style.display="none";
-					}else{
-						$("#filemore").text("更多");
-					}
-					pgs++;
-
-				}else{
-					sms(msg.info);
-					document.getElementById("filemore").style.display="none";
-				}
-			},
-			error:function(){
-				$("filemore").text("获取失败，请重试");
-			}
-	
-		});
-	}
-var urls =window.location.href + '?cp=rymcnla.0.0';
-var qrcode = new QRCode('code', {
-					text: urls,
-					width: 138,
-					height: 138,
-					colorDark : '#3f3f3f',
-					colorLight : '#ffffff',
-					correctLevel : QRCode.CorrectLevel.H
-				});
-function s_cl(){
-	$(".search").show();
-	$("#s_search").hide();
-	$("#fileview").show();
-	$("#s_file").html("");
-}
-//search post ajax
-function s_post(){
-		var wd = document.getElementById('spcinput').value;
-	$("#s_load").show();//load style
-			$.ajax({
-			type : 'post',
-			url : '/search/s.php',
-			data : { `;
-    console.log(extractFunctionByName(example, "file"));
-    console.log(extractFunctionByName(example, "more"));
-});
-
 function sandboxEval(code: string, predef: string) {
     const env = `let res; const $ = { ajax: d => res = d }; `
 
@@ -360,12 +193,17 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
             method: 'POST',
             body: formData
         }).then(r => r.json());
-        lastNum = list.text.length;
-        pgnum++;
         if(list.info != 'sucess'){
+            if(typeof list.info === 'string' && list.info.includes('重试')){
+                console.warn(`获取第 ${pgnum - 1} 页文件列表出现问题：蓝奏云限制！`);
+                await delay(1000 * Math.random() + 834);
+                continue;
+            }
             console.warn(`获取第 ${pgnum - 1} 页文件列表失败！`, list.info);
             break;
         }
+        lastNum = list.text.length;
+        pgnum++;
         files.push(...list.text.map((el: LanZouFile) => ({
             ...el,
             _link: new URL('/' + el.id, page).href,
@@ -378,6 +216,7 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
 
     // 提取文件夹
     for (const direl of doc.querySelectorAll('#folder a')) try {
+        direl.querySelector('div.filesize')?.remove();  // 去除文件夹大小
         const dirurl = new URL(direl.getAttribute('href')!, page);
         console.log(`递归：获取文件夹 ${dirurl.href}`);
         await getFiles(dirurl.href, parentPath + '/' + direl.textContent, files);
@@ -452,6 +291,10 @@ async function downloadFile(docurl: string) {
 
 async function downloadCorutine(file: LanZouFile) {
     try{
+        if(await exists(join('lanout', file._path))){
+            console.log(`文件 ${file._path} 已存在，跳过下载...`);
+            return;
+        }
         await ensureDir('lanout/' + dirname(file._path));
         let f;
         do{
