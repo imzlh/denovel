@@ -365,14 +365,13 @@ function tryReadTextFile(file: string): string {
     const binFile = Deno.readFileSync(file);
     try {
         return new TextDecoder('utf-8', { fatal: true }).decode(binFile);
-        // }catch{ try{
-        //     console.log('try windows-1252(ANSI)')
-        //     return new TextDecoder('windows-1252', { fatal: true }).decode(binFile);
+    }catch{ try{
+        console.log('try UTF-16')
+        return new TextDecoder('utf-16', { fatal: true }).decode(binFile);
     } catch {
         console.log('try gb18030(GBK+)')
         return new TextDecoder('gb18030', { fatal: true }).decode(binFile);
-    }
-    // }
+    }}
 }
 
 enum Status {

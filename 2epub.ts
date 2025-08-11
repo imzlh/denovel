@@ -330,10 +330,12 @@ export function toEpub(data: string, input: string, output: string, option: {
     }
 
     // 生成 epub 文件
-    option.reporter(Status.CONVERTING, 'Generating EPub file to ' + output + option.jpFormat ? 'using jp format' : '' + '...');
+    option.reporter(Status.CONVERTING, '生成EPUB文件: ' + output + option.jpFormat ? 'using jp format' : '' + '...');
     generateEpub(options, output).then(() => {
         option.reporter!(Status.DONE, '生成成功: ' + output);
         if (option.thenCB) option.thenCB();
+    }).catch(e => {
+        option.reporter!(Status.ERROR, `生成失败: ${e instanceof Error ? e.message : String(e)}`);
     });
 
     return true;

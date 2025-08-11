@@ -201,3 +201,5 @@ export default async function main(){
         console.log('\n===================================================\n');
     }
 }
+
+if(import.meta.main) main();

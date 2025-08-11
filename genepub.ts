@@ -353,7 +353,12 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     const content: Array<EpubContent> = [];
 
     // 处理封面
-    const coverInfo = await processCover(cover, userAgent, networkHandler, logHandler, verbose);
+    try{
+        // deno-lint-ignore no-inner-declarations
+        var coverInfo = await processCover(cover, userAgent, networkHandler, logHandler, verbose);
+    }catch(e){
+        logHandler('error', `封面处理失败 : ${cover}, ${e instanceof Error ? e.message : String(e)}`)
+    }
     
     // HTML处理函数
     const loadHtml = (contentData: string, plugins: Plugin[]) =>
@@ -457,18 +462,22 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     }
 
     // 下载所有媒体文件
-    for (const media of images) {
+    for (const media of images) try{
         const mediaContent = await downloadMedia(media, userAgent, networkHandler, logHandler);
         if (mediaContent) {
             files.set(`OEBPS/images/${media.id}.${media.extension}`, mediaContent);
         }
+    }catch(e){
+        logHandler('error', `下载图片失败 : ${media.url}, ${e instanceof Error ? e.message : String(e)}`)
     }
 
-    for (const media of audioVideo) {
+    for (const media of audioVideo) try{
         const mediaContent = await downloadMedia(media, userAgent, networkHandler, logHandler);
         if (mediaContent) {
             files.set(`OEBPS/audiovideo/${media.id}.${media.extension}`, mediaContent);
         }
+    }catch(e){
+        logHandler('error', `下载多媒体文件失败 : ${media.url}, ${e instanceof Error ? e.message : String(e)}`)
     }
 
     // 添加封面文件
@@ -495,10 +504,12 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     files.set("OEBPS/style.css", new TextEncoder().encode(css));
 
     // 添加字体文件
-    for (const font of fonts) {
+    for (const font of fonts) try{
         const fontContent = await Deno.readFile(font);
         const filename = basename(font);
         files.set(`OEBPS/fonts/${filename}`, fontContent);
+    }catch(e){
+        logHandler('error', `下载字体文件失败 : ${font}, ${e instanceof Error ? e.message : String(e)}`)
     }
 
     // 渲染内容文件
