@@ -74,5 +74,10 @@ export default async function main(){
     }
 
     // 执行文件分割
+    console.log(`开始分割 ${sourceDirectory} 中的txt文件...`);
     splitTxtFilesIntoFolders(sourceDirectory);
+}
+
+if(import.meta.main){
+    main();
 }

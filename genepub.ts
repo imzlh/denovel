@@ -1,8 +1,8 @@
 import { render } from "npm:ejs";
 import { encodeXML } from "npm:entities";
-import { Element } from "npm:hast";
 import { imageSize } from "npm:image-size";
 import mime from "npm:mime";
+import type { Element } from "npm:@types/hast";
 import rehypeParse from "npm:rehype-parse";
 import rehypeStringify from "npm:rehype-stringify";
 import { Plugin, unified } from "npm:unified";
@@ -88,6 +88,8 @@ interface FileEntry {
     content: Uint8Array;
 }
 
+type UnPromise<T> = T extends Promise<infer U> ? U : T;
+
 // 默认配置
 export const defaultAllowedAttributes = [
     "content", "alt", "id", "title", "src", "href", "about", "accesskey",
@@ -126,12 +128,12 @@ function getExtensionFromDataUrl(dataUrl: string): string | null {
     return res ? res[1] : null;
 }
 
-async function genSlug(str: string) {
-    // to ascii
-    const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str));
-    // 减少到8位
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16)).join('').slice(0, 8);
-}
+// async function genSlug(str: string) {
+//     // to ascii
+//     const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(str));
+//     // 减少到8位
+//     return Array.from(new Uint8Array(buf)).map(b => b.toString(16)).join('').slice(0, 8);
+// }
 
 function validateElement(
     contentIndex: number,
@@ -177,7 +179,7 @@ function processMediaTag(
     node: Element,
     mediaArray: Array<EpubMedia>,
     subfolder: string,
-    downloadAudioVideoFiles: boolean,
+    _downloadAudioVideoFiles: boolean,  // reserved
     logHandler: (type: "info" | "warn" | "error", message: string) => void
 ): void {
     let url = node.properties!.src as string | null | undefined;
@@ -280,7 +282,7 @@ async function processCover(
             });
             
             if (!response.ok) {
-                throw new Error("Failed to fetch cover image(status code: " + response.status + ")");
+                throw new Error("下载封面失败( HTTP " + response.status + " )");
             }
             
             const arrayBuffer = await response.arrayBuffer();
@@ -299,9 +301,7 @@ async function processCover(
     }
 
     // 获取图片尺寸
-    const result: { width: number, height: number, type: string } = 
-    // @ts-ignore typecheck
-        await new Promise(rs => rs(imageSize(content, rs))) as any;
+    const result = imageSize(content);
     
     if (!result || !result.width || !result.height) {
         throw new Error(`Failed to retrieve cover image dimensions`);
@@ -353,11 +353,12 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     const content: Array<EpubContent> = [];
 
     // 处理封面
+    let coverInfo: UnPromise<ReturnType<typeof processCover>>;
     try{
-        // deno-lint-ignore no-inner-declarations
-        var coverInfo = await processCover(cover, userAgent, networkHandler, logHandler, verbose);
+        coverInfo = await processCover(cover, userAgent, networkHandler, logHandler, verbose);
     }catch(e){
-        logHandler('error', `封面处理失败 : ${cover}, ${e instanceof Error ? e.message : String(e)}`)
+        logHandler('error', `封面处理失败 : ${cover}, ${e instanceof Error ? e.message : String(e)}`);
+        throw e;
     }
     
     // HTML处理函数
@@ -410,12 +411,12 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
 
         // 处理HTML内容
         const html = loadHtml(contentItem.data, [
-            () => (tree: any) => {
+            () => tree => {
                 visit(tree, "element", (node: Element) => {
                     validateElement(index, node, version, allowedAttributes, allowedXhtml11Tags, verbose, logHandler);
                 });
             },
-            () => (tree: any) => {
+            () => tree => {
                 visit(tree, "element", (node: Element) => {
                     if (["img", "input"].includes(node.tagName)) {
                         processMediaTag(index, node, images, "images", downloadAudioVideoFiles, logHandler);
@@ -544,7 +545,8 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
             contentXHTMLEJS,
             { ...templateData, ...contentItem },
             { 
-                escape: (markup: string) => markup
+                escape: (markup: string) => markup,
+                async: true
             }
         );
         files.set(contentItem.filePath, new TextEncoder().encode(result));
@@ -570,20 +572,23 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     // 生成OPF文件
     const opfTemplate = version === 3 ? contentEJS : content2EJS;
     const opfResult = await render(opfTemplate, templateData, { 
-        escape: (markup: string) => markup
+        escape: (markup: string) => markup,
+        async: true
     });
     files.set("OEBPS/content.opf", new TextEncoder().encode(opfResult));
 
     // 生成NCX文件
     const ncxResult = await render(tocNCXJS, templateData, { 
-        escape: (markup: string) => markup
+        escape: (markup: string) => markup,
+        async: true
     });
     files.set("OEBPS/toc.ncx", new TextEncoder().encode(ncxResult));
 
     // 生成HTML TOC文件
     const htmlTocTemplate = version === 3 ? tocEJS : toc2EJS;
     const htmlTocResult = await render(htmlTocTemplate, templateData, { 
-        escape: (markup: string) => markup
+        escape: (markup: string) => markup,
+        async: true
     });
     files.set("OEBPS/toc.xhtml", new TextEncoder().encode(htmlTocResult));
 

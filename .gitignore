@@ -13,3 +13,8 @@ lib/fanqie/
 webo/
 *cache*
 downloads/*
+!package.json
+node_modules/
+pnpm*
+npm*
+yarn*
