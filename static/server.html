@@ -514,6 +514,9 @@
                 <button class="btn" onclick="checkUrl()" id="checkBtn">
                     🔍 检查URL
                 </button>
+                <button class="btn" onclick="pollQueue()" id="pollBtn" data-state="free">
+                    🔁 刷新队列
+                </button>
                 <button class="btn" onclick="addToQueue()" id="downloadBtn" style="display:none;">
                     ⬇️ 添加到队列
                 </button>
@@ -789,6 +792,69 @@
             showToast('任务已添加到队列', 'success');
 
             // 如果没有正在下载的任务，开始下载
+            if (!currentDownload) {
+                processQueue();
+            }
+        }
+
+        async function pollQueue() {
+            const btnEl = document.getElementById('pollBtn');
+
+            let tasks;
+            try{
+                const response = await fetch('/api/poll-queue');
+                if(!response.ok) throw new Error('刷新失败: ' + (await response.text()));
+                tasks = await response.json();
+                if(tasks.length == 0){
+                    showToast('服务器内没有任务', 'info');
+                    return;
+                }
+            }catch(e){
+                showToast('刷新失败：' + e.message, 'error');
+            }
+
+            if(btnEl.dataset.state == 'free'){
+                // 显示高级选项
+                const novelInfo = document.getElementById('novelInfo');
+                novelInfo.classList.add('show');
+                showToast('请选择下载选项，点击开始后将自动开始下载服务器内队列任务', 'info');
+                btnEl.innerHTML = '完成！开始刷新';
+                btnEl.dataset.state = 'wait';
+                return;
+            }
+
+            btnEl.innerHTML = '刷新中';
+            btnEl.disabled = true;
+            btnEl.dataset.state = 'busy';
+
+            const options = {
+                toEpub: document.getElementById('toEpub').checked,
+                translate: document.getElementById('translate').checked,
+                autoPart: document.getElementById('autoPart').checked,
+                jpFormat: document.getElementById('jpFormat').checked,
+                mergeShort: document.getElementById('mergeShort').checked
+            };
+
+            // task: string -> url
+            for(const task of new Set(tasks)){
+                if(downloadQueue.some(t => t.url === task)) continue;
+                downloadQueue.push({
+                    id: Date.now() + Math.random(),
+                    url: task,
+                    status: 'waiting',
+                    addTime: new Date().toLocaleString(),
+                    options
+                });
+            }
+            btnEl.innerHTML = ' 🔁 刷新队列 ';
+            btnEl.disabled = false;
+            btnEl.dataset.state = 'free';
+            updateQueueDisplay();
+
+            try{
+                await fetch('/api/clear-queue');
+            }catch{}
+
             if (!currentDownload) {
                 processQueue();
             }

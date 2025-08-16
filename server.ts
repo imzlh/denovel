@@ -1,8 +1,11 @@
+// deno-lint-ignore-file require-await
 /**
- * 小说服务器 v2
+ * 小说服务器 v3
  * POST /api/settings({"delay":1000,"outputDir":"./downloads"}) - 保存全局设置
    GET /api/settings - 获取全局设置
    POST /api/check-url - (body: {url})检查URL并返回是否需要更多信息
+   GET /api/push-download?url=... - 下载接口，不会输出内容，仅仅同步到网页
+   GET /api/poll-queue - 从待下载队列中获取下载任务
    WebSocket /api/download?url=... - 下载接口，支持实时消息推送
    第一条消息传输信息：
    { novelName: string, coverUrl: string, options: {
@@ -28,6 +31,9 @@ if (await exists('server.json')) {
     settings = JSON.parse(await Deno.readTextFile('server.json'));
     await ensureDir(settings.outputDir);
 }
+
+// 特殊下载队列：只有前端受理时才取出
+const downloadQueue: string[] = [];
 
 // 路由处理函数
 async function handleRequest(req: Request): Promise<Response> {
@@ -65,8 +71,29 @@ async function handleRequest(req: Request): Promise<Response> {
                 });
             }
         }
+    } else if (url.pathname === "/api/push-download") {
+        const novelUrl = url.searchParams.get("url");
+        if (!novelUrl) {
+            return new Response("Missing URL parameter", {
+                status: 400
+            });
+        }
+        downloadQueue.push(novelUrl);
+        return new Response("OK", {
+            headers: { "Content-Type": "text/plain" }
+        });
+    } else if (url.pathname == '/api/poll-queue'){
+        const resp = new Response(JSON.stringify(downloadQueue), {
+            headers: { "Content-Type": "application/json" }
+        });
+        // downloadQueue.length = 0;
+        return resp;
+    } else if (url.pathname === "/api/clear-queue") {
+        downloadQueue.length = 0;
+        return new Response(null, {
+            status: 204
+        });
     } else if (url.pathname === "/") {
-        // 调试页面
         return new Response(mainPage, {
             headers: { "Content-Type": "text/html" }
         });

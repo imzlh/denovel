@@ -296,7 +296,7 @@ async function fetch2(
 
     if ([301, 302, 303, 307, 308].includes(response.status)) {
         // 重定向
-        response = await fetch2(new URL(response.headers.get('location')!), options, measureIP);
+        response = await fetch2(new URL(response.headers.get('location')!, url), options, measureIP);
     }
 
     return response;
@@ -558,21 +558,37 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainIn
     const firstPage = cfg.mainPageFirstChapter
         ? mainPage.querySelector(cfg.mainPageFirstChapter)?.getAttribute('href')
         : page;
-    if (!firstPage) {
-        throw new Error('未找到第一章');
-    }
 
-    return {
-        firstPage: new URL(firstPage, page),
-        cover: mainPage.querySelector(cfg.mainPageCover!)?.getAttribute('src') ?? undefined,
+    const coverEl = mainPage.querySelector(cfg.mainPageCover!);
+    let cover = coverEl?.getAttribute('src') as undefined | string;
+    if(coverEl){
+        // 极端模式：遍历所有attribute，找到第一个以图片结尾的
+        for(const attr of coverEl.attributes){
+            if(attr.textContent.split('.').pop()?.toLowerCase()! in ['jpg', 'png', 'jpeg', 'gif', 'webp']){
+                cover = attr.textContent;
+                break;
+            }
+        }
+    }
+    const info = {
+        firstPage: firstPage ? new URL(firstPage, page) : undefined,
+        cover,
         book_name: mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '',
         summary: processContent(mainPage.querySelector(cfg.mainPageSummary!)),
-        jpStyle: cfg.jpStyle
+        jpStyle: cfg.jpStyle,
+        author: cfg.mainPageAuthor ? mainPage.querySelector(cfg.mainPageAuthor)?.innerText : undefined
+    } as MainInfoResult;
+    if(cfg.mainPageFilter) await cfg.mainPageFilter(page, mainPage, info);
+
+    if (!info.firstPage) {
+        throw new Error('未找到第一章');
     }
+    return info;
 }
 
 async function defaultGetInfo2(page: URL): Promise<MainInfoResult | null> {
     const cfg = (await import('./lib/' + page.hostname + '.t.ts')).default as TraditionalConfig;
+    if(!cfg) return null;
 
     const info = await defaultGetInfo(page, cfg);
     if(cfg.infoFilter && info) await cfg.infoFilter(page, info);
@@ -583,8 +599,9 @@ export const convert = Converter({ from: 'tw', to: 'cn' });
 
 // 包装配置
 async function* tWrapper(url: URL) {
-    let next_url = url;
+    let next_url: undefined | URL = url;
     const config = (await import('./lib/' + next_url.hostname + '.t.ts')).default as TraditionalConfig;
+    if(!config) throw new Error(`空站点配置文件：${next_url.hostname}`);
     while (next_url && next_url.protocol.startsWith('http')) {
         let document: HTMLDocument;
 
@@ -599,23 +616,21 @@ async function* tWrapper(url: URL) {
                 throw e;
             }
         }
-        const ctx = document.querySelector((config as TraditionalConfig).content);
+        const ctx = document.querySelector(config.content);
         if(!ctx && args.parted) return; // 空页面
 
-        const data = {
-            title: document.querySelector((config as TraditionalConfig).title)?.innerText!,
+        const data: Data & { url: URL } = {
+            title: document.querySelector(config.title)?.innerText!,
             content: ctx ? processContent(ctx) : '',
-            next_link: document.querySelector((config as TraditionalConfig).next_link)?.getAttribute('href') || '',
+            next_link: document.querySelector(config.next_link)?.getAttribute('href') || '',
             url: next_url
         };
         if (config.filter) try {
             await config.filter(document, data);
-        // deno-lint-ignore no-empty
-        }catch{}
-        if(!data.next_link || data.next_link.startsWith('javascript:')){
-            return; // 最后一章
+        }catch(e){
+            console.warn(`[warn] 过滤器出错：${next_url} ${e instanceof Error ? e.message : e}`);
         }
-        next_url = new URL(data.next_link, next_url);
+        next_url = data.next_link ? new URL(data.next_link, next_url) : undefined;
 
         yield {
             content: data.content?.trim(), title: data.title?.trim()
@@ -658,7 +673,8 @@ async function downloadNovel(
         epub_options?: Parameters<typeof toEpub>[3],
         info_generated?: (info: MainInfoResult) => void,
         sleep_time?: number,
-        no_input?: boolean
+        no_input?: boolean,
+        author?: string
     }
 ) {
     let url = new URL(start_url);
@@ -682,6 +698,7 @@ async function downloadNovel(
         summary = info.summary;
         (!options.cover && info.cover) && (options.cover = info.cover);
         (!options.book_name && info.book_name) && (options.book_name = info.book_name);
+        (!options.author && info.author) && (options.author = info.author);
         info.firstPage && (url = info.firstPage);
         if(options.check_needs_more_data) return false;
     }else{
@@ -705,6 +722,7 @@ async function downloadNovel(
     const file = await Deno.open(fpath, {
         create: true, write: true, truncate: true
     });
+    if(options.author) file.write(new TextEncoder().encode(`作者: ${options.author}\r\n`));
     if(summary) file.write(new TextEncoder().encode(`简介: \r\n${summary}\r\n${'-'.repeat(20)}\r\n`));
 
     let chapter_id = 1, previous_title = '';

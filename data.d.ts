@@ -5,7 +5,10 @@ declare interface MainInfo {
     mainPageTitle: string;
     mainPageCover: string;
     mainPageSummary?: string;
+    mainPageAuthor?: string;
     jpStyle?: boolean;
+
+    mainPageFilter?: (url: URL, document: import("jsr:@b-fuze/deno-dom").Document, filled_data: MainInfoResult) => PromiseOrNot<void>;
 }
 
 declare interface MainInfoResult {
@@ -13,6 +16,7 @@ declare interface MainInfoResult {
     cover?: string;
     book_name?: string;
     summary?: string;
+    author?: string;
     
     jpStyle?: boolean;
 }
