@@ -14,6 +14,9 @@ jobs:
       uses: denoland/setup-deno@v1
       with:
         deno-version: 'latest'
+      
+    - name: Install Denovel dependencies
+      run: deno install
 
     - name: Build for Windows (x86_64)
       run: |

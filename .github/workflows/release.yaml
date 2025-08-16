@@ -32,6 +32,9 @@ jobs:
       uses: denoland/setup-deno@v1
       with:
         deno-version: latest
+
+    - name: Install Denovel dependencies
+      run: deno install
         
     - name: Install dependencies
       run: deno cache --unstable-raw-imports --unstable-kv exe.ts
