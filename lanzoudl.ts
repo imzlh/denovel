@@ -195,11 +195,11 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
         }).then(r => r.json());
         if(list.info != 'sucess'){
             if(typeof list.info === 'string' && list.info.includes('重试')){
-                console.warn(`获取第 ${pgnum - 1} 页文件列表出现问题：蓝奏云限制！`);
+                console.warn(`获取第 ${pgnum} 页文件列表出现问题：蓝奏云限制！`);
                 await delay(1000 * Math.random() + 834);
                 continue;
             }
-            console.warn(`获取第 ${pgnum - 1} 页文件列表失败！`, list.info);
+            console.warn(`获取第 ${pgnum} 页文件列表失败！`, list.info);
             break;
         }
         lastNum = list.text.length;

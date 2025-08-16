@@ -628,6 +628,7 @@ async function* tWrapper(url: URL) {
         if (config.filter) try {
             await config.filter(document, data);
         }catch(e){
+            if(e instanceof NoRetryError) throw e;
             console.warn(`[warn] 过滤器出错：${next_url} ${e instanceof Error ? e.message : e}`);
         }
         next_url = data.next_link ? new URL(data.next_link, next_url) : undefined;

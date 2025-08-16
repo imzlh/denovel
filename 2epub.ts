@@ -318,11 +318,11 @@ export function toEpub(data: string, input: string, output: string, option: {
         }
 
         // image
-        const imgmatch = beforeText.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif)/);
+        const imgmatch = beforeText.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp)/);
         if (imgmatch) {
             options.cover = imgmatch[0];
         }else {
-            const match2 = beforeText.match(/[\r\n]封面[：:]\s*(.+?)\s*[\r\n]+/);
+            const match2 = beforeText.match(/[\r\n]\s*封面[：:]\s*(.+?)\s*[\r\n]+/);
             if (match2) {
                 options.cover = match2[1];
             }
