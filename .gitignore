@@ -13,7 +13,7 @@ lib/fanqie/
 webo/
 *cache*
 downloads/*
-!package.json
+!deno.json
 node_modules/
 pnpm*
 npm*

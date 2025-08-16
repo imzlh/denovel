@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "server": "deno run --unstable-raw-imports --unstable-kv server.ts",
+    "dev": "deno run --watch --unstable-raw-imports --unstable-kv server.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1"
+  },
+  "nodeModulesDir": "auto",
+  "license": "MIT",
+  "name": "@imzlh/denovel",
+  "version": "1.5.2"
+}
