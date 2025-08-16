@@ -155,8 +155,8 @@ export default async function main(){
                                 book_name: novelOptions.novelName,
                                 cover: novelOptions.coverUrl,
                                 sig_abort: new AbortController().signal,
-                                disable_parted: !novelOptions.options.autoPart,
-                                to_epub: novelOptions.options.toEpub,
+                                disable_parted: !novelOptions.options?.autoPart,
+                                to_epub: novelOptions.options?.toEpub,
                                 traditional: await checkIsTraditional(new URL(novelUrl)),
                                 epub_options: {
                                     thenCB: async () => {
@@ -165,8 +165,8 @@ export default async function main(){
                                             log: '转换完成'
                                         }));
                                     },
-                                    jpFormat: novelOptions.options.jpFormat,
-                                    merge: novelOptions.options.mergeShort
+                                    jpFormat: novelOptions.options?.jpFormat,
+                                    merge: novelOptions.options?.mergeShort
                                 },
                                 info_generated: async (info) => {
                                     socket.send(JSON.stringify({
@@ -176,7 +176,8 @@ export default async function main(){
                                 },
                                 sleep_time: settings.delay / 1000,
                                 outdir: settings.outputDir,
-                                no_input: true
+                                no_input: true,
+                                translate: novelOptions.options?.translate
                             });
                             socket.send(JSON.stringify({
                                 finalChunk: true

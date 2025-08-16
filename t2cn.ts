@@ -1,6 +1,6 @@
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { parseArgs } from "jsr:@std/cli/parse-args";
-import { basename } from "jsr:@std/path@^1.0.8";
+import { basename, dirname } from "jsr:@std/path@^1.0.8";
 import { convert, tryReadTextFile } from "./main.ts";
 
 export default async function main() {
@@ -29,7 +29,7 @@ Options:
     }
 
     const input = args._[0];
-    const output = (args.output || input).toString();
+    let output = (args.output || input).toString();
     if (typeof input !== 'string')
         throw new Error('Input file is required');
     const finfo = await Deno.stat(input);
@@ -38,12 +38,13 @@ Options:
         files = await Array.fromAsync(Deno.readDir(input)).then(data => 
             data.filter(item => item.isFile && item.name.endsWith('.txt')).map(item => item.name)
         );
+        await ensureDir(output);
     } else {
         files = [input];
+        output = dirname(output);
     }
 
     console.time('convert');
-    await ensureDir(output);
     for(const file of files) try{
         if(file.endsWith('.2.txt')) continue;
         const ofile = output + '/' + basename(file) + '.2.txt';
