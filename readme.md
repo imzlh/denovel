@@ -49,7 +49,8 @@
 ### 进阶用法：浏览器扩展
 请确保你安装了 油猴（又称 篡改猴）<br>
 打开：
-https://www.tampermonkey.net/script_installation.php#url=https://raw.githubusercontent.com/imzlh/denovel/refs/heads/main/helper/helper.js
+https://greasyfork.org/zh-CN/scripts/546122-bing%E5%B0%8F%E8%AF%B4%E8%87%AA%E5%8A%A8%E4%B8%8B%E8%BD%BD%E5%8A%A9%E6%89%8B
+安装即可
 
 安装后，请使用bing搜索，建议搜索时添加“小说”关键词，当然脚本也会自动判断为你省力<br>
 当出现“配置不完整”时，请点击链接，复制第一章链接和其余信息，手动下载<br>
