@@ -15,6 +15,7 @@ Deno.test("normalize", () => {
         "当大号穿越异世遇上创世神小号⊙1-extra卷第20章（完本）.txt",
         "【灵梦特殊广告书】崩坏，活下去⊙48w[多看阅读].epub",
         "【南锦】我的丧尸女王每天都想跟我贴贴⊙完本.txt",
+        "_1加功德，我真不是气运之子啊⊙1-151.txt"
     ]){
         const match = name.match(regexp);
         if (match) {
@@ -34,7 +35,8 @@ if(import.meta.main && Deno.args.length > 0){
             const name = entry.name;
             const match = name.match(regexp);
             if (match) {
-                const [_, _title, start, end, finished, ext] = match;
+                let [_, _title, start, end, finished, ext] = match;
+                _title = _title.trim().split('⊙')[0];
                 const title = _title + '.' + ext;
                 if(!(title in filemap)){
                     filemap[_title] = [];
@@ -48,7 +50,7 @@ if(import.meta.main && Deno.args.length > 0){
                 obj.push([name, Deno.statSync(name).size]);
             }else if(name.endsWith(".txt") || name.endsWith(".epub")){
                 // 已经预处理的小说
-                const key = name.split('.')[0];
+                const key = name.split('.')[0].split('⊙')[0];
                 if(!(key in filemap)) filemap[key] = [];
                 const obj = filemap[key];
                 obj.push([name, Deno.statSync(name).size]);
