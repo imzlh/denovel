@@ -10,6 +10,189 @@ import { ensure } from "./_dep.ts";
 import { readline } from "./exe.ts";
 import { extractDOCXContent, extractPDFContent, extractEPUBContent, extractPagesFromDOCX, extractPagesFromPDF } from "jsr:@baiq/document-parser";
 
+
+class ElementArray<T extends XmlNode> extends Array<T> {
+    static fromXML(xml: string){
+        return new ElementArray(...parseXML(xml));
+    }
+
+    static getText(node: XmlNode): string{
+        switch(node.kind){
+            case "BAD_NODE":
+                return "";
+            case "TEXT_NODE":
+                return node.value;
+            case "COMMENT_NODE":
+                return "";
+            case "REGULAR_TAG_NODE":
+                return node.children.map(ElementArray.getText).join('');
+            case "ORPHAN_TAG_NODE":
+                return "";
+        }
+    }
+
+    static override from(element: XmlNode[]){
+        return new ElementArray(...element.filter(node => node.kind == 'REGULAR_TAG_NODE' || node.kind == 'ORPHAN_TAG_NODE'));
+    }
+
+    get children(): ElementArray<XmlNode>{
+        return new ElementArray(...this.flatMap(node => node.kind == 'REGULAR_TAG_NODE'? node.children : []));
+    }
+
+    selectNode(name: string, attrs?: Record<string, RegExp | string | undefined>, deep = false) {
+        const nodes = new ElementArray<RegularTagNode | OrphanTagNode>();
+        name = name.toLowerCase();
+        for (const _node of this) {
+            const node = _node as XmlNode;
+            if(node.kind != 'REGULAR_TAG_NODE' && node.kind != 'ORPHAN_TAG_NODE') continue;
+            if (node.tagName.toLowerCase() == name) {
+                if (attrs) {
+                    for (const [key, value] of Object.entries(attrs)) {
+                        if(!node.attributes || !(key in node.attributes)) continue; // 属性不存在
+                        if(value && (typeof value == 'string' ? node.attributes[key] !== value : !value.test(node.attributes[key]))) 
+                            continue; // 属性值不匹配
+                    }
+                }
+                nodes.push(node);
+            }else if(deep){
+                // 递归查找子节点
+                if(node.kind == 'REGULAR_TAG_NODE')
+                    nodes.push(...ElementArray.from(node.children).selectNode(name, attrs, deep));
+            }
+        }
+        return nodes;
+    }
+
+    selectSubNode(name: string, attrs?: Record<string, RegExp | undefined>, deep = false) {
+        return this.children.selectNode(name, attrs, deep);
+    }
+
+    get textContent(): string{
+        return this.map(ElementArray.getText).join('');
+    }
+}
+
+/**
+ * EPUB转TXT
+ * @param data 输入的文件内容
+ * @param input 输入的文件名
+ * @param output 输出位置
+ */
+export async function toTXT2(source: Uint8Array, outdir: string) {
+    // 释放所有文件
+    const files = await zip.extract(source);
+
+    // 提取关键文件
+    const keyfile: Record<string, Uint8Array | null> = {
+        mimetype: null,
+        "META-INF/container.xml": null
+    };
+    for (const file of files) {
+        if (keyfile[file.name] === null) {
+            keyfile[file.name] = file.data;
+        }
+    }
+
+    if (keyfile.mimetype === null || keyfile["META-INF/container.xml"] === null
+        || new TextDecoder().decode(keyfile.mimetype) !== "application/epub+zip")
+        throw new Error("Invalid EPUB file: mimetype or container.xml not found or not valid");
+
+    // 解析container.xml
+    const container = ElementArray.fromXML(new TextDecoder().decode(keyfile["META-INF/container.xml"]));
+    const rootfileEl = container.selectNode('container').selectSubNode('rootfiles').selectSubNode('rootfile', { 'full-path': undefined })[0];
+    if (!rootfileEl)
+        throw new Error("Invalid EPUB file: rootfile not found or not valid");
+
+    const rootfile_path = rootfileEl.attributes?.["full-path"]!;
+    const rootfile = files.find(file => file.name === rootfile_path);
+    if (!rootfile)
+        throw new Error("Invalid EPUB file: rootfile not found");
+
+    function getF(path: string){
+        const f = dirname(rootfile_path) + '/' + path;
+        return files.find(file => file.name === f);
+    }
+
+    // 解析OPF文件
+    const opf = ElementArray.fromXML(new TextDecoder().decode(rootfile.data));
+    const dcMeta = opf.selectNode('metadata', undefined, true)!;
+    const meta = {
+        version: parseFloat(opf.selectNode('package', { version: undefined })?.[0]?.attributes?.version || '0'),
+        title: dcMeta.selectSubNode('dc:title')?.textContent,
+        author: (dcMeta.selectSubNode('dc:creator')?.textContent),
+        publisher: dcMeta.selectSubNode('dc:publisher')?.textContent,
+        date: dcMeta.selectSubNode('dc:date')?.textContent,
+        cover: opf.selectSubNode('meta[name="cover"]')[0]?.attributes?.content,
+        description: opf.selectSubNode('dc:description').textContent,
+    };
+
+    if (isNaN(meta.version) || meta.version < 2) {
+        throw new Error("Unsupported EPUB version: " + meta.version);
+    }
+
+    // 生成ID目录
+    const idMap: Record<string, string> = {};
+    // for (const el of opf.querySelectorAll('package > manifest > item[id][href]')) {
+    for(const el of opf.selectNode('package').selectSubNode('manifest').selectSubNode('item')) {
+        const id = el.attributes?.id!, href = el.attributes?.href!;
+        if (id in idMap) throw new Error(`Duplicate ID in manifest: ${id}`);
+        idMap[id] = href;
+    }
+
+    // 提取章节内容
+    const chapters: string[] = [];
+    // for (const el of opf.querySelectorAll('package > spine itemref[idref]')) {
+    for(const el of opf.selectNode('package').selectSubNode('spine').selectSubNode('itemref', { idref: undefined })) {
+        const idref = el.attributes?.idref!;
+        const filePath = idMap[idref];
+        if (!filePath){
+            console.log(`Warning: 未找到ID为${idref}的章节文件`);
+            continue;
+        }
+        const chapter = getF(filePath);
+        if (!chapter) throw new Error(`Chapter file not found: ${filePath}`);
+        const content = new TextDecoder().decode(chapter.data);
+        chapters.push(content);
+    }
+
+    // 生成TXT
+    let txt = '';
+    for (let i = 0; i < chapters.length; i++) try {
+        const chapter = chapters[i];
+        const document = new DOMParser().parseFromString(chapter, 'text/html');
+
+        // 提取图片
+        const imgs = Array.from(document.querySelectorAll('img[src]'));
+        for (const img of imgs) try {
+            const src = img.getAttribute('src')!;
+            const imgData = getF(src);
+            if (!imgData) throw new Error(`Image file not found: ${src}`);
+
+            // write to file
+            const imgDir = join(outdir, dirname(src));
+            await ensureDir(imgDir);
+            await Deno.writeFile(join(outdir, src), imgData.data);
+
+            // redirect
+            img.setAttribute('src', 'file://' + outdir + '/' + src);
+        } catch (e) {
+            console.error(`Error parsing image in chapter ${i + 1}: ${(e as Error).message}`);
+        }
+
+        // 标题
+        const title = document.querySelector('head > title')?.innerText;
+        if(title == '目录') continue;
+
+        txt += `第${i}章 ${title}\r\n${processContent(document.body)}\r\n\r\n`;
+    } catch (e) {
+        console.error(`Error parsing chapter ${i + 1}: ${(e as Error).message}`);
+    }
+
+    const outputPath = join(outdir, 'content.txt');
+    Deno.writeTextFile(outputPath, txt);
+    return txt;
+}
+
 /**
  * 任何格式(epub/pdf/docx)转TXT
  * @param data 输入的文件内容
@@ -20,7 +203,7 @@ export async function toTXT(source: string, outdir: string): Promise<string> {
     let doc;
     switch(basename(source).split('.').pop()){
         case "epub":
-            doc = await extractEPUBContent(source, outdir);
+            return toTXT2(await Deno.readFile(source), outdir);
         break;
         case "pdf":
             doc = await extractPDFContent(source, outdir);
@@ -33,6 +216,7 @@ export async function toTXT(source: string, outdir: string): Promise<string> {
     }
 
     let txt = '';
+    if(!doc.pages.length) throw new Error("文档为空");
     for(const page of doc.pages){
         txt += page.paragraphs.join('\r\n') + '\r\n\r\n';
     }
@@ -187,7 +371,7 @@ docx/pdf/epub  -> TXT 转换工具 v2.0
                 const outputPath = await Deno.realPath(join(outputDir, baseName));
                 console.log(`开始转换：${filePath} -> ${outputPath}.epub`);
                 if (!toEpub(
-                    tryReadTextFile(outputPath + '/content.txt'),
+                    tryReadTextFile(outputPath + '.txt'),
                     filePath,
                     dirname(filePath) + '/' + baseName + '.epub',
                     {

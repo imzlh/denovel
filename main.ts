@@ -4,6 +4,7 @@ import { toEpub } from "./2epub.ts";
 import { Converter } from './t2cn.js';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { readline } from "./exe.ts";
+import { SimpleBrowser } from "./h2helper.ts";
 
 class NoRetryError extends Error { }
 
@@ -37,7 +38,7 @@ const removeNonVisibleChars = String;
 // 用于存储 Cookie 的全局对象
 const cookieStore: Record<string, Record<string, string>> =
     await exists('cookie.json') ? JSON.parse(Deno.readTextFileSync('cookie.json')) : {};
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/132.36 (KHTML, like Gecko) Chrome/46.0.0.0 Safari/132.36 Edg/46.0.0.0';
 
 // cookie from browser cookie header
 function setRawCookie(site: string, cookie: string) {
@@ -161,12 +162,13 @@ class BatchDownloader {
     }
 }
 
+let browser: undefined | SimpleBrowser;
 /**
  * Note: 不要使用timeout函数！
  */
 async function fetch2(
     url: string | URL,
-    options: RequestInit & { timeoutSec?: number, maxRetries?: number } = {},
+    options: RequestInit & { timeoutSec?: number, maxRetries?: number, cloudflareBypass?: boolean } = {},
     measureIP: boolean = false,
     ignoreStatus = false
 ): Promise<Response> {
@@ -259,6 +261,19 @@ async function fetch2(
                 Deno.writeTextFileSync('error.html', await response.text())
                 throw new Error('Server Error: status ' + response.status);
             }
+
+            // cloudflare
+            if(
+                response.status == 403 && response.headers.get('Server') == 'cloudflare' && 
+                options.cloudflareBypass && (await response.text()).includes('Just a moment...')
+            ){
+                if(!browser) browser = new SimpleBrowser();
+                await browser.init();
+                console.log('请等待，并进行浏览器中的验证！');
+                await browser.launch(new URL(url));
+                i --;   // force retry
+            }
+
             break;
         } catch (e) {
             console.warn(`Fetch failed (attempt ${i + 1}):`, e instanceof Error ? e.message : e);
@@ -294,7 +309,7 @@ async function fetch2(
     }
     cookieStore[host] = obj;
 
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
+    if ([301, 302, 303, 307, 308].includes(response.status) && options.redirect === 'follow') {
         // 重定向
         response = await fetch2(new URL(response.headers.get('location')!, url), options, measureIP);
     }
@@ -328,7 +343,8 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         redirect: 'follow',
         credentials: 'include',
         referrer: url.protocol + '://' + url.host + '/',
-        referrerPolicy: 'unsafe-url'
+        referrerPolicy: 'unsafe-url',
+        cloudflareBypass: true,
     }, measureIP, ignore_status);
     if (!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
     const data = new Uint8Array(await response.arrayBuffer());
@@ -358,6 +374,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         new TextDecoder(charset).decode(data),
         "text/html"
     );
+    Object.defineProperty(doc, 'documentURI', { value: url });
     return doc;
 }
 
@@ -644,7 +661,8 @@ const moduleExists = async (name: string) => {
     try{
         await import(name);
         return true;
-    }catch{
+    }catch(e){
+    if(!(e instanceof Error) || !e.message.includes('not found')) console.error(e);
         return false;
     }
 }
