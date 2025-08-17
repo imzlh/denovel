@@ -5,6 +5,8 @@ import { basename } from "jsr:@std/path@^1.0.8";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { readline } from "./exe.ts";
 import { create } from 'jsr:@quentinadam/zip';
+import { createCanvas, Image } from 'jsr:@gfx/canvas'
+import cbz2jpg from "./cbz2img.ts";
 // import { Zip }
 
 const out = 'out/', retry_count = 3;
@@ -25,7 +27,7 @@ const args = parseArgs(Deno.args, {
         s: 'sleep',
         f: 'format',
         c: 'cover',
-        m: 'no-multi'
+        m: 'no-multi',
     },
     default: {
         format: 'cbz'
@@ -33,17 +35,18 @@ const args = parseArgs(Deno.args, {
 });
 
 const xmlEncode = (str: string) => str.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
-export async function mkCbz(data: EpubContentOptions[], meta: ComicOptions, outFolder: string) {
+export async function mkCbzOrLongImg(format: string, data: EpubContentOptions[], meta: ComicOptions, outFolder: string) {
     const fetchFunc = meta.networkHandler ?? fetch2;
     const bd = new BatchDownloader(1, 10, fetchFunc, undefined, (param, timeStart, timeEnd) => {
         console.log(`DOWNLOADING 下载 ${String(param[0])} in ${timeEnd - timeStart}ms`);
     });   // 初始单协程，当过慢时再增加协程数
     const bootTime = Date.now();
     const imageArray = data.map(chapter => Array.from(chapter.data.matchAll(/<img src="([^"]+)"/g)).map(m => m[1]));
+    if(format == 'jpg') format = 'jpeg';
     let downloadedSize = 0, downloadedCount = 0, restImages = imageArray.reduce((acc, cur) => acc + cur.length, 0);
     console.log(`INFO 开始下载 ${data.length} 章，共 ${restImages} 张图片`);
     for(let chap = 1; chap <= data.length; chap++){
-        const chapter = data[chap - 1], name = chap + '_' + removeIllegalPath(chapter.title) + '.cbz',
+        const chapter = data[chap - 1], name = chap + '_' + removeIllegalPath(chapter.title) + '.' + format == 'cbz',
             path = outFolder + '/' + name,
             images = imageArray[chap - 1];
 
@@ -111,12 +114,20 @@ export async function mkCbz(data: EpubContentOptions[], meta: ComicOptions, outF
         }}}));
 
         // create cbz
-        const res = await create(imageres.map((img, i) => ({
-            name: (i + 1).toString().padStart(3, '0') + '.' + images[i].split('.').pop()!,
-            data: img,
-            lastModification: new Date()
-        })).concat([ { name: 'ComicInfo.xml', data: new TextEncoder().encode(xml), lastModification: new Date() } ]));
-        await Deno.writeFile(path, res);
+        if(format == 'cbz'){
+            const res = await create(imageres.map((img, i) => ({
+                name: (i + 1).toString().padStart(3, '0') + '.' + images[i].split('.').pop()!,
+                data: img,
+                lastModification: new Date()
+            })).concat([ { name: 'ComicInfo.xml', data: new TextEncoder().encode(xml), lastModification: new Date() } ]));
+            await Deno.writeFile(path, res);
+        }else{
+            cbz2jpg(imageres.map((img, i) => ({
+                name: (i + 1).toString().padStart(3, '0') + '.' + images[i].split('.').pop()!,
+                data: img,
+                lastModification: new Date()
+            })), path.substring(0, path.lastIndexOf('.')));
+        }
         console.log(`INFO (${chap})已保存${name}`);
     }
 
@@ -315,7 +326,10 @@ export default async function main(){
         await generateEpub(info2, out + '/' + filename);
     }else if(args.format == 'cbz'){
         await ensureDir(out + '/' + name);
-        await mkCbz(chaps, info2, out + '/' + name);
+        await mkCbzOrLongImg('cbz', chaps, info2, out + '/' + name);
+    }else if(['jpg', 'jpeg', 'png'].includes(args.format)){
+        await ensureDir(out + '/' + name);
+        await mkCbzOrLongImg(args.format, chaps, info2, out + '/' + name);
     }else{
         // not supported yet
         console.log(`暂不支持输出${args.format}格式.`);
