@@ -344,7 +344,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         credentials: 'include',
         referrer: url.protocol + '://' + url.host + '/',
         referrerPolicy: 'unsafe-url',
-        cloudflareBypass: true,
+        // cloudflareBypass: true,
     }, measureIP, ignore_status);
     if (!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
     const data = new Uint8Array(await response.arrayBuffer());

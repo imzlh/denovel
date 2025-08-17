@@ -1,10 +1,17 @@
-import { getDocument } from "../main.ts";
+import { getDocument, setRawCookie } from "../main.ts";
 import { readline } from '../exe.ts'
 
 while(true){
     const doc = await getDocument('https://masiro.me/admin');
     if(doc.documentURI.startsWith('https://masiro.me/admin/auth/login')){
         console.log('真白萌的爬取需要登陆！');
+        
+        const cookie = await readline('请输入cookie(回车尝试登陆，大概率被CF拦截) > ');
+        if(cookie){
+            setRawCookie('https://masiro.me', cookie);
+            continue;
+        }
+        
         const uname = await readline('请输入用户名 > ');
         const upass = await readline('请输入密码 > ');
         const csrf = doc.querySelector('#loginForm > p.login.button > input[type=hidden]:nth-child(1)')?.getAttribute('value');

@@ -1,7 +1,6 @@
 import { delay } from "https://deno.land/std@0.92.0/async/mod.ts";
 import { fetch2 } from "./main.ts";
-import { off } from "node:process";
-import { read } from "node:fs";
+import { assert } from "node:console";
 
 Deno.env.set('PUPPETEER_SKIP_DOWNLOAD', '1');
 const puppeteer = (await import("https://deno.land/x/puppeteer_plus/mod.ts")).default;
@@ -48,7 +47,7 @@ async function* line_reader(pipe: ReadableStreamDefaultReader<Uint8Array>) {
 async function* pipeLineReader(conn: Deno.Conn, abort: AbortSignal) {
     const buffer = new Uint8Array(1);
     let lineBuffer: number[] = [];
-    
+
     while (!abort.aborted) {
         const readBytes = await conn.read(buffer);
         if (readBytes === null) break;
@@ -57,22 +56,19 @@ async function* pipeLineReader(conn: Deno.Conn, abort: AbortSignal) {
         lineBuffer.push(char);
 
         // 检测CRLF序列
-        if (lineBuffer.length >= 2 && 
-            lineBuffer[lineBuffer.length-2] === 0x0D &&
-            lineBuffer[lineBuffer.length-1] === 0x0A) {
-            
+        if (lineBuffer.length >= 2 &&
+            lineBuffer[lineBuffer.length - 2] === 0x0D &&
+            lineBuffer[lineBuffer.length - 1] === 0x0A) {
+
             // 剔除CRLF后生成消息
             const line = new Uint8Array(lineBuffer.slice(0, -2));
             yield new TextDecoder().decode(line);
-            
+
             lineBuffer = [];  // 重置行缓冲
         }
     }
 
-    // 处理残留数据
-    if (lineBuffer.length > 0) {
-        yield new TextDecoder().decode(new Uint8Array(lineBuffer));
-    }
+    assert(lineBuffer.length === 0, 'Line buffer not empty');
 }
 
 
@@ -92,48 +88,34 @@ async function parseHTTP(conn: Deno.Conn) {
         let state: 'start-line' | 'headers' | 'body' = 'start-line';
 
         for await (const value of reader) {
+            console.log('HTTP:', value);
             if (state === 'start-line') {
                 // 强化请求行校验
                 const parts = value.match(/^([A-Z]+)\s+(\S+)\s+HTTP\/(\d\.\d)$/);
                 if (!parts) throw new Error(`Invalid start-line: ${value}`);
-                
+
                 [info.method, info.path, info.version] = parts.slice(1);
                 state = 'headers';
 
+            } else if (value === '') {
+                abort.abort();
+                state = 'body';
+                continue;
             } else if (state === 'headers') {
-                if (value === '') {
-                    // 校验必需头部
-                    if (info.version === '1.1' && !info.headers.has('Host')) {
-                        throw new Error('Missing Host header');
-                    }
-                    abort.abort();
-                    state = 'body';
-                    continue;
-                }
-
                 // 处理多行头值
                 if (/^[\t ]+/.test(value) && currentHeader) {
                     info.headers.append(currentHeader, value.trim());
                 } else {
                     const colonIdx = value.indexOf(':');
                     if (colonIdx === -1) throw new Error(`Invalid header: ${value}`);
-                    
+
                     currentHeader = value.slice(0, colonIdx).trim();
                     const headerValue = value.slice(colonIdx + 1).trim();
                     info.headers.append(currentHeader, headerValue);
                 }
 
             } else if (state === 'body') {
-                // 根据 RFC 处理正文逻辑
-                const transferEncoding = info.headers.get('transfer-encoding');
-                const contentLength = parseInt(info.headers.get('content-length') || '0', 10);
-
-                if (transferEncoding === 'chunked') {
-                    throw new Error('Chunked encoding not implemented');
-                } else if (contentLength > 0) {
-                    // 需实现根据 content-length 读取
-                    info.body = new TextEncoder().encode(value);
-                }
+                console.log('skip body');
                 break;
             }
         }
@@ -150,14 +132,16 @@ async function writeResponse(resp: Response, conn: Deno.Conn) {
     const respPipe = conn.writable.getWriter();
     const write = (chunk: string) => respPipe.write(new TextEncoder().encode(chunk));
 
-    write(`HTTP/${resp.status} ${resp.statusText}\r\n`);
+    write(`HTTP/1.1 ${resp.status} ${resp.statusText}\r\n`);
     for (const [key, val] of resp.headers) {
         write(`${key}: ${val}\r\n`);
     }
     write('\r\n');
     conn.write(await resp.bytes());
-    await respPipe.close();
-    conn.close();
+    try{
+        await respPipe.close();
+        conn.close();
+    }catch{}
 }
 
 export class SimpleBrowser {
@@ -172,13 +156,13 @@ export class SimpleBrowser {
             for await (const conn of sock) {
                 (async () => {
                     const req = await parseHTTP(conn);
-                    if(req.path.includes('google')){
+                    if (req.path.includes('google')) {
                         conn.close();
                         return;
                     }
                     let res;
                     console.log('Proxy pass:', req.method, req.path);
-                    if (req.method == 'CONNECT') {
+                    if (req.method.toUpperCase() == 'CONNECT') {
                         const tls = await Deno.startTls(conn, {
                             alpnProtocols: ['http/1.1']
                         });
@@ -196,8 +180,16 @@ export class SimpleBrowser {
                         });
                     }
 
-                    res.headers.append('Connection', 'close');
-                    writeResponse(res, conn);
+                    // copy response to client
+                    const nheader = new Headers(res.headers);
+                    nheader.set('connection', 'close');
+                    const nres = new Response(res.body, {
+                        status: res.status,
+                        statusText: res.statusText,
+                        headers: nheader
+                    });
+                    
+                    writeResponse(nres, conn);
                 })().catch(e => console.error(e));
             }
         })();

@@ -62,6 +62,7 @@ export default {
     mainPageTitle: 'body > div.offcanvas-wrapper > section > div > div.col-xl-9.col-lg-8.p-r-30 > div:nth-child(1) > div.col-md-9.book-detail > h2',
     mainPageFirstChapter: '#chapterList a',
     mainPageSummary: '#details > div > div > div.description',
+    mainPageAuthor: 'body > div.offcanvas-wrapper > section > div > div.col-xl-9.col-lg-8.p-r-30 > div:nth-child(1) > div.col-md-9.book-detail > ul > li:nth-child(2) > a',
 
     jpStyle: true
 } satisfies TraditionalConfig;
