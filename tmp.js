@@ -1,1 +1,0 @@
-'https://www.bing.com/ck/a?!&&p=8dd51832620188310589bb87a97ad712722fd1482336aa98294beb4c4f87cd05JmltdHM9MTc1NTMwMjQwMA&ptn=3&ver=2&hsh=4&fclid=0e2d6b77-e88e-6fc1-0c83-7ec7e9cd6ebc&u=a1aHR0cHM6Ly93d3cuYmlxdWdlMzQ1LmNvbS9ib29rLzc0MTc1MS8&ntb=1'

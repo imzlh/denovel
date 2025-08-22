@@ -1,3 +1,5 @@
+import { HTMLDocument } from "jsr:@b-fuze/deno-dom";
+
 declare interface MainInfo {
     // 自动从信息页获取数据
     mainPageLike: RegExp;
@@ -51,3 +53,5 @@ declare type Callback = (url_start: URL | string) => AsyncGenerator<{
     title: string,
     content: string
 }, void, void>;
+
+declare const document: HTMLDocument;

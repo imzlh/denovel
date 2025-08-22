@@ -19,3 +19,5 @@ pnpm*
 npm*
 yarn*
 *.lock
+*.nlp
+*.db*

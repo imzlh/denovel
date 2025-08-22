@@ -4,7 +4,8 @@
     "dev": "deno run --watch --unstable-raw-imports --unstable-kv server.ts"
   },
   "imports": {
-    "@std/assert": "jsr:@std/assert@1"
+    "@std/assert": "jsr:@std/assert@1",
+    "node-nlp": "npm:node-nlp@^4.27.0"
   },
   "nodeModulesDir": "auto",
   "license": "MIT",
