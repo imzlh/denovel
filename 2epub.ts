@@ -27,21 +27,21 @@ const MIN_CHARS_PER_CHAPTER = 10;   // 10字最少
 // Part.0 『为什么会变成这样的人』
 // Part.12 『完美假面』no.1
 const regexp = [
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/gi,
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[\-零一二三四五六七八九十百千万亿0-9]+\s(.*)\]?[\r\n]+/gi,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[\-零一二三四五六七八九十百千万亿0-9~]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/gi,
+    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[\-零一二三四五六七八九十百千万亿序~0-9]+\s(.*)\]?[\r\n]+/gi,
     /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)\d+\s+[、. ：:~，·～．『]\s*(.*)\s*』?[\r\n]+/gi,
     /[\r\n]+\s*No[、.．]\d+\s*(.+)\s*[\r\n]+/gi,
     /[\r\n]+\s*(?:正文\s*)?\d+＜(.+)＞\s*[\r\n]+/gi,
 
     /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，．·～]\s*(.+)\s*[\r\n]+/gi,
-    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+[、. ：:~，·．～]\s*(.+)\s*[\r\n]+/gi,
-    /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)[零一二三四五六七八九十百千万亿0-9]+\s*(.+?)\s*[\r\n]+/gi,
+    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9序]+[、. ：:~，·．～]\s*(.+)\s*[\r\n]+/gi,
+    /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)[零一二三四五六七八九十百千万亿序0-9]+\s*(.+?)\s*[\r\n]+/gi,
     /[\r\n]+.{0,20}\s*[：:]\s*\d+\s*(.*)\s*[\r\n]+/gi,
     /[\r\n]+(.+)[\r\n]+([=\-─])\2{5,}[\r\n]+/gi,
 
     /[\r\n]+\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷\s*(?:.+)\s+(.+)\s*[\r\n]+/gi,
     /\s+第\s*[\-零一二三四五六七八九十百千万亿0-9]+\s*[章集季]\s*(.+)\s+/gi,
-    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9]+\s+(.+)\s*[\r\n]+/gi
+    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿序0-9]+\s+(.+)\s*[\r\n]+/gi
 ];
 
 // 「宫城，拿这个的下一集给我。」
@@ -173,36 +173,42 @@ function splitByIndent(text: string): { title: string, data: string }[] {
 
 function fromPreg(rawTxt: string, matches: Iterable<RegExpMatchArray>, merge: boolean = false) {
     const result: [string, string][] = [];
-    let prevTitleStart = 0, prevTitleEnd = 0, prevTitleContent = '';
+    let currentContentStart = 0;
+    let pendingTitle = '';
+    let pendingContent = '';
 
     for (const match of matches) {
-        if (!match.index) continue;
-        const titleStart = match.index;
-        const titleEnd = titleStart + (match.length || 0);
-        const prevTitle = prevTitleContent;
-        const prevContent = rawTxt.slice(prevTitleEnd, titleStart);
+        const index = match.index ?? -1;
+        if (index < 0) continue;
 
-        if(!merge || (prevContent.length > MIN_CHARS_PER_CHAPTER && prevContent.length < MAX_CHARS_PER_CHAPTER)){
-            result.push([
-                prevTitle,
-                prevContent
-            ]);
-            prevTitleStart = titleStart;
-            prevTitleEnd = titleEnd;
-            prevTitleContent = match[1] || '';
+        const title = (match[1] || '').trim();
+        const contentEnd = index;
+        
+        // 总是累积内容，根据条件决定是否分割
+        pendingContent += rawTxt.slice(currentContentStart, contentEnd);
+        currentContentStart = index + match[0].length;
+
+        if (!merge || (pendingContent.length >= MIN_CHARS_PER_CHAPTER && 
+                      pendingContent.length <= MAX_CHARS_PER_CHAPTER)) {
+            if (pendingTitle || pendingContent) {
+                result.push([pendingTitle, pendingContent]);
+            }
+            pendingTitle = title;
+            pendingContent = '';
+        } else {
+            pendingContent += title; // 合并标题到内容
         }
     }
 
-    // 添加末尾未处理内容
-    if (prevTitleStart < rawTxt.length) {
-        result.push([
-            rawTxt.slice(prevTitleStart, prevTitleEnd),
-            rawTxt.slice(prevTitleEnd)
-        ]);
+    // 处理剩余内容
+    pendingContent += rawTxt.slice(currentContentStart);
+    if (pendingTitle || pendingContent) {
+        result.push([pendingTitle, pendingContent]);
     }
 
-    return result;
+    return result.filter(([t, c]) => t || c); // 过滤空条目
 }
+
 
 function maxC(str: string, max: number) {
     if (str.length > max) {

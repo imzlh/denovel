@@ -564,10 +564,11 @@ enum Status {
 }
 
 function similarTitle(title1: string, title2: string) {
-    if(title1.trim() == title2.trim()) return true;
+    title1 = title1.trim(), title2 = title2.trim();
+    if(title1 == title2) return true;
     const format = /^(.+?)\s*\(\d\/\d\)$/;
-    const t1res = title1.trim().match(format),
-        t2res = title2.trim().match(format);
+    const t1res = title1.match(format),
+        t2res = title2.match(format);
     return t1res && t2res && t1res[1] == t2res[1];
 }
 
@@ -632,7 +633,13 @@ export const WRAP_EL = [
         string, 
         string | ((value: string) => boolean), 
         string
-    ]>;
+    ]>,
+
+    IGNORE_TAGS = [
+        'script', 'noscript', 'style',                      // CSS/JS
+        'iframe', 'object', 'embed', 'applet', 'canvas',    // embed tags
+        'input', 'button', 'form',                          // form tags
+    ];
 
 
 function parseInlineCSS(css: string){
@@ -700,6 +707,8 @@ function processContent(ctx?: Element | null | undefined, parentStyle: Record<st
         }else if(node.nodeType == node.ELEMENT_NODE){
             const tag = [] as string[];
             const rtag = (node as Element).tagName.toLowerCase();
+
+            if(IGNORE_TAGS.includes(rtag)) continue;
             if(PRESERVE_EL.includes(rtag)) tag.push(rtag);
             const style = getCSS(node as Element, parentStyle);
             const outertag = cssToTag(style);
