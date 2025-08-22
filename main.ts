@@ -4,7 +4,12 @@ import { toEpub } from "./2epub.ts";
 import { Converter } from './t2cn.js';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { readline } from "./exe.ts";
-import { SimpleBrowser } from "./h2helper.ts";
+import { connect, ConnectResult } from "npm:puppeteer-real-browser";
+import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
+import { Buffer } from "node:buffer";
+
+import BlankPage from './static/blank.html' with { type: "text" };
+import { Cookie } from "npm:puppeteer@22.7.1";
 
 class NoRetryError extends Error { }
 
@@ -12,7 +17,7 @@ const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
     args = parseArgs(Deno.args, {
         string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover', 'error-count'],
-        boolean: ['help', 'epub', 'parted', 'translate'],
+        boolean: ['help', 'epub', 'parted', 'translate', 'login'],
         alias: {
             h: 'help',
             n: 'name',
@@ -24,7 +29,8 @@ const parser = new DOMParser(),
             e: 'epub',
             p: 'parted',
             l: 'translate',
-            b: 'cover'
+            b: 'cover',
+            g: 'login'
         }
     }),
     SLEEP_INTERVAL = parseInt(args.sleep || '0'),               // 间隔时间防止DDOS护盾deny
@@ -61,6 +67,32 @@ function getSiteCookie(site: string, cookie_name: string) {
             return obj[key];
         }
     }
+}
+
+function setRawSetCookie(host: string, setCookieHeader: string[]) {
+    const obj = cookieStore[host] || {};
+    for (const setCookie of setCookieHeader) {
+        const cookie = setCookie.split(';')[0]
+        let [key, value] = cookie.split('=');
+        key = key.trim();
+        value = value.trim();
+
+        // 检查Expire时间
+        const expire = setCookie.split(';').find(s => s.trim().toLowerCase().startsWith('expires='))
+            ?.trim().split('=')[1];
+        if (expire) {
+            const exp_date = new Date(expire);
+            if (exp_date.getTime() <= Date.now()) {
+                delete obj[key];
+                continue;
+            }
+        }
+
+        if (key && value) {
+            obj[key] = value;
+        }
+    }
+    cookieStore[host] = obj;
 }
 
 type IPInfo = {
@@ -162,6 +194,13 @@ class BatchDownloader {
     }
 }
 
+function timeout(sec: number, abort?: AbortSignal) {
+    const sig = new AbortController();
+    setTimeout(() => sig.abort("Fetch timeout"), sec * 1000);
+    abort?.addEventListener("abort", () => sig.abort("User abort"));
+    return sig.signal;
+}
+
 let browser: undefined | SimpleBrowser;
 /**
  * Note: 不要使用timeout函数！
@@ -241,13 +280,6 @@ async function fetch2(
         options.method = 'POST';
     }
 
-    function timeout(sec: number, abort?: AbortSignal) {
-        const sig = new AbortController();
-        setTimeout(() => sig.abort("Fetch timeout"), sec * 1000);
-        abort?.addEventListener("abort", () => sig.abort("User abort"));
-        return sig.signal;
-    }
-
     // 重试逻辑（保持原有）
     let response: Response | undefined;
     for (var i = 0; i < (options.maxRetries ?? MAX_RETRY ?? 3); i++) {
@@ -285,29 +317,7 @@ async function fetch2(
 
     // 从响应头中提取 Set-Cookie 并更新 cookieStore
     const setCookieHeader = response.headers.getSetCookie();
-    const obj = cookieStore[host] || {};
-    for (const setCookie of setCookieHeader) {
-        const cookie = setCookie.split(';')[0]
-        let [key, value] = cookie.split('=');
-        key = key.trim();
-        value = value.trim();
-
-        // 检查Expire时间
-        const expire = setCookie.split(';').find(s => s.trim().toLowerCase().startsWith('expires='))
-            ?.trim().split('=')[1];
-        if (expire) {
-            const exp_date = new Date(expire);
-            if (exp_date.getTime() <= Date.now()) {
-                delete obj[key];
-                continue;
-            }
-        }
-
-        if (key && value) {
-            obj[key] = value;
-        }
-    }
-    cookieStore[host] = obj;
+    setRawSetCookie(host, setCookieHeader);
 
     if ([301, 302, 303, 307, 308].includes(response.status) && options.redirect === 'follow') {
         // 重定向
@@ -315,6 +325,158 @@ async function fetch2(
     }
 
     return response;
+}
+
+class SimpleBrowser {
+    // private server;
+    private browser: undefined | ConnectResult;
+
+    // constructor(
+    //     private port: number = 8123,
+    // ) {
+    //     const serv = new HTTPProxyServer();
+    //     serv.start(port, '127.0.0.1');
+    //     this.server = serv;
+    // }
+
+    async init() {
+        if (this.browser) return;
+        this.browser = await connect({
+            args: [
+                // '--proxy-server=http://localhost:' + this.port,
+                // '--ignore-certificate-errors',
+                // '--start-maximized'
+            ],
+            connectOption: {
+                acceptInsecureCerts: true
+            },
+            customConfig: {
+                chromePath: Deno.build.os == 'windows'
+                    ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+                    : '/usr/bin/env chrome',
+                handleSIGINT: true,
+                startingUrl: 'data:text/html,' + encodeURIComponent(BlankPage.replaceAll(/\s+/g, ' '))
+            },
+            headless: false,
+            turnstile: true,
+        });
+    }
+
+    async launch(url: URL, waitFor: boolean = true) {
+        const page = await this.browser?.browser.newPage();
+        if (!page) throw new Error('Browser not initialized');
+        page.setViewport(null);
+
+        // handle request
+        page.setRequestInterception(true);
+        page.on('request', async req => {
+            const url = new URL(req.url());
+            if(url.host.includes('google')){
+                req.abort('blockedbyclient');
+                return;
+            }
+            if(!url.protocol.startsWith('http')){
+                req.continue();
+                return;
+            }
+            if(url.hostname == 'internal.local'){
+                console.log('BROADCAST', url.pathname);
+                switch(url.pathname){
+                    case '/set-cookie': {
+                        const cookies = req.postData()!;
+                        const site = url.searchParams.get('site')!.split('.').slice(-2).join('.');
+                        setRawSetCookie(site, cookies.split('\n'));
+                        forceSaveConfig();
+                        req.abort('aborted');
+                        return;
+                    }
+
+                    default: {
+                        req.abort('blockedbyclient');
+                        return;
+                    }
+                }
+            }
+
+            try{
+                console.log('PROXY', req.method(), url.href);
+                const res = await fetch2(url.href, {
+                    method: req.method(),
+                    headers: req.headers(),
+                    body: req.postData(),
+                    signal: timeout(10),
+                    redirect: 'manual',
+                    maxRetries: 1
+                }, false, true);
+                req.respond({
+                    status: res.status,
+                    headers: Object.fromEntries(res.headers.entries()),
+                    body: await res.arrayBuffer().then(r => Buffer.from(r)).catch(_ => undefined),
+                    contentType: res.headers.get('Content-Type') ?? 'text/plain'
+                });
+            }catch(e){
+                req.abort('failed');
+            }
+        });
+        // init DOMCookies
+        const site = url.hostname.split('.').slice(-2).join('.');
+        this.browser?.browser.setCookie(...Object.entries(cookieStore[site] ?? {}).map(([k, v]) => ({
+            name: k,
+            value: v,
+            domain: site,
+            path: '/',
+            expires: -1,
+            size: 0,
+            httpOnly: false,
+            secure: url.protocol == 'https:'
+        })) as Cookie[]);
+
+        try {
+            await page.goto(url.href);
+            // await page.goto('https://bot-detector.rebrowser.net/')
+            await page.evaluateOnNewDocument(() => {
+                Object.defineProperty(navigator, 'webdriver', { value: false })
+                Object.defineProperty(navigator, 'languages', {
+                    get: function () {
+                        return ['zh-CN', 'zh-TW', 'en-US'];
+                    },
+                });
+                let __cookie_store = document.cookie;
+                Object.defineProperty(document, 'cookie', {
+                    get: function () {
+                        return __cookie_store;
+                    },
+                    set: function (value) {
+                        __cookie_store = value;
+                        // will be blocked
+                        fetch('https://internal.local/set-cookie?site=' + encodeURIComponent(location.hostname), {
+                            method: 'POST',
+                            body: __cookie_store,
+                            mode: 'cors'
+                        });
+                    }
+                });
+            });
+            if(waitFor){
+                await page.waitForNavigation({
+                    waitUntil: 'load'
+                });
+                console.log('完成值守，似乎通过验证？');
+                forceSaveConfig();
+            }else{
+                await new Promise(rs => page.on('close',rs));
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            await delay(1000).then(() => page.close({ runBeforeUnload: false }));
+        }
+    }
+
+    async destroy() {
+        // this.server.stop();
+        await this.browser?.browser.close();
+    }
 }
 
 const fromHTML = (str: string) => str
@@ -344,7 +506,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         credentials: 'include',
         referrer: url.protocol + '://' + url.host + '/',
         referrerPolicy: 'unsafe-url',
-        // cloudflareBypass: true,
+        cloudflareBypass: true,
     }, measureIP, ignore_status);
     if (!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
     const data = new Uint8Array(await response.arrayBuffer());
@@ -860,7 +1022,7 @@ function existsSync(file: string): boolean {
 }
 
 export default async function main(){
-    if (args._.includes('h') || args.help) {
+    if (args._.includes('help') || args.help) {
         console.log(`用法: main.ts [options] [url]
 参数:
     -h, --help          显示帮助信息
@@ -875,10 +1037,28 @@ export default async function main(){
     -l, --translate     翻译模式，将输出的繁体翻译为简体中文
     -b, --cover         封面URL，默认为空
         --error-count   指定多少次连续少内容时退出，默认10
+    -g, --login         打开浏览器窗格。在这个窗格中，任何cookie都会被记录下来
+                        特别适用于登陆账号！
 
 示例:
     main.ts -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
 `);
+        Deno.exit(0);
+    }
+
+    if(args.login){
+        console.log('请在浏览器中完成登陆操作。一切cookie都会被记录下来');
+        console.log('完成后，关闭标签页，程序将自动退出');
+        browser = new SimpleBrowser();
+        await browser.init();
+
+        if(args._[0]){
+            await browser.launch(new URL(args._[0] as string), false);
+        }else{
+            await browser.launch(new URL('about:blank'), false);
+        }
+
+        console.log('完成！现在你可以尝试新世界了！');
         Deno.exit(0);
     }
 
