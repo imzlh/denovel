@@ -128,7 +128,8 @@ export const getInfo = (url: URL) => defaultGetInfo(url, {
     mainPageCover: '#app > div > div.muye.muye-page > div > div.page-wrap > div > div.page-header-info > div.muye-book-cover.img.is-book > div > img',
     mainPageTitle: '#app > div > div.muye.muye-page > div > div.page-wrap > div > div.page-header-info > div.info > div.info-name > h1',
     mainPageSummary: '#app > div > div.muye.muye-page > div > div.page-body-wrap > div > div.page-abstract-content > p',
-    
+    mainPageAuthor: '#app > div > div.muye.muye-page > div > div.page-wrap > div > div.page-header-info > div.author > div.author-info > a > div',
+
     // https://fanqienovel.com/page/7508113040546483262?enter_from=search
     mainPageLike: /^https?\:\/\/.*fanqienovel\.com\/page\/\d+/i
 })

@@ -115,28 +115,31 @@
     // 检查URL状态
     const checkUrl = (url, statusElement) => {
         console.log('[denovel] Try', url);
-        GM_xmlhttpRequest({
-            method: "GET",
-            url,
-            responseType: 'text',
-            onload: function(response) {
-                if (response.status === 200) {
-                    const data = response.response;
-                    const match = data.match(/var\s+u\s+=\s+"([^"]+)";/);
-                    if(match){
-                        checkUrl2(match[1], statusElement);
-                    }else{
-                        showStatusError(statusElement, 'bing错误:无法获取真实地址');
+        if(url.includes('bing.com'))
+            GM_xmlhttpRequest({
+                method: "GET",
+                url,
+                responseType: 'text',
+                onload: function(response) {
+                    if (response.status === 200) {
+                        const data = response.response;
+                        const match = data.match(/var\s+u\s+=\s+"([^"]+)";/);
+                        if(match){
+                            checkUrl2(match[1], statusElement);
+                        }else{
+                            showStatusError(statusElement, 'bing错误:无法获取真实地址');
+                        }
+                    } else {
+                        showStatusError(statusElement, 'bing错误');
                     }
-                } else {
-                    showStatusError(statusElement, 'bing错误');
+                },
+                onerror: function(error) {
+                    showStatusError(statusElement, '请求失败');
+                    console.log(this)
                 }
-            },
-            onerror: function(error) {
-                showStatusError(statusElement, '请求失败');
-                console.log(this)
-            }
-        });
+            });
+        else
+            checkUrl2(url, statusElement);
     };
 
     const checkUrl2 = (url, statusElement) => {
