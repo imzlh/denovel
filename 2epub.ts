@@ -225,7 +225,7 @@ const removeTags = (str: string) => str.replaceAll(
 export function processTXTContent(text: string, jpFormat = false) {
     text = encodeContent(text, jpFormat);
     text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
-        return it ? `<img src="${it.replaceAll('一', '-')}" />` : ''
+        return it ? `<img src="${it.replaceAll('一', '-')}" referrerpolicy="no-referrer" />` : ''
     });
     const tagSt = [] as Array<string>;
     text = text.replaceAll(/\[(\/)?([a-z]{1,10})\]/g, (_, has_slash, tag) => {

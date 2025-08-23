@@ -18,12 +18,13 @@
     后续服务端传输HTML到前端，直接显示到dialog
  */
 
-import { checkIsTraditional, downloadNovel, exists, Status, defaultGetInfo, traditionalAsyncWrapper } from "./main.ts";
+import { checkIsTraditional, downloadNovel, exists, Status, defaultGetInfo, traditionalAsyncWrapper, moduleExists } from "./main.ts";
 import mainPage from "./static/server.html" with { type: "text" };
 import { render } from "npm:ejs";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import CHAPTER_TEMPLATE from "./static/chapter.html.ejs" with { type: "text" };
 import { processTXTContent } from "./2epub.ts";
+import { url } from "node:inspector";
 
 // 全局设置
 let settings = {
@@ -37,6 +38,44 @@ if (await exists('server.json')) {
 
 // 特殊下载队列：只有前端受理时才取出
 const downloadQueue: string[] = [];
+const urlRequestMap: Map<string, PromiseWithResolvers<void>[]> = new Map();
+const requestCache: Map<string, Record<string, any>> = new Map();
+let will_run_queued_request_tasks = false;
+
+// 缓存过期时间: 1天
+setInterval(() => requestCache.clear(), 1000 * 60 * 60 * 24);
+
+// 检查容量是否超标: 1分钟
+setInterval(() => requestCache.size > 1e5 && requestCache.clear(), 60 * 1000);
+
+const runQueuedRequestTasks = () => queueMicrotask(() => {
+    for(const [name, tasks] of urlRequestMap){
+        if(tasks.length === 0){
+            urlRequestMap.delete(name);
+            continue;
+        }
+
+        const task = tasks.shift()!;
+        task.resolve();
+    }
+    will_run_queued_request_tasks = false;
+});
+
+const queueRequestTask = (name: string) => {
+    const el = Promise.withResolvers<void>();
+    urlRequestMap.has(name)
+        ? urlRequestMap.get(name)!.push(el)
+        : urlRequestMap.set(name, [ el ]);
+    if(!will_run_queued_request_tasks) runQueuedRequestTasks();
+    return el.promise;
+}
+
+const endRequestTask = () => {
+    if(!will_run_queued_request_tasks){
+        runQueuedRequestTasks();
+        will_run_queued_request_tasks = true;
+    }
+}
 
 async function handleContentRequest(url: URL, req: Request) {
     const _novelURL = url.searchParams.get("url");
@@ -56,61 +95,85 @@ async function handleContentRequest(url: URL, req: Request) {
         });
     }
 
-    let basicInfo: TraditionalConfig;
-    try{
-        basicInfo = (await import(`./lib/${new URL(novelURL).hostname}.t.ts`)).default;
-    }catch(e){
-        return new Response("站点不受支持", {
-            status: 404,
-            headers: { "Content-Type": "text/plain; charset=UTF-8" }
-        });
-    }
-
-    const info = {} as Record<string, any>;
-    if(basicInfo.mainPageLike && basicInfo.mainPageLike.test(novelURL.href)){
-        info.isChapterPage = false;
-        const infos = await defaultGetInfo(novelURL, basicInfo);
-        info.title = infos?.book_name;
-        info.cover = infos?.cover;
-        info.author = infos?.author;
-        info.summary = infos?.summary;
-        info.startOfContent = infos?.firstPage;
+    let info = {} as Record<string, any>;
+    if(requestCache.has(novelURL.href)){
+        Deno.stdout.write(new TextEncoder().encode('HIT  '));
+        info = requestCache.get(novelURL.href)!;
     }else{
-        info.isChapterPage = true;
-        
-        const data = traditionalAsyncWrapper(novelURL);
+        let basicInfo: TraditionalConfig;
+        // let newModule: { default: Callback, getInfo: PromiseOrNot<Info> }
+        // let isTraditional = false;
+
+        await queueRequestTask(novelURL.hostname);
+
         try{
-            const { done, value } = await data.next();
-            if(done){
+            basicInfo = (await import(`./lib/${new URL(novelURL).hostname}.t.ts`)).default;
+        }catch(e){
+            // deno-lint-ignore no-cond-assign
+            // if(isTraditional = await moduleExists(`./lib/${novelURL.hostname}.n.ts`)){
+            //     const 
+            // }else{
+                endRequestTask();
+                return new Response("站点不受支持: " + (e instanceof Error ? e.message : String(e)), {
+                    status: 404,
+                    headers: { "Content-Type": "text/plain; charset=UTF-8" }
+                });
+            // }
+        }
+        
+        if(basicInfo.mainPageLike && basicInfo.mainPageLike.test(novelURL.href)){
+            info.isChapterPage = false;
+            const infos = await defaultGetInfo(novelURL, basicInfo);
+            info.title = infos?.book_name;
+            info.cover = infos?.cover;
+            info.author = infos?.author;
+            info.summary = infos?.summary;
+            info.startOfContent = infos?.firstPage;
+            info.jpStyle = basicInfo.jpStyle;
+        }else{
+            info.isChapterPage = true;
+            
+            const data = traditionalAsyncWrapper(novelURL);
+            try{
+                const { done, value } = await data.next();
+                if(done){
+                    endRequestTask();
+                    return new Response("页面不存在", {
+                        status: 404,
+                        headers: { "Content-Type": "text/plain; charset=UTF-8" }
+                    });
+                }
+                const { content, title, next_url } = value;
+                info.title = title;
+                info.content = content;
+                info.nextChapter = next_url?.protocol.startsWith('http') ? next_url : undefined;
+            }catch(e){
+                endRequestTask();
                 return new Response("页面不存在", {
                     status: 404,
                     headers: { "Content-Type": "text/plain; charset=UTF-8" }
                 });
             }
-            const { content, title, next_url } = value;
-            info.title = title;
-            info.content = content;
-            info.nextChapter = next_url?.protocol.startsWith('http') ? next_url : undefined;
-        }catch(e){
-            return new Response("页面不存在", {
-                status: 404,
-                headers: { "Content-Type": "text/plain; charset=UTF-8" }
-            });
         }
+
+        endRequestTask();
+        requestCache.set(novelURL.href, info);
     }
+
 
     if(url.searchParams.get('json') !== null){
         return new Response(JSON.stringify(info), {
             headers: { "Content-Type": "application/json" }
         });
     }else if(info.content){
-        info.content = processTXTContent(info.content, basicInfo.jpStyle);
+        info.content = processTXTContent(info.content, info.jpStyle);
     }
 
     // render page
+    info.currentURL = novelURL.href;
     const html = await render(CHAPTER_TEMPLATE, info, {
         async: true,
-        cache: false
+        // cache: false
     });
     return new Response(html, {
         headers: { 
@@ -196,10 +259,10 @@ export default async function main(){
         port: 8000,
     }, async (req) => {
         const url = new URL(req.url);
-        console.log(req.url);
 
         // WebSocket处理
         if (url.pathname === "/api/download") {
+            console.log(req.url);
             if (req.headers.get("upgrade") === "websocket") {
                 const { socket, response } = Deno.upgradeWebSocket(req);
                 const novelUrl = url.searchParams.get("url");
@@ -288,7 +351,9 @@ export default async function main(){
         }
 
         // 普通HTTP请求处理
-        return handleRequest(req);
+        const res = handleRequest(req);
+        console.log(req.url);
+        return res;
     });
 }
 

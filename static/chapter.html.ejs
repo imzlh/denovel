@@ -80,6 +80,17 @@
                 transform: translateY(-2px);
                 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
             }
+
+            .navigation {
+                display: flex;
+                justify-content: end;
+                margin-top: 3rem;
+                gap: 2rem;
+            }
+                
+            .navigation button {
+                min-width: 120px;
+            }
             
             /* 章节页特定样式 */
             /* <% if(isChapterPage){ %> */
@@ -95,16 +106,6 @@
                 .content p {
                     text-indent: 2em;
                     margin-bottom: 1.5rem;
-                }
-                
-                .navigation {
-                    display: flex;
-                    justify-content: end;
-                    margin-top: 3rem;
-                }
-                
-                .navigation button {
-                    min-width: 120px;
                 }
                 
                 .progress-bar {
@@ -148,7 +149,6 @@
                 }
                 
                 .start-button {
-                    margin-top: 2rem;
                     padding: 1rem 2rem;
                     font-size: 1.1rem;
                 }
@@ -224,7 +224,7 @@
                 <div class="main">
                     <% if(cover) { %>
                         <div class="img-wrapper">
-                            <img src="<%= cover %>" alt="<%= title %>" class="cover-image">
+                            <img src="<%= cover %>" alt="<%= title %>" class="cover-image" referrerpolicy="no-referrer">
                         </div>
                     <% } %>
                     
@@ -242,11 +242,24 @@
                             </div>
                         <% } %>
                         
-                        <a href="?url=<%= encodeURIComponent(startOfContent) %>">
-                            <button class="start-button">开始阅读</button>
-                        </a>
+                        <div class="navigation">
+                            <a href="?url=<%= encodeURIComponent(startOfContent) %>">
+                                <button class="start-button">开始阅读</button>
+                            </a>
+                            <button onclick="download()">下载</button>
+                        </div>
                     </info>
                 </div>
+                <script>
+                    function download() {
+                        // <% if(currentURL) { %>
+                            const url = '/api/push-download?url=<%= encodeURIComponent(currentURL) %>';
+                            fetch(url).then(async res => alert(res.ok ? '推送成功,请到主页同步下载任务' : '失败:' + await res.text()));
+                        // <% } else { %>
+                            alert('该书籍暂不支持下载');
+                        // <% } %>
+                    }
+                </script>
             <% } %>
         </div>
     </body>
