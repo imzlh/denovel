@@ -8,5 +8,5 @@ export default {
     mainPageFirstChapter: '#maininfo > div.readbtn > a:nth-child(1)',
     mainPageCover: '#fmimg > img',
     // https://www.tianxibook.com/books/36570684/
-    mainPageLike: /\/books\/\d+\//i
+    mainPageLike: /\/books?\/\d+\/?$/i
 } satisfies TraditionalConfig;

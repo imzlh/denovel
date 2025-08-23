@@ -44,8 +44,8 @@ export class NLPManager {
 
         const response = await this.manager.process("zh", text);
         return response.classifications
-            .filter(cls => cls.score >= minConfidence)
-            .map(cls => ({
+            .filter((cls: any) => cls.score >= minConfidence)
+            .map((cls: any) => ({
                 label: cls.label,
                 confidence: cls.score
             }));
