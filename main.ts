@@ -566,7 +566,7 @@ enum Status {
 function similarTitle(title1: string, title2: string) {
     title1 = title1.trim(), title2 = title2.trim();
     if(title1 == title2) return true;
-    const format = /^(.+?)\s*\(\d\/\d\)$/;
+    const format = /^\s*(.+?)\s*\(\d(?:\/\d)?\)\s*$/;
     const t1res = title1.match(format),
         t2res = title2.match(format);
     return t1res && t2res && t1res[1] == t2res[1];
@@ -1030,6 +1030,12 @@ function existsSync(file: string): boolean {
     }
 }
 
+async function launchBrowser(url: URL, waitForFirstNavigation = true) {
+    if(!browser) browser = new SimpleBrowser();
+    await browser.init();
+    return browser.launch(url, waitForFirstNavigation);
+}
+
 export default async function main(){
     if (args._.includes('help') || args.help) {
         console.log(`用法: main.ts [options] [url]
@@ -1112,7 +1118,7 @@ export {
     NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
     args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
     forceSaveConfig,
-    processContent, defaultGetInfo, BatchDownloader
+    processContent, defaultGetInfo, BatchDownloader, launchBrowser
 };
 
 if (import.meta.main) main();

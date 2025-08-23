@@ -16,8 +16,10 @@
 看`lib/`文件夹都是已经支持的
  - 番茄：目前有3个可用源(1个需要登陆)，1个未知源。**且用且珍惜！**
  - sfacg：web
- - 刺猬猫(实验性)：WebAPI
+ - 刺猬猫：WebAPI
+ - 起点(实验性)：web + 浏览器辅助验证
  - esjZone：web + WebAPI
+ - <del>masiro</del> 暂时未攻破CF防火墙，可以选择在浏览器中
 
 漫画支持(`cbz` / `epub`)
  - 包子漫画(baozimh.org www.baozimhcn.com manhuafree.com)
