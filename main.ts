@@ -822,7 +822,8 @@ async function* tWrapper(url: URL) {
         next_url = data.next_link ? new URL(data.next_link, next_url) : undefined;
 
         yield {
-            content: data.content?.trim(), title: data.title?.trim()
+            content: data.content?.trim(), title: data.title?.trim(),
+            next_url
         };
     }
 }
@@ -1118,7 +1119,7 @@ export {
     NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
     args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
     forceSaveConfig,
-    processContent, defaultGetInfo, BatchDownloader, launchBrowser
+    processContent, defaultGetInfo, BatchDownloader, launchBrowser, tWrapper as traditionalAsyncWrapper
 };
 
 if (import.meta.main) main();

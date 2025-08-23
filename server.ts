@@ -18,9 +18,12 @@
     后续服务端传输HTML到前端，直接显示到dialog
  */
 
-import { checkIsTraditional, downloadNovel, exists, Status } from "./main.ts";
+import { checkIsTraditional, downloadNovel, exists, Status, defaultGetInfo, traditionalAsyncWrapper } from "./main.ts";
 import mainPage from "./static/server.html" with { type: "text" };
+import { render } from "npm:ejs";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
+import CHAPTER_TEMPLATE from "./static/chapter.html.ejs" with { type: "text" };
+import { processTXTContent } from "./2epub.ts";
 
 // 全局设置
 let settings = {
@@ -34,6 +37,88 @@ if (await exists('server.json')) {
 
 // 特殊下载队列：只有前端受理时才取出
 const downloadQueue: string[] = [];
+
+async function handleContentRequest(url: URL, req: Request) {
+    const _novelURL = url.searchParams.get("url");
+    if (!_novelURL) {
+        return new Response("缺少'url' GET参数", {
+            status: 400,
+            headers: { "Content-Type": "text/plain; charset=UTF-8" }
+        });
+    }
+    let novelURL;
+    try {
+        novelURL = new URL(_novelURL);
+    } catch (e) {
+        return new Response("无效的URL: 在参数 'url'", {
+            status: 400,
+            headers: { "Content-Type": "text/plain; charset=UTF-8" }
+        });
+    }
+
+    let basicInfo: TraditionalConfig;
+    try{
+        basicInfo = (await import(`./lib/${new URL(novelURL).hostname}.t.ts`)).default;
+    }catch(e){
+        return new Response("站点不受支持", {
+            status: 404,
+            headers: { "Content-Type": "text/plain; charset=UTF-8" }
+        });
+    }
+
+    const info = {} as Record<string, any>;
+    if(basicInfo.mainPageLike && basicInfo.mainPageLike.test(novelURL.href)){
+        info.isChapterPage = false;
+        const infos = await defaultGetInfo(novelURL, basicInfo);
+        info.title = infos?.book_name;
+        info.cover = infos?.cover;
+        info.author = infos?.author;
+        info.summary = infos?.summary;
+        info.startOfContent = infos?.firstPage;
+    }else{
+        info.isChapterPage = true;
+        
+        const data = traditionalAsyncWrapper(novelURL);
+        try{
+            const { done, value } = await data.next();
+            if(done){
+                return new Response("页面不存在", {
+                    status: 404,
+                    headers: { "Content-Type": "text/plain; charset=UTF-8" }
+                });
+            }
+            const { content, title, next_url } = value;
+            info.title = title;
+            info.content = content;
+            info.nextChapter = next_url?.protocol.startsWith('http') ? next_url : undefined;
+        }catch(e){
+            return new Response("页面不存在", {
+                status: 404,
+                headers: { "Content-Type": "text/plain; charset=UTF-8" }
+            });
+        }
+    }
+
+    if(url.searchParams.get('json') !== null){
+        return new Response(JSON.stringify(info), {
+            headers: { "Content-Type": "application/json" }
+        });
+    }else if(info.content){
+        info.content = processTXTContent(info.content, basicInfo.jpStyle);
+    }
+
+    // render page
+    const html = await render(CHAPTER_TEMPLATE, info, {
+        async: true,
+        cache: false
+    });
+    return new Response(html, {
+        headers: { 
+            "Content-Type": "text/html",
+            "X-Powered-By": "@imzlh/denovel"
+        }
+    });
+}
 
 // 路由处理函数
 async function handleRequest(req: Request): Promise<Response> {
@@ -80,7 +165,7 @@ async function handleRequest(req: Request): Promise<Response> {
         }
         downloadQueue.push(novelUrl);
         return new Response("OK", {
-            headers: { "Content-Type": "text/plain" }
+            headers: { "Content-Type": "text/plain; charset=UTF-8" }
         });
     } else if (url.pathname == '/api/poll-queue'){
         const resp = new Response(JSON.stringify(downloadQueue), {
@@ -93,6 +178,8 @@ async function handleRequest(req: Request): Promise<Response> {
         return new Response(null, {
             status: 204
         });
+    } else if (url.pathname.startsWith("/content")) {
+        return handleContentRequest(url, req);
     } else if (url.pathname === "/") {
         return new Response(mainPage, {
             headers: { "Content-Type": "text/html" }

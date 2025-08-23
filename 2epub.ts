@@ -183,13 +183,13 @@ function fromPreg(rawTxt: string, matches: Iterable<RegExpMatchArray>, merge: bo
 
         const title = (match[1] || '').trim();
         const contentEnd = index;
-        
+
         // 总是累积内容，根据条件决定是否分割
         pendingContent += rawTxt.slice(currentContentStart, contentEnd);
         currentContentStart = index + match[0].length;
 
-        if (!merge || (pendingContent.length >= MIN_CHARS_PER_CHAPTER && 
-                      pendingContent.length <= MAX_CHARS_PER_CHAPTER)) {
+        if (!merge || (pendingContent.length >= MIN_CHARS_PER_CHAPTER &&
+            pendingContent.length <= MAX_CHARS_PER_CHAPTER)) {
             if (pendingTitle || pendingContent) {
                 result.push([pendingTitle, pendingContent]);
             }
@@ -222,6 +222,22 @@ const removeTags = (str: string) => str.replaceAll(
     /\[\/?[a-z]+\]/g, ''
 );
 
+export function processTXTContent(text: string, jpFormat = false) {
+    text = encodeContent(text, jpFormat);
+    text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
+        return it ? `<img src="${it.replaceAll('一', '-')}" />` : ''
+    });
+    const tagSt = [] as Array<string>;
+    text = text.replaceAll(/\[(\/)?([a-z]{1,10})\]/g, (_, has_slash, tag) => {
+        if (!PRESEL.includes(tag)) return _;
+        if (has_slash && tagSt.pop() != tag) throw new Error(`[${tag}] not matched`);
+        if (has_slash) return `</${tag}>`;
+        tagSt.push(tag);
+        return `<${tag}>`;
+    })
+    return text;
+}
+
 let PRESEL: string[];
 /**
  * TXT转换成EPUB
@@ -235,8 +251,8 @@ export function toEpub(data: string, input: string, output: string, option: {
 }): boolean {
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
-    if(!PRESEL) PRESEL = PRESERVE_EL.concat(WRAP_EL);
-    if(!option.reporter) option.reporter = (s, m) => console.log(`[ ${Status[s]} ] ${m}`);
+    if (!PRESEL) PRESEL = PRESERVE_EL.concat(WRAP_EL);
+    if (!option.reporter) option.reporter = (s, m) => console.log(`[ ${Status[s]} ] ${m}`);
 
     // 检查是否是zComicLib?
     if (data.trimStart().startsWith('zComicLib/')) {
@@ -264,7 +280,7 @@ export function toEpub(data: string, input: string, output: string, option: {
         pregmatches = Array.from(data.matchAll(reg));
         max = Math.max(max, pregmatches.length);
         // console.debug(`Found ${matches.length} matches for ${reg}`);
-        if (pregmatches.length * per_page_max >= data.length){
+        if (pregmatches.length * per_page_max >= data.length) {
             matches = fromPreg(data, pregmatches, option.merge);
             break;
         }
@@ -273,7 +289,7 @@ export function toEpub(data: string, input: string, output: string, option: {
         const idParsed = splitByIndent(data);
         if (idParsed.length * per_page_max < data.length) {
             option.reporter(Status.ERROR, `章节数过少，疑似分片错误，请确保章节数 >= 1且遵循 “第x章 ....”`);
-            option.reporter(Status.ERROR, '生成失败' + 'count: ' + max +  ' length: ' + data.length + 'adv: ' + (data.length / max));
+            option.reporter(Status.ERROR, '生成失败' + 'count: ' + max + ' length: ' + data.length + 'adv: ' + (data.length / max));
             return false;
         } else {
             option.reporter(Status.WARNING, '使用缩进分卷风险很大，请小心删除，检查内容是否有效');
@@ -289,27 +305,19 @@ export function toEpub(data: string, input: string, output: string, option: {
         let first = true;
         let beforeText = '';
         for (const c of matches) {
-            let text = encodeContent(c[1], option.jpFormat);
-            text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
-                return it ? `<img src="${it.replaceAll('一', '-')}" />` : ''
-            });
-            const tagSt = [] as Array<string>;
+            let text: string;
             try{
-                text = text.replaceAll(/\[(\/)?([a-z]{1,10})\]/g, (_, has_slash, tag) => {
-                    if(!PRESEL.includes(tag)) return _;
-                    if(has_slash && tagSt.pop() != tag) throw new Error(`[${tag}] not matched`);
-                    if(has_slash) return `</${tag}>`;
-                    tagSt.push(tag);
-                    return `<${tag}>`;
-                })
+                text = processTXTContent(c[1], option.jpFormat);
             }catch(e){
                 option.reporter(Status.WARNING, `ParseError: ` + (e as Error).message + '\n' + 'content declare tag will be preserved');
+                text = c[1];
             }
+
             chaps.push({
                 title: maxC(c[0].replaceAll(/\s+/g, ' '), 60) || (first ? '前言' : ''),
                 data: text,
             });
-            if(first) beforeText = c[1];
+            if (first) beforeText = c[1];
             first = false;
         }
 
@@ -319,7 +327,7 @@ export function toEpub(data: string, input: string, output: string, option: {
         }
 
         const ctxmatch = data.match(/(?:\r?\n)+\s*简介[：:]([\s\S]+?)(?=(?:\r?\n){2,}|(?:\r?\n{2,}){2,}|-{10,})/gm);
-        if(ctxmatch && ctxmatch[0].length){
+        if (ctxmatch && ctxmatch[0].length) {
             options.description = removeTags(ctxmatch[0].trim());
         }
 
@@ -327,7 +335,7 @@ export function toEpub(data: string, input: string, output: string, option: {
         const imgmatch = beforeText.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp)/);
         if (imgmatch) {
             options.cover = imgmatch[0];
-        }else {
+        } else {
             const match2 = beforeText.match(/[\r\n]\s*封面[：:]\s*(.+?)\s*[\r\n]+/);
             if (match2) {
                 options.cover = match2[1];
@@ -354,7 +362,7 @@ export const encodeContent = (str: string, jpFormat = false) => {
     str = str.replaceAll(/\<p\> *\<\/p\>/g, '');
 
     // 特殊优化 for 日/韩轻小说
-    if(jpFormat){
+    if (jpFormat) {
         str = addTags(str)
     }
 

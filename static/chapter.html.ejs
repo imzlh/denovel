@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title><%= title %></title>
+        <style>
+            :root {
+                --primary-color: #4a6fa5;
+                --secondary-color: #166088;
+                --text-color: #333;
+                --light-gray: #f5f5f5;
+                --white: #ffffff;
+                --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                --transition: all 0.3s ease;
+            }
+            
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            
+            body {
+                background-color: var(--light-gray);
+                font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+                color: var(--text-color);
+                line-height: 1.6;
+            }
+            
+            .container {
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                padding: 2rem;
+            }
+            
+            /* 通用样式 */
+            .main {
+                background-color: var(--white);
+                border-radius: 12px;
+                box-shadow: var(--shadow);
+                padding: 2.5rem;
+                margin: 0 auto;
+                max-width: 800px;
+                width: 100%;
+            }
+            
+            h1 {
+                color: var(--primary-color);
+                margin-bottom: 1.5rem;
+                font-size: 2rem;
+                padding-bottom: 0.5rem;
+            }
+            
+            h1 span {
+                color: var(--secondary-color);
+                font-size: 1.2rem;
+                font-weight: normal;
+            }
+            
+            p {
+                margin-bottom: 1.2rem;
+            }
+            
+            button {
+                background-color: var(--primary-color);
+                color: white;
+                border: none;
+                padding: 0.8rem 1.5rem;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: var(--transition);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            
+            button:hover {
+                background-color: var(--secondary-color);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            }
+            
+            /* 章节页特定样式 */
+            /* <% if(isChapterPage){ %> */
+                .main {
+                    margin: 2rem auto;
+                }
+                
+                .content {
+                    font-size: 1.1rem;
+                    line-height: 1.8;
+                }
+                
+                .content p {
+                    text-indent: 2em;
+                    margin-bottom: 1.5rem;
+                }
+                
+                .navigation {
+                    display: flex;
+                    justify-content: end;
+                    margin-top: 3rem;
+                }
+                
+                .navigation button {
+                    min-width: 120px;
+                }
+                
+                .progress-bar {
+                    height: 4px;
+                    background-color: var(--light-gray);
+                    margin: 1.5rem 0;
+                    border-radius: 2px;
+                    position: sticky;
+                    top: 0;
+                }
+                
+                .progress {
+                    height: 100%;
+                    background-color: var(--primary-color);
+                    border-radius: 2px;
+                    width: 0;
+                    transition: width 0.5s ease;
+                }
+            /* <% }else{ %> */
+                /* 主页特定样式 */
+                .main {
+                    text-align: center;
+                    margin: auto;
+                    display: flex;
+                    align-items: center;
+                    gap: 3rem;
+                }
+                
+                .cover-image {
+                    max-width: 300px;
+                    margin: 0 auto 2rem;
+                    border-radius: 8px;
+                    box-shadow: var(--shadow);
+                }
+                
+                .summary {
+                    font-size: 1.1rem;
+                    margin: 2rem 0;
+                    text-align: left;
+                    padding: 0 1rem;
+                }
+                
+                .start-button {
+                    margin-top: 2rem;
+                    padding: 1rem 2rem;
+                    font-size: 1.1rem;
+                }
+            /* <% } %> */
+            
+            @media (max-width: 768px) {
+                .container {
+                    padding: 1rem;
+                }
+                
+                .main {
+                    padding: 1.5rem;
+                }
+                
+                h1 {
+                    font-size: 1.5rem;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <% if(isChapterPage){ %>
+                <div class="main">
+                    <!-- 文章内容页 -->
+                    <h1><%= title %></h1>
+                    
+                    <div class="progress-bar">
+                        <div class="progress" id="reading-progress"></div>
+                    </div>
+                    
+                    <div class="content">
+                        <%- content %>
+                    </div>
+                    
+                    <div class="navigation">
+                        <% if(nextChapter){ %>
+                            <a href="?url=<%= encodeURIComponent(nextChapter) %>">
+                                <button>下一章</button>
+                            </a>
+                        <% } %>
+                    </div>
+                </div>
+                
+                <script>
+                    // 阅读进度跟踪
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const progressBar = document.getElementById('reading-progress');
+                        const content = document.querySelector('.content');
+                        
+                        function updateProgress() {
+                            const windowHeight = window.innerHeight;
+                            const documentHeight = document.documentElement.scrollHeight;
+                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            const progress = (scrollTop / (documentHeight - windowHeight)) * 100;
+                            progressBar.style.width = progress + '%';
+                        }
+                        
+                        window.addEventListener('scroll', updateProgress);
+                        updateProgress();
+                        
+                        // 键盘翻页控制
+                        document.addEventListener('keydown', function(e) {
+                            // <% if(nextChapter){ %>
+                                if(e.key === 'ArrowRight')
+                                    window.location.href = '?url=<%= encodeURIComponent(nextChapter) %>';
+                            // <% } %>
+                        });
+                    });
+                </script>
+            <% }else{ %>
+                <!-- 主页 -->
+                <div class="main">
+                    <% if(cover) { %>
+                        <div class="img-wrapper">
+                            <img src="<%= cover %>" alt="<%= title %>" class="cover-image">
+                        </div>
+                    <% } %>
+                    
+                    <div class="info">
+                        <h1>
+                            <%= title %>
+                            <% if(author) { %>
+                                <span>/ <%= author %></span>
+                            <% } %>
+                        </h1>
+                        
+                        <% if(summary) { %>
+                            <div class="summary">
+                                <p><%= summary %></p>
+                            </div>
+                        <% } %>
+                        
+                        <a href="?url=<%= encodeURIComponent(startOfContent) %>">
+                            <button class="start-button">开始阅读</button>
+                        </a>
+                    </info>
+                </div>
+            <% } %>
+        </div>
+    </body>
+</html>
