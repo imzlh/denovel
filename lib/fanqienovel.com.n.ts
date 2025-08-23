@@ -9,6 +9,7 @@ import { defaultGetInfo, fetch2 } from "../main.ts";
 import * as LANGGE_API from './fqapi/langge.ts';
 import * as JINGLUO_API from './fqapi/jingluo.ts';
 import * as RAIN_API from './fqapi/rain.ts';
+import * as X00X_API from './fqapi/xo0x.ts';
 
 console.log('请知晓，为了防止被封，本爬虫会在每次请求之后随机等待几秒');
 
@@ -37,6 +38,7 @@ interface ISource{
 const APIS: Array<{ download: (item_id: string, book_id: string) => Promise<string>, downloadAll?: (item_ids: string[], book_id: string) => Promise<Record<string, string>> }> = [
     LANGGE_API,
     JINGLUO_API,
+    X00X_API,
     RAIN_API
 ];
 let current_api_id = 0;

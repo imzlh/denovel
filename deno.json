@@ -1,7 +1,8 @@
 {
   "tasks": {
-    "server": "deno run --unstable-raw-imports --unstable-kv server.ts",
-    "dev": "deno run --watch --unstable-raw-imports --unstable-kv server.ts"
+    "server": "deno run -A --unstable-raw-imports --unstable-ffi --unstable-kv server.ts",
+    "dev": "deno run -A --watch --unstable-raw-imports --unstable-ffi --unstable-kv server.ts",
+    "down": "deno run -A --unstable-raw-imports --unstable-ffi --unstable-kv main.ts -e -s 2"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
