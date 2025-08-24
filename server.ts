@@ -101,36 +101,37 @@ async function handleContentRequest(url: URL, req: Request) {
         info = requestCache.get(novelURL.href)!;
     }else{
         let basicInfo: TraditionalConfig;
-        // let newModule: { default: Callback, getInfo: PromiseOrNot<Info> }
-        // let isTraditional = false;
+        let newModule: { default: Callback, getInfo: (url: URL) => PromiseOrNot<MainInfoResult> }
+        let isTraditional = true;
 
         await queueRequestTask(novelURL.hostname);
 
         try{
             basicInfo = (await import(`./lib/${new URL(novelURL).hostname}.t.ts`)).default;
         }catch(e){
-            // deno-lint-ignore no-cond-assign
-            // if(isTraditional = await moduleExists(`./lib/${novelURL.hostname}.n.ts`)){
-            //     const 
-            // }else{
+            if(await moduleExists(`./lib/${novelURL.hostname}.n.ts`)){
+                // use new config
+                newModule = await import(`./lib/${novelURL.hostname}.n.ts`);
+                isTraditional = false;
+            }else{
                 endRequestTask();
                 return new Response("站点不受支持: " + (e instanceof Error ? e.message : String(e)), {
                     status: 404,
                     headers: { "Content-Type": "text/plain; charset=UTF-8" }
                 });
-            // }
+            }
         }
         
-        if(basicInfo.mainPageLike && basicInfo.mainPageLike.test(novelURL.href)){
+        if(isTraditional && basicInfo!.mainPageLike && basicInfo!.mainPageLike.test(novelURL.href)){
             info.isChapterPage = false;
-            const infos = await defaultGetInfo(novelURL, basicInfo);
+            const infos = await defaultGetInfo(novelURL, basicInfo!);
             info.title = infos?.book_name;
             info.cover = infos?.cover;
             info.author = infos?.author;
             info.summary = infos?.summary;
             info.startOfContent = infos?.firstPage;
-            info.jpStyle = basicInfo.jpStyle;
-        }else{
+            info.jpStyle = basicInfo!.jpStyle;
+        }else if(isTraditional){
             info.isChapterPage = true;
             
             const data = traditionalAsyncWrapper(novelURL);
@@ -154,12 +155,49 @@ async function handleContentRequest(url: URL, req: Request) {
                     headers: { "Content-Type": "text/plain; charset=UTF-8" }
                 });
             }
+        }else try{
+            const { getInfo, default: callback } = newModule!;
+            const infos = await getInfo(novelURL);
+            if(!infos) throw new Error("未获取到信息");
+            info.title = infos.book_name;
+            info.cover = infos.cover;
+            info.author = infos.author;
+            info.summary = infos.summary;
+            info.startOfContent = infos.firstPage;
+            info.jpStyle = infos.jpStyle;
+            info.isChapterPage = false;
+        }catch(e){
+            try{
+                // get content
+                const cb = newModule!.default;
+                const data = cb(novelURL);
+                const { done, value } = await data.next();
+                if(done){
+                    endRequestTask();
+                    return new Response("页面不存在", {
+                        status: 404,
+                        headers: { "Content-Type": "text/plain; charset=UTF-8" }
+                    });
+                }
+                const { content, title, next_link } = value;
+                info.title = title;
+                info.content = content;
+                info.nextChapter = next_link
+                    ? new URL(next_link).protocol.startsWith('http') ? next_link : undefined
+                    : undefined;
+                info.isChapterPage = true;
+            }catch(e){
+                endRequestTask();
+                return new Response("页面不存在", {
+                    status: 404,
+                    headers: { "Content-Type": "text/plain; charset=UTF-8" }
+                });
+            }
         }
 
         endRequestTask();
         requestCache.set(novelURL.href, info);
     }
-
 
     if(url.searchParams.get('json') !== null){
         return new Response(JSON.stringify(info), {

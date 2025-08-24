@@ -42,15 +42,11 @@ export default (async function* (urlStart: URL | string) {
             }
         }
 
-        // 逐条产出内容
-        while (contents.length > 0) {
-            const data = contents.shift()!;
-            await sleep(1); // 保持原有延迟
-            
-            yield {
-                content: data,
-                title: '',       // 保持与原逻辑兼容
-            };
-        }
+        // 产出内容
+        yield {
+            content: contents.join('\n'),
+            title: '',       // 保持与原逻辑兼容
+            next_link: nextUrl
+        };
     }
 } satisfies Callback);

@@ -159,11 +159,11 @@ export default (async function* (url: URL | string) {
         });
     }
 
-    async function getChap(url: string) {
+    async function getChap(url: string, prefetch = true) {
         const cid = url.match(/\/chapter\/(\d+)/)?.[1];
         const rpv = parseInt(getSiteCookie('ciweimao.com', 'readPage_visits') ?? '0');
         setRawCookie('ciweimao.com', 'readPage_visits=' + (rpv + 1));
-        await fetch2(url);  // get cookie
+        if(prefetch) await fetch2(url);  // get cookie
         if (!cid)
             throw new Error('Invalid chapter URL');
         const sessionID = await getSession(cid);
@@ -171,12 +171,28 @@ export default (async function* (url: URL | string) {
     }
 
     url = url instanceof URL ? url.href : url;
+
+    if (url.includes('/chapter/')){
+        const dom = await getDocument(url);
+        let content = await getChap(url, false);
+        content = content.replace(/<span[^>]*>([^<]*)<\/span>/g, '');
+        content = processContent(new DOMParser().parseFromString(content, 'text/html').body);
+        yield {
+            title: dom.querySelector('#J_BookCnt > div.read-hd > h1')?.innerHTML ?? '',
+            content,
+            next_link: dom.querySelector('#J_BtnPageNext')?.getAttribute('href') ?? undefined
+        };
+        return;
+    }
+
     if (!url.includes('/chapter-list/'))
         throw new Error('\n请输入章节列表链接，如https://www.ciweimao.com/chapter-list/100431696/book_detail');
     const dom = await getDocument(url);
 
     // 解析DOM
-    for (const aTag of dom.querySelectorAll('body > div.container > div > div.book-detail > div.ly-main > div > div.bd > div > div > ul > li > a[href]'))
+    const ellist = dom.querySelectorAll('body > div.container > div > div.book-detail > div.ly-main > div > div.bd > div > div > ul > li > a[href]');
+    for (let i = 0; i < ellist.length; i++) {
+        const aTag = ellist[i];
         if (aTag.innerText && aTag.getAttribute('href')?.includes('/chapter/')) {
             const chapname = aTag.innerText.trim();
             const chapurl = new URL(aTag.getAttribute('href')!.trim(), url);
@@ -186,9 +202,13 @@ export default (async function* (url: URL | string) {
 
             yield {
                 title: chapname,
-                content
+                content,
+                next_link: i < ellist.length - 1 
+                    ? new URL(ellist[i +1].getAttribute('href')!, url)
+                    : undefined
             };
         }
+    }
 } satisfies Callback)
 
 export const getInfo = (enter: URL) => defaultGetInfo(enter, {

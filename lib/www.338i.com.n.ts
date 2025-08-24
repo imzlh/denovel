@@ -82,7 +82,7 @@ export default (async function* (url: string | URL) {
     while (next_link) {
         const { fetch_body, title, next_link: next } = await getMeta(next_link);
         const data = await getData(fetch_body);
-        yield { title, content: fmtData(data) };
+        yield { title, content: fmtData(data), next_link };
         next_link = next;
     }
 } satisfies Callback);

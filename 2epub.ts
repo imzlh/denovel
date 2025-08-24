@@ -223,6 +223,7 @@ const removeTags = (str: string) => str.replaceAll(
 );
 
 export function processTXTContent(text: string, jpFormat = false) {
+    if(!PRESEL) PRESEL = PRESERVE_EL.concat(WRAP_EL);
     text = encodeContent(text, jpFormat);
     text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
         return it ? `<img src="${it.replaceAll('一', '-')}" referrerpolicy="no-referrer" />` : ''

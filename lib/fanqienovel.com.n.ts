@@ -117,7 +117,8 @@ export default (async function* (urlStart: URL | string) {
         )){
             yield {
                 title: chapters[i ++].title,
-                content: item
+                content: item,
+                next_link: i < chapters.length ? `https://fanqienovel.com/reader/${chapters[i].itemId}` : undefined
             };
         }
         await delay(6000 * Math.random() + 1500);

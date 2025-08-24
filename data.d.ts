@@ -44,12 +44,9 @@ type PromiseOrNot<T> = Promise<T> | T;
 declare interface Data{
     title: string,
     content: string,
-    next_link: string
+    next_link: string | URL | undefined
 }
 
-declare type Callback = (url_start: URL | string) => AsyncGenerator<{
-    title: string,
-    content: string
-}, void, void>;
+declare type Callback = (url_start: URL | string) => AsyncGenerator<Data, void, void>;
 
 declare const document: import("jsr:@b-fuze/deno-dom").HTMLDocument;
