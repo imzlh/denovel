@@ -111,8 +111,10 @@ const ipCache: Record<string, IPInfo> = await exists(IP_CACHE_FILE)
 
 // 在onbeforeunload中添加IP缓存保存
 const forceSaveConfig = globalThis.onbeforeunload = function () {
-    Deno.writeTextFileSync('cookie.json', JSON.stringify(cookieStore, null, 4));
-    Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
+    if(Object.keys(cookieStore).length)
+        Deno.writeTextFileSync('cookie.json', JSON.stringify(cookieStore, null, 4));
+    if(Object.keys(ipCache).length)
+        Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
 } as () => void;
 
 const LOOKUP_API = 'https://www.nslookup.io/api/v1/records';
@@ -321,7 +323,7 @@ async function fetch2(
     const setCookieHeader = response.headers.getSetCookie();
     setRawSetCookie(host, setCookieHeader);
 
-    if ([301, 302, 303, 307, 308].includes(response.status) && options.redirect === 'follow') {
+    if ([301, 302, 303, 307, 308].includes(response.status) && (!options.redirect || options.redirect === 'follow')) {
         // 重定向
         response = await fetch2(new URL(response.headers.get('location')!, url), options, measureIP);
     }

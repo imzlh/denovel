@@ -3,7 +3,7 @@ import { removeIllegalPath } from './main.ts'
 import { fetch2 } from "./main.ts";
 import { readline } from "./exe.ts";
 
-// const frontEnd = 'http://localhost:3000';
+const frontEnd_api = '192.168.1.50';
 const frontEnd = 'https://fn.music.163.com/g/quickapp/xtc';
 const outDir = 'musicout/';
 await ensureDir(outDir);
@@ -38,7 +38,7 @@ const getSongData = (id: string | number) => fetch2(`https://music.163.com/song/
 //         console.log(data);
 //         return data.data as Song[];
 //     });
-const getSongsInfo = (id: (string | number)[]) => fetch2(`http://localhost:3000/song/detail?ids=${id.join(',')}`)
+const getSongsInfo = (id: (string | number)[]) => fetch2(`http://${frontEnd_api}:3000/song/detail?ids=${id.join(',')}`)
     .then(res => res.status != 200 ? Promise.reject(new Error('歌曲不存在（status=' + res.status + '）')) : res.json())
     .then(data => data.songs as Song[]);
 
@@ -118,7 +118,7 @@ export default async function main(){
             const songName = song.name + '-' + song.ar.map(a => a.name).join(',');
 
             const songctx = await getSongData(song.id);
-            if (!songctx.body) throw new Error('歌曲文件下载失败： Server returned ' + songctx.status);
+            if (!songctx.body || !songctx.ok) throw new Error('歌曲文件下载失败： Server returned ' + songctx.status);
             const stream = await songctx.bytes();
             if (stream.length < 300 * 1024) {  // 300KB
                 console.log(`歌曲${song.name}(${song.id})文件大小过小，下载失败`);
@@ -153,7 +153,7 @@ export default async function main(){
                 if (!songctx.body) throw new Error('歌曲文件下载失败： Server returned ' + songctx.status);
                 const stream = await songctx.bytes();
                 if (stream.length < 300 * 1024) {  // 300KB
-                    console.log(`歌曲${song.name}(${song.id})文件大小过小，下载失败`);
+                    console.log(`歌曲${song.name}(${song.id})文件大小(${stream.length})过小，下载失败`);
                     continue;
                 }
 

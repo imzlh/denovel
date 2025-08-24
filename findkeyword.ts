@@ -16,27 +16,29 @@ if(isNaN(mina) || mina < 1) {
 
 // 搜索多次匹配的文件
 function search(content: string, keyword: string, minappear: number) {
-    let lastIndex = 0;
-    for(var i = 0; i < minappear; i++) {
-        const index = content.indexOf(keyword, lastIndex);
-        if(index >= 0) {
-            lastIndex = index + 1;
-        }
+    let count = 0;
+    let pos = -1;
+    while ((pos = content.indexOf(keyword, pos + 1)) !== -1) {
+        count++;
+        if (count >= minappear) return true;
     }
-    if(i == minappear) return true;
     return false;
 }
 
+
 const files = [] as string[];
-for (const entry of Deno.readDirSync('.')) {
-    console.log(entry.name, entry.isFile);
+let i = 0;
+console.log('Searching in', Deno.cwd());
+for await (const entry of Deno.readDir(Deno.cwd())) {
+    // console.log(entry.name, entry.isFile);
     if (entry.isFile && entry.name.endsWith(".txt")) {
         const file = Deno.openSync(entry.name);
         const content = Deno.readTextFileSync(entry.name);
+        i++;
 
         if(search(content, '.xhtml', 10)){
             console.log(entry.name, 'is an epub file, skip it');
-            break;  // 跳过epub文件
+            continue;  // 跳过epub文件
         }
         const lines = content.split('\n');
         let appear = 0;
@@ -62,6 +64,7 @@ for (const entry of Deno.readDirSync('.')) {
             }
         }
         file.close();
+        i++;
     }
 }
 
@@ -69,3 +72,4 @@ ensureDirSync('./matched');
 for (const file of files) {
     Deno.linkSync(file, './matched/' + file.replace('\\', '/').split('/').pop());
 }
+console.log(`Found ${files.length} files with keyword "${key}" appeared ${mina} times or more in ${i} files total.`);

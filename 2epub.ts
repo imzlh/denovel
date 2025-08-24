@@ -327,19 +327,20 @@ export function toEpub(data: string, input: string, output: string, option: {
             options.author = maxC(match[1], 20);
         }
 
-        const ctxmatch = data.match(/(?:\r?\n)+\s*简介[：:]([\s\S]+?)(?=(?:\r?\n){2,}|(?:\r?\n{2,}){2,}|-{10,})/gm);
-        if (ctxmatch && ctxmatch[0].length) {
-            options.description = removeTags(ctxmatch[0].trim());
+        const ctxmatch = data.match(/简介[：:]\s*([\s\S]+?)(?=\r?\n{2,}|-{10,})/m);
+        if (ctxmatch) {
+            options.description = removeTags(ctxmatch[1].trim());
         }
 
+
         // image
-        const imgmatch = beforeText.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp)/);
+        const imgmatch = beforeText.match(/(?:^|\s)封面[：:]\s*(\S+)/);
         if (imgmatch) {
-            options.cover = imgmatch[0];
+            options.cover = imgmatch[1];
         } else {
-            const match2 = beforeText.match(/[\r\n]\s*封面[：:]\s*(.+?)\s*[\r\n]+/);
+            const match2 = beforeText.match(/https?:\/\/[^\s"'<>]+\.(jpe?g|png|gif|webp)/i);
             if (match2) {
-                options.cover = match2[1];
+                options.cover = match2[0];
             }
         }
     }

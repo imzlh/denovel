@@ -275,7 +275,8 @@ async function processCover(
 
     let content: Uint8Array;
 
-    if (cover.slice(0, 4) === "http" || cover.slice(0, 2) === "//") {
+    if (cover.startsWith('//')) cover = 'http:' + cover;
+    if (cover.slice(0, 4) === "http") {
         try {
             const response = await networkHandler(cover, {
                 headers: { "User-Agent": userAgent },
@@ -530,6 +531,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
         images,
         audioVideo,
         version,
+        cover,
         coverMetaContent,
         startOfContentHref,
         coverDimensions: coverInfo.dimensions,
