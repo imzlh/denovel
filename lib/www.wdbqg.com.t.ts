@@ -5,7 +5,7 @@ export default {
     filter(doc, data){
         const link = data.next_link;
         // var nexturl='L2Jvb2svNDE4MDE1MS8zMjIxMTcxODhfNC5odG1sIA==';
-        if(link.startsWith('javascript:')){
+        if(String(link).startsWith('javascript:')){
             const nextUrl = doc.getElementsByTagName('script')
                 .filter(s => s.innerHTML.includes('location.href'))[0].innerHTML
                 .match(/var\s+nexturl\s*=\s*'([^']+)'/)![1];
