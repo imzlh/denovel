@@ -5,29 +5,7 @@ export interface BookFile {
     content: string;
 }
 
-export class FileScanner {
-    // 扫描目录获取所有txt文件
-    async *scanDirectory(dirPath: string) {
-        try {
-            for await (const entry of Deno.readDir(dirPath)) {
-                if (entry.isFile && entry.name.endsWith('.txt')) {
-                    const fullPath = `${dirPath}/${entry.name}`;
-                    const content = await Deno.readTextFile(fullPath);
-                    const stats = await Deno.stat(fullPath);
-
-                    yield {
-                        path: fullPath,
-                        name: entry.name,
-                        size: stats.size,
-                        content: content.substring(0, 1000) // 只读取部分内容用于训练
-                    } as BookFile;
-                }
-            }
-        } catch (error) {
-            console.error(`扫描目录错误: ${dirPath}`, error);
-        }
-    }
-
+export class Guesser {
     // 专注于标题中常见词汇的映射表
     // 豆包生成
     static categoryKeywords: Record<string, string[]> = {
@@ -93,6 +71,7 @@ export class FileScanner {
         '都市': ['都市', '职场', '爱情', '校园', '青春', '恋爱', '公司', '白领', '大学生', '公寓', '地铁', '咖啡厅'],
         '历史': ['历史', '古代', '王朝', '皇帝', '将军', '战争', '谋略', '宫廷', '穿越历史', '改变历史', '三国', '唐朝', '宋朝'],
         '军事': ['军事', '战争', '士兵', '指挥官', '战术', '战略', '坦克', '战机', '军舰', '特种部队', '间谍', '情报'],
+        '年代': ['四合院', '19', '200'],
 
         // 特殊题材
         '体育竞技': ['体育', '篮球', '足球', '网球', '游泳', '奥运会', '冠军', '训练', '比赛', '运动员', '教练', 'NBA'],
@@ -114,18 +93,18 @@ export class FileScanner {
      * 针对标题优化的小说分类函数
      * 专注于标题中高频出现的关键词
      */
-    classifyNovelByTitle(title: string) {
+    static classifyNovelByTitle(title: string) {
         const processedTitle = title.toLowerCase().replace(/[^\w\s]/gi, '');
         const matchCounts: Record<string, number> = {};
 
         // 初始化匹配计数
-        (Object.keys(FileScanner.categoryKeywords) as string[]).forEach(category => {
+        (Object.keys(this.categoryKeywords) as string[]).forEach(category => {
             matchCounts[category] = 0;
         });
 
         // 匹配逻辑：更注重完整词和标题常见组合
-        (Object.keys(FileScanner.categoryKeywords) as string[]).forEach(category => {
-            const keywords = FileScanner.categoryKeywords[category];
+        (Object.keys(this.categoryKeywords) as string[]).forEach(category => {
+            const keywords = this.categoryKeywords[category];
 
             keywords.forEach(keyword => {
                 const lowerKeyword = keyword.toLowerCase();
@@ -154,7 +133,7 @@ export class FileScanner {
     }
 
     // 从文件名猜测可能的标签
-    guessTagsFromFilename(filename: string): string[] {
+    static guessTagsFromFilename(filename: string): string[] {
         // const guesses: string[] = [];
         // const lowerName = filename.toLowerCase();
 
@@ -178,7 +157,7 @@ export class FileScanner {
         const guesses: string[] = [];
         const lowerName = filename.toLowerCase();
 
-        for(const [k, v] of Object.entries(FileScanner.GENRE_KEYWORDS)){
+        for(const [k, v] of Object.entries(this.GENRE_KEYWORDS)){
             if(v.some(keyword => lowerName.includes(keyword))){
                 guesses.push(k);
             }

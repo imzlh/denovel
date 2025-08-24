@@ -284,6 +284,8 @@ async function fetch2(
     let response: Response | undefined;
     for (var i = 0; i < (options.maxRetries ?? MAX_RETRY ?? 3); i++) {
         try {
+            if(options.signal?.aborted)
+                throw new Error('Aborted');
             response = await fetch(targetUrl, { 
                 ...options, headers, 
                 redirect: 'manual',
@@ -506,6 +508,7 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         credentials: 'include',
         referrer: url.protocol + '://' + url.host + '/',
         referrerPolicy: 'unsafe-url',
+        signal: abort,
         cloudflareBypass: true,
     }, measureIP, ignore_status);
     if (!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
