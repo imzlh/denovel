@@ -78,7 +78,10 @@ class ElementArray<T extends XmlNode> extends Array<T> {
  * @param input 输入的文件名
  * @param output 输出位置
  */
-export async function toTXT2(source: Uint8Array, outdir: string) {
+export async function toTXT2(source: Uint8Array, outdir: string, options = {
+    addTitle: true,
+    removeHTMLTitle: true
+}) {
     // 释放所有文件
     const files = await zip.extract(source);
 
@@ -149,6 +152,11 @@ export async function toTXT2(source: Uint8Array, outdir: string) {
             console.log(`Warning: 未找到ID为${idref}的章节文件`);
             continue;
         }
+        // Table Of Contents
+        if(filePath.includes('toc')){
+            console.debug(`跳过目录文件: ${filePath}`);
+            continue;
+        }
         const chapter = getF(filePath);
         if (!chapter) throw new Error(`Chapter file not found: ${filePath}`);
         const content = new TextDecoder().decode(chapter.data);
@@ -160,6 +168,11 @@ export async function toTXT2(source: Uint8Array, outdir: string) {
     for (let i = 0; i < chapters.length; i++) try {
         const chapter = chapters[i];
         const document = new DOMParser().parseFromString(chapter, 'text/html');
+
+        // 删除标题
+        if(options.removeHTMLTitle){
+            document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => h.remove());
+        }
 
         // 提取图片
         const imgs = Array.from(document.querySelectorAll('img[src]'));
@@ -180,10 +193,14 @@ export async function toTXT2(source: Uint8Array, outdir: string) {
         }
 
         // 标题
-        const title = document.querySelector('head > title')?.innerText;
-        if(title == '目录') continue;
-
-        txt += `第${i}章 ${title}\r\n${processContent(document.body)}\r\n\r\n`;
+        const title = document.querySelector('head > title')?.innerText.trim();
+        if(undefined === title || title == '目录') continue;
+        const contentTxt = processContent(document.body).trim();
+        if(contentTxt.split(/\r\n/).slice(0, 2).some(l => l.includes(title)) || !options.addTitle)
+            // FIXME: 也许无法处理原生标题，使用下一种？
+            txt += '\r\n' + contentTxt + '\r\n\r\n';
+        else
+            txt += `第${i}章 ${title}\r\n${contentTxt}\r\n\r\n`;
     } catch (e) {
         console.error(`Error parsing chapter ${i + 1}: ${(e as Error).message}`);
     }
@@ -199,12 +216,15 @@ export async function toTXT2(source: Uint8Array, outdir: string) {
  * @param input 输入的文件名
  * @param output 输出位置
  */
-export async function toTXT(source: string, outdir: string): Promise<string> {
+export async function toTXT(source: string, outdir: string, options = {
+    addTitle: true,
+    removeHTMLTitle: true
+}): Promise<string> {
     let doc;
     switch(basename(source).split('.').pop()){
         case "epub":
-            return toTXT2(await Deno.readFile(source), outdir);
-        break;
+            return toTXT2(await Deno.readFile(source), outdir, options);
+        // break;
         case "pdf":
             doc = await extractPDFContent(source, outdir);
         break;
@@ -238,7 +258,7 @@ export default async function main() {
     // 增强型参数解析
     const args = parseArgs(Deno.args, {
         string: ['output', 'name'],
-        boolean: ['to-epub', 'no-images', 'help', 'delete', 'force'],
+        boolean: ['to-epub', 'no-images', 'help', 'delete', 'force', 'add-title', 'remove-html-title'],
         alias: {
             o: 'output',
             e: 'to-epub',
@@ -247,7 +267,9 @@ export default async function main() {
             d: 'delete',
             f: 'force',
             n: 'name',
-            c: 'chapter-max'
+            c: 'chapter-max',
+            t: 'add-title',
+            r: 'remove-html-title'
         },
         default: {
             output: '',
@@ -256,7 +278,9 @@ export default async function main() {
             force: false,
             "to-epub": false,
             "no-images": false,
-            "chapter-max": 0
+            "chapter-max": 0,
+            "add-title": false,
+            "remove-html-title": true
         }
     });
 
@@ -268,14 +292,16 @@ docx/pdf/epub  -> TXT 转换工具 v2.0
   deno run -A 2txt.ts [选项] <输入文件或目录>
 
 选项:
-  -o, --output <路径>   设置输出路径 (默认: 输入文件同目录)
-  -n, --name <名称>     设置输出文件名 (不含扩展名)
-  -e, --to-epub        转换完毕后重新生成epub(可以实现pdf/docx转epub)
-  -i, --no-images      忽略图片 (仅生成文本)
-  -d, --delete         转换后删除原文件
-  -f, --force          忽略错误继续处理
-  -c, --chapterMax <N> 设置最大章节数 (0=无限制)
-  -h, --help           显示帮助信息
+  -o, --output <路径>       设置输出路径 (默认: 输入文件同目录)
+  -n, --name <名称>         设置输出文件名 (不含扩展名)
+  -e, --to-epub             转换完毕后重新生成epub(可以实现pdf/docx转epub)
+  -i, --no-images           忽略图片 (仅生成文本)
+  -d, --delete              转换后删除原文件
+  -f, --force               忽略错误继续处理
+  -c, --chapterMax <N>      设置最大章节数 (0=无限制)
+  -h, --help                显示帮助信息
+  -t, --add-title           保留原标题
+  -r, --remove-html-title   移除html标题
 
 示例:
   1. EPUB转TXT: 
@@ -284,6 +310,8 @@ docx/pdf/epub  -> TXT 转换工具 v2.0
      deno run -A 2txt.ts ./epubs -o ./txts -i
   3. TXT转EPUB: 
      deno run -A 2txt.ts input.txt -e -n "书名"
+  4. 干净的epub(正文内没有标题)，请务必指定"-t"参数：
+     deno run -A 2txt.ts input.epub -o output.txt -t
 `);
         Deno.exit(0);
     }
@@ -319,7 +347,10 @@ docx/pdf/epub  -> TXT 转换工具 v2.0
                 console.log(`开始转换：${filePath} -> ${outputPath}`);
                 const txt = await toTXT(
                     filePath,
-                    outputPath
+                    outputPath, {
+                        addTitle: args["add-title"],
+                        removeHTMLTitle: args["remove-html-title"]
+                    }
                 );
                 if (args["to-epub"]) {
                     console.log(dirname(filePath) + '/' + baseName + '.epub');

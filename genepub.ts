@@ -325,7 +325,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     const uuid = crypto.randomUUID();
     const title = options.title;
     const description = options.description;
-    const cover = options.cover ?? null;
+    let cover = options.cover ?? null;
     const useFirstImageAsCover = options.useFirstImageAsCover ?? false;
     const publisher = options.publisher ?? "anonymous";
     const author = options.author
@@ -356,13 +356,14 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     const content: Array<EpubContent> = [];
 
     // 处理封面
-    let coverInfo: UnPromise<ReturnType<typeof processCover>>;
+    let coverInfo: UnPromise<ReturnType<typeof processCover>> | undefined = undefined;
     try{
         coverInfo = await processCover(cover, userAgent, networkHandler, logHandler, verbose);
-        assert(coverInfo.extension && coverInfo.mediaType, "封面处理失败");
+        // assert(coverInfo.extension && coverInfo.mediaType, "封面处理失败");
     }catch(e){
         logHandler('error', `封面处理失败 : ${cover}, ${e instanceof Error ? e.message : String(e)}`);
-        throw e;
+        coverInfo = undefined;
+        cover = null;
     }
     
     // HTML处理函数
@@ -375,7 +376,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
             .toString();
 
     // 插入封面内容
-    if (cover && coverInfo.content) {
+    if (cover && coverInfo?.content) {
         const templateContent = version === 3 ? coverEJS : cover2EJS;
         content.push({
             id: `item_${content.length}`,
@@ -449,7 +450,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
 
     // 设置封面元数据
     let coverMetaContent: string | null = null;
-    if (cover && coverInfo.content) {
+    if (cover && coverInfo?.content) {
         coverMetaContent = "image_cover";
     } else if (useFirstImageAsCover && images.length > 0) {
         coverMetaContent = "image_0";
@@ -487,7 +488,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     }
 
     // 添加封面文件
-    if (cover && coverInfo.content && coverInfo.extension) {
+    if (cover && coverInfo?.content && coverInfo?.extension) {
         files.set(`OEBPS/cover.${coverInfo.extension}`, coverInfo.content);
     }
 
@@ -538,9 +539,9 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
         cover,
         coverMetaContent,
         startOfContentHref,
-        coverDimensions: coverInfo.dimensions,
-        coverMediaType: coverInfo.mediaType,
-        coverExtension: coverInfo.extension,
+        coverDimensions: coverInfo?.dimensions,
+        coverMediaType: coverInfo?.mediaType,
+        coverExtension: coverInfo?.extension,
         encodeXML,
         // bookTitle: escape(title),
         bookTitle: title,

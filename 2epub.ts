@@ -27,12 +27,17 @@ const MIN_CHARS_PER_CHAPTER = 10;   // 10字最少
 // Part.0 『为什么会变成这样的人』
 // Part.12 『完美假面』no.1
 const regexp = [
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*第\s*[\-零一二三四五六七八九十百千万亿0-9~]+\s*[章话集节]\s*([^\r\n课]*)\]?[\r\n]+/gi,
-    /[\r\n]+\[?(?:正文\s*)?(?:\s*第[\-零一二三四五六七八九十百千万亿0-9]+卷[ :：]*)?\s*[\-零一二三四五六七八九十百千万亿序~0-9]+\s(.*)\]?[\r\n]+/gi,
+    /[\r\n]+(?:正文\s*)?第[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*第[零一二三四五六七八九十百千万亿0-9]+[章节回话集][^\r\n]*[\r\n]+/gi,
+    /[\r\n]+(?:正文\s*)?第[零一二三四五六七八九十百千万亿0-9]+[章节回话集][^\r\n]*[\r\n]+/gi,
+    /[\r\n]+(?:正文\s*)?(?:Vol\.?\s*[0-9IVXLC]+\s*[：:]*\s*)?(?:Chapter|Chapt|Ch|卷)\s*[0-9IVXLC]+[^\r\n]*[\r\n]+/gi,
+    /[\r\n]+(?:正文\s*)?(?:第[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*)?(?:序章|前言|楔子|尾声|后记|番外)[^\r\n]*[\r\n]+/gi,
+    /[\r\n]+(?:正文\s*)?(?:第[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*)?[零一二三四五六七八九十百千万亿0-9]+\s+[^\r\n]{3,}[\r\n]+/gi,
+    
     /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)\d+\s+[、. ：:~，·～．『]\s*(.*)\s*』?[\r\n]+/gi,
     /[\r\n]+\s*No[、.．]\d+\s*(.+)\s*[\r\n]+/gi,
     /[\r\n]+\s*(?:正文\s*)?\d+＜(.+)＞\s*[\r\n]+/gi,
 
+    /[\r\n]+(?:正文\s*)?(?:第[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*)?第[零一二三四五六七八九十百千万亿0-9]+[～~\-－][零一二三四五六七八九十百千万亿0-9]+[章节回话集][^\r\n]*[\r\n]+/gi,
     /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，．·～]\s*(.+)\s*[\r\n]+/gi,
     /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9序]+[、. ：:~，·．～]\s*(.+)\s*[\r\n]+/gi,
     /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)[零一二三四五六七八九十百千万亿序0-9]+\s*(.+?)\s*[\r\n]+/gi,
@@ -186,7 +191,7 @@ function fromPreg(rawTxt: string, matches: Iterable<RegExpMatchArray>, merge: bo
 
         // 总是累积内容，根据条件决定是否分割
         pendingContent += rawTxt.slice(currentContentStart, contentEnd);
-        currentContentStart = index + match[0].length;
+        currentContentStart = index;
 
         if (!merge || (pendingContent.length >= MIN_CHARS_PER_CHAPTER &&
             pendingContent.length <= MAX_CHARS_PER_CHAPTER)) {
