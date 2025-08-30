@@ -50,11 +50,19 @@ export default async function cbz2jpg(imgfiles: {
 
     // Maximum supported image dimension is 65500 pixels
     if(totalHeight > 65500){
-        for(let i = 0; i < totalHeight; i += 65500){
-            const subCanvas = createCanvas(width, 65500);
+        let sizeInEachImage;
+        for(let i = 1;; i += 1){
+            if(totalHeight < 65500 * i){
+                // 均分，防止不均衡产生的空白
+                sizeInEachImage = Math.floor(totalHeight / i);
+                break;
+            }
+        }
+        for(let i = 0; i < totalHeight; i += sizeInEachImage){
+            const subCanvas = createCanvas(width, sizeInEachImage);
             const subCtx = subCanvas.getContext('2d');
-            subCtx.drawImage(canvas, 0, i, width, 65500, 0, 0, width, 65500);
-            subCanvas.save(outbasename + '_' + Math.floor(i/65500) + '.jpg', 'jpeg');
+            subCtx.drawImage(canvas, 0, i, width, sizeInEachImage, 0, 0, width, sizeInEachImage);
+            subCanvas.save(outbasename + '_' + Math.floor(i / sizeInEachImage) + '.jpg', 'jpeg');
         }
     }else{
         canvas.save(outbasename + '.jpg', 'jpeg');
