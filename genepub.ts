@@ -1,5 +1,5 @@
 import { render } from "npm:ejs";
-import { encodeXML } from "npm:entities";
+import { encodeXML, escapeText as escape } from "npm:entities";
 import { imageSize } from "npm:image-size";
 import mime from "npm:mime";
 import type { Element } from "npm:@types/hast";
@@ -9,6 +9,7 @@ import { Plugin, unified } from "npm:unified";
 import { visit } from "npm:unist-util-visit";
 import { basename } from "jsr:@std/path@^1.0.8";
 import { create } from "jsr:@quentinadam/zip";
+import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 
 // 模板文件内容 - 使用 import with type 'text'
 import contentEJS from './templates/epub3/content.opf.ejs' with { type: 'text' };
@@ -20,6 +21,7 @@ import tocNCXJS from './templates/toc.ncx.ejs' with { type: 'text' };
 import content2EJS from './templates/epub2/content.opf.ejs' with { type: 'text' };
 import cover2EJS from './templates/epub2/cover.xhtml.ejs' with { type: 'text' };
 import toc2EJS from './templates/epub2/toc.xhtml.ejs' with { type: 'text' };
+
 
 // 类型定义
 export interface EpubContentOptions {
@@ -357,6 +359,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     let coverInfo: UnPromise<ReturnType<typeof processCover>>;
     try{
         coverInfo = await processCover(cover, userAgent, networkHandler, logHandler, verbose);
+        assert(coverInfo.extension && coverInfo.mediaType, "封面处理失败");
     }catch(e){
         logHandler('error', `封面处理失败 : ${cover}, ${e instanceof Error ? e.message : String(e)}`);
         throw e;
@@ -431,6 +434,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
         content.push({
             id,
             href,
+            // title: escape(contentItem.title),
             title: contentItem.title,
             data: html,
             url: contentItem.url ?? null,
@@ -538,13 +542,14 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
         coverMediaType: coverInfo.mediaType,
         coverExtension: coverInfo.extension,
         encodeXML,
+        // bookTitle: escape(title),
         bookTitle: title,
         docHeader
     };
 
     for (const contentItem of content) {
         const result = await render(
-            contentXHTMLEJS,
+            contentItem.templateContent ?? contentXHTMLEJS,
             { ...templateData, ...contentItem },
             { 
                 escape: (markup: string) => markup,
