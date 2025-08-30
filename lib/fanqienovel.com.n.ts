@@ -37,10 +37,10 @@ interface ISource{
 }
 
 const APIS: Array<{ download: (item_id: string, book_id: string) => Promise<string>, downloadAll?: (item_ids: string[], book_id: string) => Promise<Record<string, string>> }> = [
-    LANGGE_API,
     JINGLUO_API,
     X00X_2_API,
     X00X_API,
+    LANGGE_API,
     RAIN_API,
 ];
 let current_api_id = 0;
