@@ -9,7 +9,7 @@
 
 import { fetch2 } from "../../main.ts";
 
-const API = 'http://nuu2.jingluo.love/content?item_id=';
+const API = 'http://nuu${.id}.jingluo.love/content?item_id=';
 
 let init = false;
 export async function download(id: string) {
@@ -23,7 +23,8 @@ export async function download(id: string) {
     "data": {
         "content": 
      */
-    const res = await fetch2(API + id);
+    const endpid = Math.ceil(Math.random() * 2);    // 1, 2
+    const res = await fetch2(API.replace('${.id}', String(endpid)) + id);
     const data = await res.json();
     return data.data.content;
 }

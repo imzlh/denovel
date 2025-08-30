@@ -22,9 +22,10 @@ import { checkIsTraditional, downloadNovel, exists, Status, defaultGetInfo, trad
 import mainPage from "./static/server.html" with { type: "text" };
 import { render } from "npm:ejs";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
-import CHAPTER_TEMPLATE from "./static/chapter.html.ejs" with { type: "text" };
 import { processTXTContent } from "./2epub.ts";
-import { url } from "node:inspector";
+
+import CHAPTER_TEMPLATE from "./static/chapter.html.ejs" with { type: "text" };
+import CONTENTAPI_HOMEPAGE from "./static/contentapi.html" with { type: "text" };
 
 // 全局设置
 let settings = {
@@ -80,9 +81,9 @@ const endRequestTask = () => {
 async function handleContentRequest(url: URL, req: Request) {
     const _novelURL = url.searchParams.get("url");
     if (!_novelURL) {
-        return new Response("缺少'url' GET参数", {
-            status: 400,
-            headers: { "Content-Type": "text/plain; charset=UTF-8" }
+        return new Response(CONTENTAPI_HOMEPAGE, {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=UTF-8" }
         });
     }
     let novelURL;
