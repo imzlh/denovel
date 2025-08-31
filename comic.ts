@@ -46,7 +46,7 @@ export async function mkCbzOrLongImg(format: string, data: EpubContentOptions[],
     let downloadedSize = 0, downloadedCount = 0, restImages = imageArray.reduce((acc, cur) => acc + cur.length, 0);
     console.log(`INFO 开始下载 ${data.length} 章，共 ${restImages} 张图片`);
     for(let chap = 1; chap <= data.length; chap++){
-        const chapter = data[chap - 1], name = chap + '_' + removeIllegalPath(chapter.title) + '.' + format == 'cbz',
+        const chapter = data[chap - 1], name = chap + '_' + removeIllegalPath(chapter.title) + '.' + format,
             path = outFolder + '/' + name,
             images = imageArray[chap - 1];
 
@@ -128,7 +128,7 @@ export async function mkCbzOrLongImg(format: string, data: EpubContentOptions[],
                 lastModification: new Date()
             })), path.substring(0, path.lastIndexOf('.')));
         }
-        console.log(`INFO (${chap})已保存${name}`);
+        console.log(`INFO (${chap})已保存: ${name}`);
     }
 
     // download cover
@@ -158,7 +158,7 @@ export default async function main(){
     -n, --name <name>    漫画名，默认为当前时间戳
     -o, --outdir <dir>   输出目录，默认为out/
     -s, --sleep <sec>    指定最大下载间隔，默认为1秒（0~1）
-    -f, --format <fmt>   输出格式(cbz/epub)，默认为epub
+    -f, --format <fmt>   输出格式(cbz/epub/jpg)，默认为epub
     -c, --cover <url>    封面URL，默认为无
     -m, --no-multi       禁用并发下载，默认为启用
 
@@ -177,7 +177,7 @@ export default async function main(){
         throw new Error('输出格式指定错误,目前只支持cbz或epub。');
     }
 
-    let start: string | null;
+    let start: string | null, name: string | null = null;
     if(typeof args._[0] == 'string' && await exists(args._[0])){
         // read exported file
         if(!args._[0] || !args._[0].endsWith('.txt'))
@@ -321,7 +321,7 @@ export default async function main(){
     };
 
     // 生成epub
-    const filename = (name || Date.now().toString()).replace(/[\\/:*?"<>|]/g, '_') + '.' + (args.format || 'epub');
+    const filename = removeIllegalPath(name || Date.now().toString()) + '.' + (args.format || 'epub');
     if(args.format == 'epub'){
         await generateEpub(info2, out + '/' + filename);
     }else if(args.format == 'cbz'){

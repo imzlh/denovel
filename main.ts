@@ -632,8 +632,8 @@ export const WRAP_EL = [
         ['vertical-align', 'sub', 'sub'],                  // 下标
         ['display', 'block', 'div'],                       // 块级元素
         ['display', 'inline-block', 'span'],               // 行内块
-        ['text-align', 'center', 'div'],                   // 居中文本
-        ['text-align', 'right', 'div']                     // 右对齐文本
+        ['text-align', 'center', 'center'],                // 居中文本
+        ['text-align', 'right', 'right']                   // 右对齐文本
     ] as Array<[
         string, 
         string | ((value: string) => boolean), 
@@ -722,20 +722,27 @@ function processContent(ctx?: Element | null | undefined, parentStyle: Record<st
             let wrap = WRAP_EL.includes(rtag);
             for(let i = 0; i < tag.length; i ++){
                 if(WRAP_EL.includes(tag[i])){
+                    console.log('wrap: tag=' , tag, 'outertag=', outertag, 'wrap=', wrap);
                     tag.splice(i, 1);
                     wrap = true;
                 }
             }
 
+            const inner = processContent(node as Element, style);
+            if(!inner.trim()){
+                if(wrap) text += '\r\n';
+                continue;   // skip tags
+            }
+
             if(tag.length) text += tag.map(t => `[${t}]`).join('');
-            text += processContent(node as Element, style);
+            text += inner;
             if(tag.length) text += tag.map(t => `[/${t}]`).reverse().join('');
 
             // 模拟display: block
             if(wrap) text += '\r\n';
-            if(text[0] != '\r' && text[0] != '\n'){
-                text = '\r\n' + text;
-            }
+            // if(text[0] != '\r' && text[0] != '\n'){
+            //     text = '\r\n' + text;
+            // }
         }
     }
 
