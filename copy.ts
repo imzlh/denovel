@@ -47,8 +47,7 @@ function copyFileWithProgressSync(
             },
         });
 
-        // 使用8MB缓冲区提升性能
-        const buf = new Uint8Array(1024 * 1024 * 8);
+        const buf = new Uint8Array(1024 * 1024 * 4);
         let bytesCopied = 0;
 
         while (bytesCopied < fileSize) {
@@ -60,8 +59,16 @@ function copyFileWithProgressSync(
             progressBar.next(n);
         }
     } finally {
+        const srcStat = srcFile.statSync();
+        destFile.syncSync();
         srcFile.close();
         destFile.close();
+
+        try{
+            Deno.utimeSync(destPath, Date.now(), srcStat.mtime ?? Date.now());
+        }catch(e){
+            console.error('无法同步修改时间,这通常不会有什么问题', (e as Error).message);
+        }
     }
 }
 
@@ -192,7 +199,7 @@ function copyFilesSync(
 
             // 执行复制
             const destPath = join(destDir, entry.name);
-        console.log(`[${fileCount + 1}] 复制 ${entry.name} (${formatSize(fileStat.size)})`);
+        console.log(`[${fileCount + 1}] 复制 ${entry.name} (${formatSize(fileStat.size)}, modified=${fileStat.mtime})`);
 
         try {
             copyFileWithProgressSync(filePath, destPath, fileStat.size);
@@ -201,6 +208,7 @@ function copyFilesSync(
             copiedFiles.push(entry.name);
         } catch (err) {
             console.error(`复制 ${entry.name} 失败: ${err instanceof Error ? err.message : err}`);
+            break;
         }
     }
 
