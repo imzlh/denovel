@@ -2,6 +2,8 @@ import { fill } from "npm:pdf-lib@^1.17.1";
 import { readline } from "../exe.ts";
 import { fetch2, getDocument, getSiteCookie, setRawCookie, NoRetryError } from "../main.ts";
 
+console.log('UAA限制蛮多，建议去www.yeduge.com（不是打广告），同步UAA');
+
 async function showCaptcha(caUrl: string) {
     const caRes = await fetch2(caUrl);
     if (!caRes.ok || !caRes.body) {

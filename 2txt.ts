@@ -154,7 +154,7 @@ export async function toTXT2(source: Uint8Array, outdir: string, options = {
         }
         // Table Of Contents
         if(filePath.includes('toc')){
-            console.debug(`跳过目录文件: ${filePath}`);
+            // console.debug(`跳过目录文件: ${filePath}`);
             continue;
         }
         const chapter = getF(filePath);
@@ -254,39 +254,34 @@ interface ConvertOptions {
     help: boolean;
 }
 
-export default async function main() {
-    // 增强型参数解析
-    const args = parseArgs(Deno.args, {
-        string: ['output', 'name'],
-        boolean: ['to-epub', 'no-images', 'help', 'delete', 'force', 'add-title', 'remove-html-title'],
-        alias: {
-            o: 'output',
-            e: 'to-epub',
-            i: 'no-images',
-            h: 'help',
-            d: 'delete',
-            f: 'force',
-            n: 'name',
-            c: 'chapter-max',
-            t: 'add-title',
-            r: 'remove-html-title'
-        },
-        default: {
-            output: '',
-            name: '',
-            delete: false,
-            force: false,
-            "to-epub": false,
-            "no-images": false,
-            "chapter-max": 0,
-            "add-title": false,
-            "remove-html-title": true
-        }
-    });
+interface ConvertOptions {
+    output: string;
+    name: string;
+    delete: boolean;
+    force: boolean;
+    'to-epub': boolean;
+    'no-images': boolean;
+    'keep-txt': boolean;
+    'add-title': boolean;
+    'remove-html-title': boolean;
+    'chapter-max': string;
+    help: boolean;
+    _: string[];
+}
 
-    if (args.help) {
-        console.log(`
-docx/pdf/epub  -> TXT 转换工具 v2.0
+interface ConvertConfig {
+    inputPath: string;
+    outputDir: string;
+    baseName: string;
+    options: ConvertOptions;
+}
+
+/**
+ * 显示帮助信息
+ */
+function showHelp(): void {
+    console.log(`
+docx/pdf/epub -> TXT 转换工具 v2.0
 
 用法:
   deno run -A 2txt.ts [选项] <输入文件或目录>
@@ -297,8 +292,9 @@ docx/pdf/epub  -> TXT 转换工具 v2.0
   -e, --to-epub             转换完毕后重新生成epub(可以实现pdf/docx转epub)
   -i, --no-images           忽略图片 (仅生成文本)
   -d, --delete              转换后删除原文件
+  -k, --keep-txt            (仅epub转epub时)保留原txt文件(夹)
   -f, --force               忽略错误继续处理
-  -c, --chapterMax <N>      设置最大章节数 (0=无限制)
+  -c, --chapter-max <N>     设置最大章节数 (0=无限制)
   -h, --help                显示帮助信息
   -t, --add-title           保留原标题
   -r, --remove-html-title   移除html标题
@@ -313,121 +309,326 @@ docx/pdf/epub  -> TXT 转换工具 v2.0
   4. 干净的epub(正文内没有标题)，请务必指定"-t"参数：
      deno run -A 2txt.ts input.epub -o output.txt -t
 `);
-        Deno.exit(0);
+}
+
+/**
+ * 解析命令行参数
+ */
+function parseCommandLineArgs(): ConvertOptions {
+    return parseArgs(Deno.args, {
+        string: ['output', 'name', 'chapter-max'],
+        boolean: ['to-epub', 'no-images', 'help', 'delete', 'force', 'keep-txt', 'add-title', 'remove-html-title'],
+        alias: {
+            o: 'output',
+            e: 'to-epub',
+            i: 'no-images',
+            h: 'help',
+            d: 'delete',
+            f: 'force',
+            n: 'name',
+            c: 'chapter-max',
+            t: 'add-title',
+            r: 'remove-html-title',
+            k: 'keep-txt'
+        },
+        default: {
+            output: '',
+            name: '',
+            delete: false,
+            force: false,
+            "to-epub": false,
+            "no-images": false,
+            "chapter-max": "10000",
+            "add-title": false,
+            "remove-html-title": true,
+            "keep-txt": false
+        }
+    }) as ConvertOptions;
+}
+
+/**
+ * 验证参数有效性
+ */
+function validateArgs(args: ConvertOptions): void {
+    if (args["to-epub"] && args['delete']) {
+        console.error("错误：不能同时指定-e和-d选项");
+        console.error("-e: 产生epub, -d: 删除原文件, 这样程序的行为是浪费CPU + 删除文件");
+        console.info("或许, 你只是希望删除生成的文件夹?默认转epub后会自动删除!");
+        Deno.exit(1);
     }
-    // 获取输入路径参数
-    const inputPath = args._[0] || await readline("请输入输入文件或目录：") || "E:\\docs\\Documents\\6.1\\潘小姐想变回男孩子.txt.epub";
+}
+
+/**
+ * 获取输入路径
+ */
+async function getInputPath(args: ConvertOptions): Promise<string> {
+    const inputPath = args._?.[0] || 
+        await readline("请输入输入文件或目录：");
+    
     if (!inputPath) {
         console.error("错误：必须指定输入文件或目录");
         Deno.exit(1);
     }
+    
+    return inputPath.toString();
+}
 
-    // 验证输入路径有效性
-    let inputStat: Deno.FileInfo;
+/**
+ * 验证输入路径是否存在
+ */
+async function validateInputPath(inputPath: string): Promise<Deno.FileInfo> {
     try {
-        inputStat = await Deno.stat(inputPath.toString());
+        return await Deno.stat(inputPath);
     } catch (e) {
         console.error(`路径无效：${inputPath}`);
         Deno.exit(1);
     }
+}
 
-    // 创建文件处理器
-    const processor = {
-        async handleFile(filePath: string) {
-            try {
-                console.log(`正在处理：${filePath}`);
+/**
+ * 创建转换配置
+ */
+async function createConvertConfig(filePath: string, options: ConvertOptions): Promise<ConvertConfig> {
+    const outputDir = options.output || dirname(filePath);
+    const baseName = options.name || basename(filePath).split('.')[0];
+    
+    await ensureDir(join(outputDir, baseName));
+    const resolvedOutputDir = await Deno.realPath(join(outputDir, baseName));
+    
+    return {
+        inputPath: filePath,
+        outputDir: resolvedOutputDir,
+        baseName,
+        options
+    };
+}
 
-                // 生成输出路径
-                const outputDir = args.output || dirname(filePath);
-                const baseName = args.name || basename(filePath).split('.')[0];
-                await ensureDir(join(outputDir, baseName));
-                const outputPath = await Deno.realPath(join(outputDir, baseName));
+/**
+ * 执行文档转换为TXT
+ */
+async function convertToTxt(config: ConvertConfig): Promise<string> {
+    console.log(`开始转换：${config.inputPath} -> ${config.outputDir}`);
+    
+    const txt = await toTXT(config.inputPath, config.outputDir, {
+        addTitle: config.options["add-title"],
+        removeHTMLTitle: config.options["remove-html-title"]
+    });
+    
+    console.log(`转换成功：${config.inputPath} -> ${config.outputDir}/content.txt`);
+    return txt;
+}
 
-                // 执行转换操作
-                console.log(`开始转换：${filePath} -> ${outputPath}`);
-                const txt = await toTXT(
-                    filePath,
-                    outputPath, {
-                        addTitle: args["add-title"],
-                        removeHTMLTitle: args["remove-html-title"]
-                    }
-                );
-                if (args["to-epub"]) {
-                    console.log(dirname(filePath) + '/' + baseName + '.epub');
-                    if (!toEpub(
-                        txt,
-                        filePath,
-                        dirname(filePath) + '/' + baseName + '.epub',
-                        {
-                            thenCB: () => {
-                                console.log(`转换成功：${filePath} -> ${outputPath}.epub`);
+/**
+ * 转换TXT为EPUB
+ */
+function convertToEpub(txt: string, config: ConvertConfig): Promise<boolean> {
+    return new Promise((resolve) => {
+        const epubPath = dirname(config.inputPath) + '/' + config.baseName + '.epub';
+        console.log(`开始生成EPUB：${epubPath}`);
+        
+        const success = toEpub(txt, config.inputPath, epubPath, {
+            thenCB: () => {
+                console.log(`EPUB生成成功：${epubPath}`);
+                handlePostConversion(config);
+                resolve(true);
+            },
+            per_page_max: parseInt(config.options["chapter-max"] || "10000")
+        });
+        
+        if (!success) {
+            resolve(false);
+        }
+    });
+}
 
-                                // 转换成功后处理原文件
-                                if (args.delete) {
-                                    Deno.removeSync(filePath);
-                                    console.log(`已删除原文件：${filePath}`);
-                                }
-                            },
-                            per_page_max: parseInt(args["chapter-max"] as string || "10000")
-                        }
-                    )) {
-                        throw new Error("转换失败");
-                    }
-                }
-            } catch (e) {
-                if((e instanceof Error) && e.message.includes("format")){
-                    console.error(`不正常的epub文件：压缩包损坏`);
-                    await Deno.remove(filePath, { recursive: true });
-                }else{
-                    console.error(`处理失败：${filePath}`, e);
-                }
+/**
+ * 处理转换后的清理工作
+ */
+function handlePostConversion(config: ConvertConfig): void {
+    // 删除原文件
+    if (config.options.delete) {
+        try {
+            Deno.removeSync(config.inputPath);
+            console.log(`已删除原文件：${config.inputPath}`);
+        } catch (e) {
+            console.error(`删除原文件失败：${config.inputPath}`, e);
+        }
+    }
+    
+    // 删除生成的TXT文件夹
+    if (!config.options["keep-txt"]) {
+        try {
+            Deno.removeSync(config.outputDir, { recursive: true });
+            console.log(`已删除TXT文件夹：${config.outputDir}`);
+        } catch (e) {
+            console.error(`删除TXT文件夹失败：${config.outputDir}`, e);
+        }
+    }
+}
+
+/**
+ * 处理单个文件
+ */
+async function processSingleFile(filePath: string, options: ConvertOptions): Promise<void> {
+    try {
+        console.log(`正在处理：${filePath}`);
+        
+        const config = await createConvertConfig(filePath, options);
+        const txt = await convertToTxt(config);
+        
+        if (options["to-epub"]) {
+            const success = await convertToEpub(txt, config);
+            if (!success) {
+                throw new Error("EPUB转换失败");
             }
         }
-    };
-
-    // 处理单个文件
-    if (inputStat.isFile) {
-        await processor.handleFile(inputPath.toString());
+        
+    } catch (e) {
+        if ((e instanceof Error) && e.message.includes("format")) {
+            console.error(`不正常的epub文件：压缩包损坏`);
+            await Deno.remove(filePath, { recursive: true });
+        } else {
+            console.error(`处理失败：${filePath}`, e);
+            if (!options.force) {
+                console.log('Hint: 尝试使用"-f"参数忽略错误继续处理')
+                throw e;
+            }
+        }
     }
-    // 处理目录（批量转换）
-    else if (inputStat.isDirectory) {
-        for await (const dirEntry of Deno.readDir(inputPath.toString())) try {
-            if (dirEntry.isFile && ['.epub', '.pdf', '.docx'].some(ext => dirEntry.name.endsWith(ext)))
-                await processor.handleFile(join(inputPath.toString(), dirEntry.name));
-            else if (dirEntry.isDirectory && await exists(join(inputPath.toString(), dirEntry.name, 'content.txt')) && args["to-epub"]) {
-                const filePath = join(inputPath.toString(), dirEntry.name, 'content.txt'),
-                    outputDir = args.output || dirname(filePath),
-                    baseName = args.name || basename(filePath).split('.')[0];
-                await ensureDir(join(outputDir, baseName));
-                const outputPath = await Deno.realPath(join(outputDir, baseName));
-                console.log(`开始转换：${filePath} -> ${outputPath}.epub`);
-                if (!toEpub(
-                    tryReadTextFile(outputPath + '.txt'),
-                    filePath,
-                    dirname(filePath) + '/' + baseName + '.epub',
-                    {
-                        thenCB: () => {
-                            console.log(`转换成功：${filePath} -> ${outputPath}.epub`);
+}
 
-                            // 转换成功后处理原文件
-                            if (args.delete) {
-                                Deno.removeSync(filePath);
-                                console.log(`已删除原文件：${filePath}`);
-                            }
-                        },
-                        per_page_max: parseInt(args["chapter-max"] as string || "10000")
+/**
+ * 处理TXT转EPUB（从已有的content.txt文件）
+ */
+async function processTxtToEpub(dirPath: string, options: ConvertOptions): Promise<void> {
+    const contentPath = join(dirPath, 'content.txt');
+    
+    if (!await exists(contentPath)) {
+        return;
+    }
+    
+    try {
+        console.log(`发现TXT文件，开始转换：${contentPath}`);
+        
+        const outputDir = options.output || dirname(contentPath);
+        const baseName = options.name || basename(dirname(contentPath));
+        const epubPath = dirname(contentPath) + '/' + baseName + '.epub';
+        
+        const txt = tryReadTextFile(contentPath);
+        
+        const success = await new Promise<boolean>((resolve) => {
+            const result = toEpub(txt, contentPath, epubPath, {
+                thenCB: () => {
+                    console.log(`TXT转EPUB成功：${epubPath}`);
+                    
+                    if (options.delete) {
+                        try {
+                            Deno.removeSync(contentPath);
+                            console.log(`已删除原文件：${contentPath}`);
+                        } catch (e) {
+                            console.error(`删除原文件失败：${contentPath}`, e);
+                        }
                     }
-                )) {
-                    throw new Error("转换失败");
+                    
+                    if (!options["keep-txt"]) {
+                        try {
+                            Deno.removeSync(dirname(contentPath), { recursive: true });
+                            console.log(`已删除TXT文件夹：${dirname(contentPath)}`);
+                        } catch (e) {
+                            console.error(`删除TXT文件夹失败：${dirname(contentPath)}`, e);
+                        }
+                    }
+                    
+                    resolve(true);
+                },
+                per_page_max: parseInt(options["chapter-max"] || "10000")
+            });
+            
+            if (!result) {
+                resolve(false);
+            }
+        });
+        
+        if (!success) {
+            throw new Error("TXT转EPUB失败");
+        }
+        
+    } catch (e) {
+        console.error(`TXT转EPUB处理失败：${dirPath}`, e);
+        if (!options.force) {
+            throw e;
+        }
+    }
+}
+
+/**
+ * 处理目录（批量转换）
+ */
+async function processDirectory(dirPath: string, options: ConvertOptions): Promise<void> {
+    console.log(`开始处理目录：${dirPath}`);
+    
+    for await (const dirEntry of Deno.readDir(dirPath)) {
+        const fullPath = join(dirPath, dirEntry.name);
+        
+        try {
+            if (dirEntry.isFile) {
+                // 处理支持的文件格式
+                const supportedExtensions = ['.epub', '.pdf', '.docx'];
+                if (supportedExtensions.some(ext => dirEntry.name.endsWith(ext))) {
+                    await processSingleFile(fullPath, options);
                 }
+            } else if (dirEntry.isDirectory && options["to-epub"]) {
+                // 处理包含content.txt的目录（TXT转EPUB）
+                await processTxtToEpub(fullPath, options);
             }
         } catch (e) {
             console.error(`处理失败：${dirEntry.name}`, e);
+            if (!options.force) {
+                throw e;
+            }
         }
-        console.log(`处理完成：${inputPath}`);
     }
+    
+    console.log(`目录处理完成：${dirPath}`);
+}
 
-    console.log("处理完成");
+/**
+ * 主函数
+ */
+export default async function main(): Promise<void> {
+    try {
+        // 解析命令行参数
+        const args = parseCommandLineArgs();
+        
+        // 显示帮助信息
+        if (args.help) {
+            showHelp();
+            Deno.exit(0);
+        }
+        
+        // 验证参数
+        validateArgs(args);
+        
+        // 获取并验证输入路径
+        const inputPath = await getInputPath(args);
+        const inputStat = await validateInputPath(inputPath);
+        
+        // 根据输入类型进行处理
+        if (inputStat.isFile) {
+            await processSingleFile(inputPath, args);
+        } else if (inputStat.isDirectory) {
+            await processDirectory(inputPath, args);
+        } else {
+            console.error(`不支持的路径类型：${inputPath}`);
+            Deno.exit(1);
+        }
+        
+        console.log("所有处理完成");
+        
+    } catch (e) {
+        console.error("程序执行出错：", e);
+        Deno.exit(1);
+    }
 }
 
 // 执行主函数

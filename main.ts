@@ -772,7 +772,7 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainIn
     }
     const info = {
         firstPage: firstPage ? new URL(firstPage, page) : undefined,
-        cover,
+        cover: cover ? new URL(cover, page).href : undefined,
         book_name: mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '',
         summary: processContent(mainPage.querySelector(cfg.mainPageSummary!)),
         jpStyle: cfg.jpStyle,
