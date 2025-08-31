@@ -1,6 +1,7 @@
 import { Document } from "jsr:@b-fuze/deno-dom";
 import { getDocument, fetch2, sleep, setRawCookie } from "../main.ts";
 import CryptoJS from 'npm:crypto-js';
+import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 
 const API_CHAPTER = 'https://www.mangacopy.com/comicdetail/{{name}}/chapters?format=json';
 // setRawCookie('mangacopy.com', 'webp=1');    // 启用webp
@@ -10,7 +11,14 @@ async function getEverything(page: URL | string) {
     const document = await getDocument(page);
     const nextLink = document.querySelector('body > div.footer > div.comicContent-next > a')?.getAttribute('href');
     const encrypted = document.querySelector('.imageData[contentKey]');
-    const result = decryptChapterData(await getCCXY(new URL(page), document), encrypted?.getAttribute('contentKey')!);
+    let encData = encrypted?.getAttribute('contentKey');
+    if(!encrypted){
+        // var contentKey = '
+        const script = document.getElementsByTagName('script').filter(el => el.innerHTML.includes('contentKey'))[0];
+        encData = script.innerHTML.match(/var\s*contentKey\s*=\s*['"](.*?)['"]/)![1];
+    }
+    assert(encData, "Failed to get encrypted data");
+    const result = decryptChapterData(await getCCXY(new URL(page), document), encData);
     return [ 
         result.map((el: any) => el.url as string), 
         document.querySelector('body > h4')?.innerHTML.split('/')[1],
@@ -28,11 +36,12 @@ export default async function* main(page1: string) {
 async function getCCXY(url: URL, document?: Document) {
     if(!document) document = await getDocument(url);
     const script = document.getElementsByTagName('script').filter(el => el.innerHTML.includes('var cc'))[0];
-    return script.innerHTML.match(/var\s*cc[xy]\s*=\s*['"](.*?)['"]/)![1];
+    return script.innerHTML.match(/var\s*cc[a-z]\s*=\s*['"](.*?)['"]/)![1];
 }
 
 function decryptChapterData(ccxy: string, encryptedStr: string) {
     // 分离IV和密文
+    assert(encryptedStr && encryptedStr.length > 16, "invaild encrypted string: " + encryptedStr)
     const ivStr = encryptedStr.substring(0, 16);
     const cipherText = encryptedStr.substring(16);
 
@@ -105,8 +114,12 @@ export async function networkHandler(url: string | URL, options?: RequestInit){
 
 // https://hi77-overseas.mangafuna.xyz/tenseipandeMikku1/cover/1651422855.jpg.328x422.jpg
 const removeDimension = (url: string | null | undefined) => url?.replace(/\.(jpg|png|webp)\.\d+x\d+\.(?:jpg|png|webp)$/, '.$1');
+const assertIfMatch = (url: string, pat: RegExp) => 
+    pat.test(url) ? Promise.resolve(url) : Promise.reject(new Error('Failed to match url: ' + url));
 
-export const getInfo = (url:  URL) => getDocument(url).then(async doc => ({
+// https://www.mangacopy.com/comic/eyidaxiaojielunweishumin
+export const getInfo = (url:  URL) => assertIfMatch(String(url), /\/comic\/[a-z]+\/?$/)
+.then(() => getDocument(url)).then(async doc => ({
     firstPage: (await getChapterList(new URL(url)))[0],
     title: doc.querySelector('body > main > div.container.comicParticulars-title > div > div.col-9.comicParticulars-title-right > ul > li:nth-child(1) > h6')?.innerHTML,
     cover: removeDimension(doc.querySelector('body > main > div.container.comicParticulars-title > div > div.col-auto.comicParticulars-title-left > div > img')?.getAttribute('data-src')),
