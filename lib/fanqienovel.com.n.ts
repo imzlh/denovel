@@ -177,8 +177,14 @@ export const getInfo = (url: URL) => url.searchParams.has('_denovel_role_')
         // https://fanqienovel.com/page/7508113040546483262?enter_from=search
         mainPageLike: /^https?\:\/\/.*fanqienovel\.com\/page\/\d+/i,
 
-        mainPageFilter(_, __, filled_data) {
+        mainPageFilter(_, doc, filled_data) {
             filled_data.firstPage.searchParams.append("_denovel_role_", "");
             if(!filled_data.firstPage.protocol) filled_data.firstPage.protocol = "https:";
+
+            // "thumbUri":"..."
+            const tURL = doc.getElementsByTagName('script').filter(el => el.innerHTML.includes('__INITIAL_STATE__'))[0]
+                .innerHTML.match(/"thumbUri":\s*"([^"]+)"/)?.[0];
+            if(tURL) filled_data.cover = JSON.parse(`{${tURL}}`).thumbUri;
+            else console.warn(`Failed to get cover image from ${filled_data.firstPage.href}`);
         },
-    })
+    });

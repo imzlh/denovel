@@ -885,7 +885,9 @@ function downloadFromTXT(fpath: string) {
     }
     return downloadNovel(res.last_chapter_url, {
         ...res,
-        hide_meta: true
+        hide_meta: true,
+        skip_first_chapter: true,
+        disable_overwrite: true
     });
 }
 
@@ -937,7 +939,9 @@ async function downloadNovel(
          * 内部使用，无需设置
          */
         timestrap?: number,
-        hide_meta?: boolean
+        hide_meta?: boolean,
+        skip_first_chapter?: boolean,
+        disable_overwrite?: boolean,
     }
 ) {
     let url = new URL(start_url);
@@ -949,6 +953,7 @@ async function downloadNovel(
     const callbacks: {
         default: Callback;
         getInfo?: (url: URL) => Promise<MainInfoResult | null>;
+        networkHandler?: typeof fetch;
     } = options.traditional ? {
         default: tWrapper,
         getInfo: defaultGetInfo2
@@ -982,7 +987,7 @@ async function downloadNovel(
     // 打开文件
     const fpath = (options.outdir || 'out') + '/' + removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt';
     const file = await Deno.open(fpath, {
-        create: true, append: true, read: false
+        create: true, append: options.disable_overwrite, write: !options.disable_overwrite, read: false, truncate: !options.disable_overwrite
     });
     if(!options.hide_meta){
         file.write(new TextEncoder().encode(options.book_name + '\r\n'));
@@ -994,13 +999,20 @@ async function downloadNovel(
     if(!options.chapter_id) options.chapter_id = 1;
     options.timestrap = Date.now();
     options.last_chapter_url = url.href;
+    let real_writed = 0;
     // 开始循环
     try{
         let errorcount = 0;
-        for await (let { title, content } of callbacks.default(url)) {
+        for await (let { title, content, next_link } of callbacks.default(url)) {
             if (options.sig_abort?.aborted) {
                 options.reporter(Status.CANCELLED, '下载被用户终止');
                 break;
+            }
+
+            if (options.skip_first_chapter){
+                options.skip_first_chapter = undefined;
+                options.reporter(Status.DOWNLOADING, '跳过第一章: ' + title);
+                continue;
             }
 
             if (content) {
@@ -1038,7 +1050,7 @@ async function downloadNovel(
             if (options.disable_parted || !title || similarTitle(title, options.previous_title ?? '')) {
                 // 直接写入
                 text += '\n' + content;
-                options.last_chapter_url = url.href;
+                options.last_chapter_url = next_link?.toString();
             } else {
                 text = (options.disable_parted ? '' : (`\r\n第${options.chapter_id++}章 ${title ?? ''}\r\n`))
                     + (content ?? '[ERROR: 内容获取失败]') + '\r\n';
@@ -1052,6 +1064,7 @@ async function downloadNovel(
                 break;
             }
 
+            real_writed ++;
             await Promise.all([
                 file.write(new TextEncoder().encode(text)),
                 sleep(Math.random() * options.sleep_time!),
@@ -1061,7 +1074,8 @@ async function downloadNovel(
         options.reporter(Status.WARNING, '发生错误,下载结束', e as Error);
     }
 
-    if(!options.hide_meta){
+    // meta: 必须写入，否则无法识别
+    if(real_writed){
         await file.write(new TextEncoder().encode(
             '\r\n[comment]' + 
             '\r\n' + 
@@ -1080,6 +1094,7 @@ async function downloadNovel(
             toEpub(text, fpath, fpath.replace('.txt', '.epub'), {
                 jpFormat: info?.jpStyle,
                 reporter: options.reporter,
+                networkHandler: callbacks.networkHandler,
                 ...(options.epub_options || {}),
                 thenCB: () => resolve(undefined)
             })

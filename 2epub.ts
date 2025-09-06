@@ -255,7 +255,7 @@ let PRESEL: string[];
  */
 export function toEpub(data: string, input: string, output: string, option: {
     thenCB?: () => any, per_page_max?: number, merge?: boolean, jpFormat?: boolean,
-    reporter?: (status: Status, message: string) => void,
+    reporter?: (status: Status, message: string) => void, networkHandler?: typeof fetch
 }): boolean {
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
     data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
@@ -279,6 +279,7 @@ export function toEpub(data: string, input: string, output: string, option: {
         downloadAudioVideoFiles: true,
         lang: "zh-CN",
         logHandler: (level, message) => option.reporter!(Status.DOWNLOADING, `[${level}] ${message}`),
+        networkHandler: option.networkHandler
     };
 
     let matches: Array<[string, string]> = [];
