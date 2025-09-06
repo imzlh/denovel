@@ -21,7 +21,6 @@ const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
     "cbz2img": [useModule("cbz2img"), "将cbz文件转换为长图片", true],
     "copy": [useModule("copy"), "带多样化功能的复制文件夹下文件工具", true],
     "find": [useModule("findkeyword"), "查找文件中包含指定关键字的文件，并输出和归类", true],
-    "update": [useModule("updateshelf"), "更新书库，自动下载更新内容", true],
     "17c": [useModule("17c"), "猜猜看，这是什么", false],
 };
 
