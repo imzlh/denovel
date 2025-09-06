@@ -435,8 +435,8 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
         content.push({
             id,
             href,
-            // title: escape(contentItem.title),
-            title: contentItem.title,
+            title: escape(contentItem.title),
+            // title: contentItem.title,
             data: html,
             url: contentItem.url ?? null,
             author: contentItem.author ? (typeof contentItem.author === "string" ? [contentItem.author] : contentItem.author) : [],
