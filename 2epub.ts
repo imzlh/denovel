@@ -236,8 +236,9 @@ export function processTXTContent(text: string, jpFormat = false) {
     });
     const tagSt = [] as Array<string>;
     text = text.replaceAll(/\[(\/)?([a-z]{1,10})\]/g, (_, has_slash, tag) => {
-        if (!PRESEL.includes(tag)) return _;
-        if (has_slash && tagSt.pop() != tag) throw new Error(`[${tag}] not matched`);
+        const popRes = has_slash ? tagSt.pop() : undefined;
+        if (!PRESEL.includes(tag) || (has_slash && popRes != tag)) return _;
+        if (has_slash && !popRes) throw new Error(`[${tag}] not matched: unexpected close tag`);
         if (has_slash) return `</${tag}>`;
         tagSt.push(tag);
         return `<${tag}>`;

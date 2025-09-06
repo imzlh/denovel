@@ -10,6 +10,7 @@ import { Buffer } from "node:buffer";
 
 import BlankPage from './static/blank.html' with { type: "text" };
 import { Cookie } from "npm:puppeteer@22.7.1";
+import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 
 class NoRetryError extends Error { }
 
@@ -35,7 +36,8 @@ const parser = new DOMParser(),
     }),
     SLEEP_INTERVAL = parseInt(args.sleep || '0'),               // 间隔时间防止DDOS护盾deny
     MAX_RETRY = parseInt(args.retry ?? '10'),                   // 最大重试次数
-    MAX_ERROR_COUNT = parseInt(args["error-count"] ?? '10');    // 最大错误计数
+    MAX_ERROR_COUNT = parseInt(args["error-count"] ?? '10'),    // 最大错误计数
+    META_HEADER = ':: org.imzlh.denovel.meta';                  // 元数据标识
 
 const sleep = (sec = SLEEP_INTERVAL) => new Promise(resolve => setTimeout(resolve, sec * 1000));
 
@@ -644,6 +646,7 @@ export const WRAP_EL = [
         'script', 'noscript', 'style',                      // CSS/JS
         'iframe', 'object', 'embed', 'applet', 'canvas',    // embed tags
         'input', 'button', 'form',                          // form tags
+        'comment'                                           // denovel 注释    
     ];
 
 
@@ -802,8 +805,10 @@ async function* tWrapper(url: URL) {
     let next_url: undefined | URL = url;
     const config = (await import('./lib/' + next_url.hostname + '.t.ts')).default as TraditionalConfig;
     if(!config) throw new Error(`空站点配置文件：${next_url.hostname}`);
+    // let __ = false; // debug purpose
     while (next_url && next_url.protocol.startsWith('http')) {
         let document: HTMLDocument;
+        // if(__) throw new Error('debug purpose');
 
         for (let retry = 0; true; retry++) try {
             document = await (config.request ?? getDocument)(next_url);
@@ -837,29 +842,66 @@ async function* tWrapper(url: URL) {
             content: data.content?.trim(), title: data.title?.trim(),
             next_url
         };
+        // __ = true;
     }
 }
 
-const __traditional_cache: Record<string, boolean> = {};
+const __module_exists_cache: Map<string, boolean> = new Map();
 const moduleExists = async (name: string) => {
+    if(__module_exists_cache.has(name)) return __module_exists_cache.get(name)!;
     try{
         await import(name);
+        __module_exists_cache.set(name, true);
         return true;
     }catch(e){
-    if(!(e instanceof Error) || !e.message.includes('not found')) console.error(e);
+        if(!(e instanceof Error) || !e.message.includes('not found')) console.error(e);
+        __module_exists_cache.set(name, false);
         return false;
     }
 }
 async function checkIsTraditional(siteURL: URL) {
-    if(siteURL.hostname in __traditional_cache) return __traditional_cache[siteURL.hostname];
     let res = false;
     if(await moduleExists('./lib/' + siteURL.hostname + '.t.ts')) res = true;
     else if(!await moduleExists('./lib/' + siteURL.hostname + '.n.ts')) throw new Error(`找不到站点配置文件：${siteURL.hostname}`);
-    __traditional_cache[siteURL.hostname] = res;
     return res;
 }
 
-let ensured = false;
+function downloadFromTXT(fpath: string) {
+    const content = tryReadTextFile(fpath).trimEnd().split(/[\r\n]+/);
+    let text = '';
+    // 最后一行理应为[/comment]
+    assert(content.pop() == '[/comment]', '找不到denovel META。如果上一次中断，请手动打开txt并删除最后一次[/comment]后内容');
+    for(let i = content.length - 1; i >= 0; i--){
+        if(content[i] == META_HEADER) break;
+        text = content[i] + text;
+    }
+    if(!text) throw new Error('未找到denovel META');
+    let res: Parameters<typeof downloadNovel>[1];
+    try{
+        res = JSON.parse(text);
+        if(!res.last_chapter_url) throw new Error('缺少last_chapter_url');
+    }catch(e){
+        throw new Error('META解析失败：' + (e instanceof Error ? e.message : e));
+    }
+    return downloadNovel(res.last_chapter_url, {
+        ...res,
+        hide_meta: true
+    });
+}
+
+/**
+ * 下载小说主程序。对于传统配置，请使用`tWrapper`兼容函数。
+ * 
+ * ## 历史
+ *  - v1: 第一个版本，使用`fetch`函数下载页面，并使用`DOMParser`解析内容。
+ *  - v1.1: 支持epub
+ *  - v2: 完成重构，放弃维护两个函数，使用`tWrapper`兼容传统配置
+ *  - v2.1: 支持CSS/HTML标签解析，如保留粗体格式<b>或`font-weight: bold`
+ *  - v3: 现在可以保存进度，方便下次继续下载。
+ * @param start_url 
+ * @param options 
+ * @returns 
+ */
 async function downloadNovel(
     start_url = '',
     options: {
@@ -877,14 +919,32 @@ async function downloadNovel(
         info_generated?: (info: MainInfoResult) => void,
         sleep_time?: number,
         no_input?: boolean,
-        author?: string
+        author?: string,
+        summary?: string,
+        /**
+         * 内部使用，无需设置
+         */
+        previous_title?: string,
+        /**
+         * 内部使用，无需设置
+         */
+        chapter_id?: number,
+        /**
+         * 内部使用，无需设置
+         */
+        last_chapter_url?: string,
+        /**
+         * 内部使用，无需设置
+         */
+        timestrap?: number,
+        hide_meta?: boolean
     }
 ) {
     let url = new URL(start_url);
     if(!options.reporter) options.reporter = (status, msg, e) =>
             console.log(`[ ${Status[status]} ] ${msg}`, e?.message);
     if(!options.outdir) options.outdir = args.outdir ?? 'downloads';
-    if(!ensured) await ensureDir(options.outdir); 
+    await ensureDir(options.outdir); 
     if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
     const callbacks: {
         default: Callback;
@@ -895,10 +955,9 @@ async function downloadNovel(
     } : await import('./lib/' + url.hostname + '.n.ts');
 
     // 获取信息
-    let summary: string | undefined;
-    const info = await callbacks.getInfo?.(url);
+    const info = options.hide_meta ? undefined : await callbacks.getInfo?.(url);
     if(info){
-        summary = info.summary;
+        options.summary = options.summary ?? info.summary;
         (!options.cover && info.cover) && (options.cover = info.cover);
         (!options.book_name && info.book_name) && (options.book_name = info.book_name);
         (!options.author && info.author) && (options.author = info.author);
@@ -923,17 +982,17 @@ async function downloadNovel(
     // 打开文件
     const fpath = (options.outdir || 'out') + '/' + removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt';
     const file = await Deno.open(fpath, {
-        create: true, write: true, truncate: true
+        create: true, append: true, read: false
     });
-    if(options.author) file.write(new TextEncoder().encode(`作者: ${options.author}\r\n`));
-    if(summary) file.write(new TextEncoder().encode(`简介: \r\n${summary}\r\n${'-'.repeat(20)}\r\n`));
-
-    let chapter_id = 1, previous_title = '';
-
-    if(options.cover){
-        file.write(new TextEncoder().encode(`封面: ${options.cover}\r\n`));
+    if(!options.hide_meta){
+        if(options.author) file.write(new TextEncoder().encode(`作者: ${options.author}\r\n`));
+        if(options.summary) file.write(new TextEncoder().encode(`简介: \r\n${options.summary}\r\n${'-'.repeat(20)}\r\n`));
+        if(options.cover) file.write(new TextEncoder().encode(`封面: ${options.cover}\r\n`));
     }
 
+    if(!options.chapter_id) options.chapter_id = 1;
+    options.timestrap = Date.now();
+    options.last_chapter_url = url.href;
     // 开始循环
     try{
         let errorcount = 0;
@@ -955,16 +1014,16 @@ async function downloadNovel(
                     content = content.trim();
                     errorcount = 0;
                 } else {
-                    options.reporter(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${chapter_id} 内未找到内容或过少`);
+                    options.reporter(content.length > 50 ? Status.WARNING : Status.ERROR, `ID: ${options.chapter_id} 内未找到内容或过少`);
                     errorcount++;
                 }
             }else{
-                options.reporter(Status.ERROR, `ID: ${chapter_id} 内容为空`);
+                options.reporter(Status.ERROR, `ID: ${options.chapter_id} 内容为空`);
                 errorcount++;
             }
 
             if(errorcount >= MAX_ERROR_COUNT){
-                options.reporter(Status.ERROR, `ID: ${chapter_id} 连续错误${MAX_ERROR_COUNT}次，放弃下载`);
+                options.reporter(Status.ERROR, `ID: ${options.chapter_id} 连续错误${MAX_ERROR_COUNT}次，放弃下载`);
                 break;
             }
 
@@ -975,16 +1034,17 @@ async function downloadNovel(
 
             // 章节分卷？
             let text = '';
-            if (options.disable_parted || !title || similarTitle(title, previous_title)) {
+            if (options.disable_parted || !title || similarTitle(title, options.previous_title ?? '')) {
                 // 直接写入
                 text += '\n' + content;
+                options.last_chapter_url = url.href;
             } else {
-                text = (options.disable_parted ? '' : (`\r\n第${chapter_id++}章 ${title ?? ''}\r\n`))
+                text = (options.disable_parted ? '' : (`\r\n第${options.chapter_id++}章 ${title ?? ''}\r\n`))
                     + (content ?? '[ERROR: 内容获取失败]') + '\r\n';
-                previous_title = title;
+                options.previous_title = title;
             }
 
-            options.reporter(Status.DOWNLOADING, `第 ${chapter_id - 1} 章  ${title || ''} (${text.length})`);
+            options.reporter(Status.DOWNLOADING, `第 ${options.chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
             if (options.sig_abort?.aborted) {
                 options.reporter(Status.CANCELLED, '下载被用户终止');
@@ -1000,6 +1060,15 @@ async function downloadNovel(
         options.reporter(Status.WARNING, '发生错误,下载结束', e as Error);
     }
 
+    if(!options.hide_meta){
+        await file.write(new TextEncoder().encode(
+            '\r\n[comment]' + 
+            '\r\n' + 
+            META_HEADER + '\r\n' + JSON.stringify(options, null, 4) +
+            '\r\n' +
+            '[/comment]'
+        ));
+    }
     await file.sync();
     file.close();
 
@@ -1051,7 +1120,7 @@ async function launchBrowser(url: URL, waitForFirstNavigation = true) {
 
 export default async function main(){
     if (args._.includes('help') || args.help) {
-        console.log(`用法: main.ts [options] [url]
+        console.log(`用法: main.ts [options] [url|file]
 参数:
     -h, --help          显示帮助信息
     -n, --name          输出文件名，默认为index.html
@@ -1069,24 +1138,34 @@ export default async function main(){
                         特别适用于登陆账号！
 
 示例:
-    main.ts -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
+    - 下载来自www.baidu.com的繁体简体中文小说，输出到"output/test.txt"中
+      main.ts -n test.txt -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
+    - 更新由denovel生成的"a.txt"文件(小说有更新，继续下载。无需再次指定参数，全自动)
+      main.ts a.txt
 `);
         Deno.exit(0);
     }
 
+    const arg_0 = args._[0];
     if(args.login){
         console.log('请在浏览器中完成登陆操作。一切cookie都会被记录下来');
         console.log('完成后，关闭标签页，程序将自动退出');
         browser = new SimpleBrowser();
         await browser.init();
 
-        if(args._[0]){
-            await browser.launch(new URL(args._[0] as string), false);
+        if(arg_0){
+            await browser.launch(new URL(arg_0 as string), false);
         }else{
             await browser.launch(new URL('about:blank'), false);
         }
 
         console.log('完成！现在你可以尝试新世界了！');
+        Deno.exit(0);
+    }
+
+    if(typeof arg_0 === 'string' && arg_0.endsWith('.txt')){
+        console.log('从文件下载小说');
+        await downloadFromTXT(arg_0);
         Deno.exit(0);
     }
 
@@ -1100,7 +1179,7 @@ export default async function main(){
     console.log.apply(console, logs);
 
     if (Deno.stdin.isTerminal() || Deno.env.has('DENOVEL_TERMINAL')){
-        start_url = args._[0] || await readline("请输入起始URL >> ") || '';
+        start_url = arg_0 || await readline("请输入起始URL >> ") || '';
         // cover = args.cover || await readline("请输入封面URL(可选,自动) >> ");
     } else {
         start_url = JSON.parse(Deno.readTextFileSync('debug.json')).url;
