@@ -234,7 +234,7 @@ function formatSize(bytes: number): string {
 }
 
 // 主程序
-if (import.meta.main) {
+export async function main() {
     const args = parseArgs(Deno.args, {
         string: ["size", "singleMinSize", "count"],
         collect: ["keyWords", "reverse-preset", "preset"],
@@ -299,3 +299,5 @@ if (import.meta.main) {
         Deno.exit(1);
     }
 }
+
+if (import.meta.main) main();

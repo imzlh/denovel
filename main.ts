@@ -1208,7 +1208,7 @@ export default async function main(){
 
 export { 
     NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
-    args, downloadNovel, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
+    args, downloadNovel, downloadFromTXT, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
     forceSaveConfig,
     processContent, defaultGetInfo, BatchDownloader, launchBrowser, tWrapper as traditionalAsyncWrapper
 };

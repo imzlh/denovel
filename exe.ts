@@ -6,6 +6,7 @@ import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 
 const useModule = (m: string) => () => import(`./${m}.ts`).then(m => m.default());
 const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
+    // 需要交互的不能async执行
     // name: [function, description, asyncAble]
     "downovel": [useModule("main"), "下载小说", false],
     "downcomic": [useModule("comic"), "下载漫画", false],
@@ -17,6 +18,10 @@ const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
     "server": [useModule("server"), "启动下载服务器(不稳定，待完整测试)", true],
     "t2cn": [useModule("t2cn"), "将(带繁体文本的)txt文件转换为简体中文格式", false],
     'lanzou': [useModule("lanzoudl"), '下载蓝奏云分享文件', false],
+    "cbz2img": [useModule("cbz2img"), "将cbz文件转换为长图片", true],
+    "copy": [useModule("copy"), "带多样化功能的复制文件夹下文件工具", true],
+    "find": [useModule("findkeyword"), "查找文件中包含指定关键字的文件，并输出和归类", true],
+    "update": [useModule("updateshelf"), "更新书库，自动下载更新内容", true],
     "17c": [useModule("17c"), "猜猜看，这是什么", false],
 };
 

@@ -78,7 +78,7 @@ async function process(file: string) {
     console.log(`Done!`, file);
 }
 
-if(import.meta.main){
+export async function main() {
     const $f = Deno.args[0];
     if(!await exists($f)){
         console.error(`File Or Directory not found: ${$f}`);
@@ -111,3 +111,5 @@ if(import.meta.main){
         await process($f);
     }    
 }
+
+if (import.meta.main) main();
