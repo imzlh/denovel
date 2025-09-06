@@ -26,6 +26,8 @@ import { processTXTContent } from "./2epub.ts";
 
 import CHAPTER_TEMPLATE from "./static/chapter.html.ejs" with { type: "text" };
 import CONTENTAPI_HOMEPAGE from "./static/contentapi.html" with { type: "text" };
+import BOOKSHELF_TEMPLATE from "./static/books.html.ejs" with { type: "text" };
+import { join } from "node:path";
 
 // 全局设置
 let settings = {
@@ -73,7 +75,8 @@ const queueRequestTask = (name: string) => {
 
 const endRequestTask = () => {
     if(!will_run_queued_request_tasks){
-        runQueuedRequestTasks();
+        // delay some time to prevent too many requests at the same time
+        setTimeout(runQueuedRequestTasks, 1200);
         will_run_queued_request_tasks = true;
     }
 }
@@ -222,6 +225,44 @@ async function handleContentRequest(url: URL, req: Request) {
     });
 }
 
+async function handleBookShelfRequest(req: Request) {
+    const url = new URL(req.url);
+    if(url.pathname == '/api/bookshelf'){
+        const path = settings.outputDir;
+        const files = (await Array.fromAsync(Deno.readDir(path))).filter(f => f.isFile && f.name.endsWith('.epub'))
+            .map(i => i.name);
+        const res = await render(BOOKSHELF_TEMPLATE, {
+            books: files
+        }, {
+            async: true,
+            // cache: false
+        });
+        return new Response(res, {
+            headers: { "Content-Type": "text/html" }
+        });
+    }else if(url.pathname == '/api/download'){
+        // download
+        if(!url.searchParams.has('name')){
+            return new Response("缺少参数 'name'", {
+                status: 400
+            });
+        }
+        const path = join(settings.outputDir, url.searchParams.get('name')!);
+        if(!(await exists(path))){
+            return new Response("文件不存在", {
+                status: 404
+            });
+        }
+        const file = await Deno.readFile(path);
+        return new Response(file, {
+            headers: { 
+                "Content-Type": "application/epub+zip",
+                "Content-Disposition": `attachment; filename="${encodeURI(url.searchParams.get('name')!)}"`,
+            }
+        });
+    }
+}
+
 // 路由处理函数
 async function handleRequest(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -282,8 +323,9 @@ async function handleRequest(req: Request): Promise<Response> {
         });
     } else if (url.pathname.startsWith("/content")) {
         return handleContentRequest(url, req);
-    } else if (url.pathname === "/") {
-        return new Response(mainPage, {
+    } else {
+        const r1 = await handleBookShelfRequest(req);
+        return r1 ? r1 : new Response(mainPage, {
             headers: { "Content-Type": "text/html" }
         });
     }

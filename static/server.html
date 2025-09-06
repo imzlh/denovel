@@ -42,10 +42,9 @@
         }
 
         .main-content {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 30px;
-            margin-bottom: 30px;
+            display: flex;
+            gap: 12px;
+            justify-content: center;
         }
 
         .card {
@@ -148,6 +147,7 @@
             color: white;
             border: none;
             padding: 14px 28px;
+            margin-top: 10px;
             border-radius: 12px;
             font-size: 16px;
             font-weight: 600;
@@ -285,12 +285,6 @@
                 flex-direction: column;
             }
 
-            .main-content{
-                display: flex;
-                gap: 12px;
-                justify-content: center;
-            }
-
             .dialog {
                 margin: 20px;
                 max-width: calc(100vw - 40px);
@@ -303,6 +297,15 @@
             .log-dialog {
                 width: auto;
                 height: 80vh;
+            }
+        }
+
+        @media (max-width: 1000px) {
+            .main-content{
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 30px;
+                margin-bottom: 30px;
             }
         }
 
@@ -522,6 +525,9 @@
                 </button>
                 <button class="btn" onclick="pollQueue()" id="pollBtn" data-state="free">
                     🔁 刷新队列
+                </button>
+                <button class="btn" id="showBookShelf" onclick="document.location.href = '/api/bookshelf';">
+                    📚 你的书架
                 </button>
                 <button class="btn" onclick="addToQueue()" id="downloadBtn" style="display:none;">
                     ⬇️ 添加到队列
