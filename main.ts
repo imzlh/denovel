@@ -985,6 +985,7 @@ async function downloadNovel(
         create: true, append: true, read: false
     });
     if(!options.hide_meta){
+        file.write(new TextEncoder().encode(options.book_name + '\r\n'));
         if(options.author) file.write(new TextEncoder().encode(`作者: ${options.author}\r\n`));
         if(options.summary) file.write(new TextEncoder().encode(`简介: \r\n${options.summary}\r\n${'-'.repeat(20)}\r\n`));
         if(options.cover) file.write(new TextEncoder().encode(`封面: ${options.cover}\r\n`));

@@ -57,6 +57,7 @@ async function* getChapterContent(ids: string[], book_id: string) {
             if (api.downloadAll && ids.length > 1) {
                 console.log(`尝试使用API [${current_api_id}] 批量获取 ${ids.length} 章节内容，可能会花费大量时间`);
                 contents = await api.downloadAll(ids, book_id);
+                await delay(6000 * Math.random() + 1500);
             } 
             // 没有批量接口时逐个获取
             else {
@@ -161,7 +162,7 @@ export default (async function* (urlStart: URL | string) {
                 next_link: i < chapters.length ? `https://fanqienovel.com/reader/${chapters[i].itemId}` : undefined
             };
         }
-        await delay(6000 * Math.random() + 1500);
+        // await delay(6000 * Math.random() + 1500);
     }
 } satisfies Callback);
 
