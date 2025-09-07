@@ -1,4 +1,4 @@
-// deno-lint-ignore-file require-await
+// deno-lint-ignore-file require-await no-explicit-any
 /**
  * 小说服务器 v3
  * POST /api/settings({"delay":1000,"outputDir":"./downloads"}) - 保存全局设置
@@ -52,6 +52,12 @@ setInterval(() => requestCache.clear(), 1000 * 60 * 60 * 24);
 // 检查容量是否超标: 1分钟
 setInterval(() => requestCache.size > 1e5 && requestCache.clear(), 60 * 1000);
 
+// 重新保存缓存： 10分钟
+const saveCache = () => Deno.writeTextFile('content.cache.json', JSON.stringify(
+    Object.fromEntries(requestCache.entries())
+));
+// setInterval(saveCache , 10 * 60 * 1000);
+
 const runQueuedRequestTasks = () => queueMicrotask(() => {
     for(const [name, tasks] of urlRequestMap){
         if(tasks.length === 0){
@@ -82,7 +88,7 @@ const endRequestTask = () => {
     }
 }
 
-async function handleContentRequest(url: URL, req: Request) {
+async function handleContentRequest(url: URL, _req: Request) {
     const _novelURL = url.searchParams.get("url");
     if (!_novelURL) {
         return new Response(CONTENTAPI_HOMEPAGE, {
@@ -93,7 +99,7 @@ async function handleContentRequest(url: URL, req: Request) {
     let novelURL;
     try {
         novelURL = new URL(_novelURL);
-    } catch (e) {
+    } catch {
         return new Response("无效的URL: 在参数 'url'", {
             status: 400,
             headers: { "Content-Type": "text/plain; charset=UTF-8" }
@@ -153,7 +159,7 @@ async function handleContentRequest(url: URL, req: Request) {
                 info.title = title;
                 info.content = content;
                 info.nextChapter = next_url?.protocol.startsWith('http') ? next_url : undefined;
-            }catch(e){
+            }catch{
                 endRequestTask();
                 return new Response("页面不存在", {
                     status: 404,
@@ -171,7 +177,7 @@ async function handleContentRequest(url: URL, req: Request) {
             info.startOfContent = infos.firstPage;
             info.jpStyle = infos.jpStyle;
             info.isChapterPage = false;
-        }catch(e){
+        }catch{
             try{
                 // get content
                 const cb = newModule!.default;
@@ -191,7 +197,7 @@ async function handleContentRequest(url: URL, req: Request) {
                     ? new URL(next_link).protocol.startsWith('http') ? next_link : undefined
                     : undefined;
                 info.isChapterPage = true;
-            }catch(e){
+            }catch{
                 endRequestTask();
                 return new Response("页面不存在", {
                     status: 404,
@@ -202,6 +208,7 @@ async function handleContentRequest(url: URL, req: Request) {
 
         endRequestTask();
         requestCache.set(novelURL.href, info);
+        saveCache();
     }
 
     if(url.searchParams.get('json') !== null){
@@ -335,9 +342,10 @@ async function handleRequest(req: Request): Promise<Response> {
 }
 
 // 启动服务器
-const projUUID = crypto.randomUUID();
+// const projUUID = crypto.randomUUID();
 export default async function main(){
     console.log("Server running on http://localhost:8000");
+
     Deno.serve({
         port: 8000,
     }, async (req) => {
@@ -462,6 +470,15 @@ export default async function main(){
         console.log(req.url);
         return res;
     });
+
+    // Read cache if available
+    if(await exists('content.cache.json')){
+        const contentCache = JSON.parse(await Deno.readTextFile('content.cache.json'));
+        for(const [url, info] of Object.entries(contentCache)){
+            requestCache.set(url, info as any);
+        }
+        console.log('Cache loaded');
+    }
 }
 
 if(import.meta.main) main();
