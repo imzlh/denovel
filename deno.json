@@ -6,9 +6,7 @@
     "lanzou": "deno run -A --unstable-raw-imports lanzoudl.ts",
     "comic": "deno run -A --unstable-raw-imports --unstable-ffi comic.ts"
   },
-  "imports": {
-    "@std/assert": "jsr:@std/assert@1"
-  },
+  "imports": {},
   "nodeModulesDir": "auto",
   "license": "MIT",
   "version": "1.6.1"

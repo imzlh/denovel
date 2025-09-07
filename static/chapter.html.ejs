@@ -106,6 +106,16 @@
                 .content p {
                     text-indent: 2em;
                     margin-bottom: 1.5rem;
+                    overflow: hidden;
+                    word-wrap: break-word;
+                }
+
+                .content img {
+                    max-width: 100%;
+                    display: block;
+                    margin: 1rem auto;
+                    border-radius: 8px;
+                    box-shadow: var(--shadow);
                 }
                 
                 .progress-bar {
@@ -129,9 +139,15 @@
                 .main {
                     text-align: center;
                     margin: auto;
-                    display: flex;
-                    align-items: center;
-                    gap: 3rem;
+                    overflow: hidden;
+                }
+
+                @media screen and (min-width: 512px) {
+                    .main {
+                        display: flex;
+                        align-items: center;
+                        gap: 3rem;
+                    }
                 }
                 
                 .cover-image {
@@ -156,7 +172,7 @@
             
             @media (max-width: 768px) {
                 .container {
-                    padding: 1rem;
+                    padding: .5rem;
                 }
                 
                 .main {

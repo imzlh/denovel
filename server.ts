@@ -27,6 +27,7 @@ import { processTXTContent } from "./2epub.ts";
 import CHAPTER_TEMPLATE from "./static/chapter.html.ejs" with { type: "text" };
 import CONTENTAPI_HOMEPAGE from "./static/contentapi.html" with { type: "text" };
 import BOOKSHELF_TEMPLATE from "./static/books.html.ejs" with { type: "text" };
+import DENOVEI_ICO from './static/denovel.ico' with { type: "bytes" };
 import { join } from "node:path";
 
 // 全局设置
@@ -334,6 +335,7 @@ async function handleRequest(req: Request): Promise<Response> {
 }
 
 // 启动服务器
+const projUUID = crypto.randomUUID();
 export default async function main(){
     console.log("Server running on http://localhost:8000");
     Deno.serve({
@@ -429,6 +431,30 @@ export default async function main(){
 
                 return response;
             }
+        }
+
+        // Chrome DevTool
+        if (
+            url.pathname == '/.well-known/appspecific/com.chrome.devtools.json' &&
+            (url.hostname == 'localhost' || url.hostname == '127.0.0.1')
+        ) {
+            return new Response(JSON.stringify({
+                // we are not web file server
+                // workspace: {
+                //     root: import.meta.dirname,
+                //     uuid: projUUID,
+                // }
+            }), {
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+
+        // favicon
+        if (url.pathname == '/favicon.ico') {
+            return new Response(DENOVEI_ICO, {
+                status: 200,
+                headers: { "Content-Type": "image/x-icon" }
+            });
         }
 
         // 普通HTTP请求处理
