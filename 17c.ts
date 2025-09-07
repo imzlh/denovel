@@ -159,7 +159,11 @@ const [raw_host, addr_base] = await (async function(){
 })();
 
 async function getAllLinks(page: string | URL, totalRef?: { value: number }) {
-    const doc = await getDocument(page, undefined, { host: raw_host });
+    const doc = await getDocument(page, {
+        additionalHeaders: {
+            Host: raw_host
+        }
+    });
     const pageCtx = doc.querySelectorAll('div.content-box div.ran-box div a[href]');
     console.log('Got', pageCtx.length, 'links');
     if(totalRef){
@@ -196,7 +200,11 @@ function decodeImage(input: Uint8Array): Uint8Array {
  */
 async function getM3U8(play: string | URL){
     // console.log('Getting m3u8 of', String(play));
-    const document = await getDocument(play, undefined, { Host: raw_host });
+    const document = await getDocument(play, {
+        additionalHeaders: {
+            Host: raw_host
+        }
+    });
     const doc = document.getElementsByTagName('script')
         .filter(scr => scr.innerHTML.includes('m3u8') && scr.innerHTML.includes('getFileIds()'))[0]
         .innerText!,

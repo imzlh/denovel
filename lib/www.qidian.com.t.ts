@@ -22,7 +22,7 @@ export default {
     mainPageSummary: '#book-intro-detail',
     mainPageFirstChapter: '#readBtn',
 
-    async request(url, abort, additionalHeaders, ignore_status, measureIP) {
+    async request() {
         while(true){
             const feRes = await fetch.apply(null, arguments as any);
             if(feRes.status == 202 && (await feRes.text()).includes('probe.js')){
@@ -40,9 +40,9 @@ export default {
             }
         }
     },
-    async filter(document, filled_data) {
+    async filter(_, filled_data) {
         if(!filled_data.content?.length){
-            // try re
+            // try reload?
         }
     },
 } satisfies TraditionalConfig;

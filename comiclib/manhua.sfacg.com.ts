@@ -9,7 +9,9 @@ const header = {
 
 export default async function* main(page1: string) {
     let page = page1;
-    const response = await getDocument(page, undefined, header),
+    const response = await getDocument(page, {
+        additionalHeaders: header
+    }),
         title = response.querySelector('body > div.Reduction_top > div > div.Reduction_left')?.innerText
             .split('>').at(-1)?.trim() || '未知';
 

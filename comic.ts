@@ -75,7 +75,7 @@ export async function mkCbzOrLongImg(format: string, data: EpubContentOptions[],
             const res = await bd.fetch(img, {
                 maxRetries: 10,
                 timeoutSec: 10
-            }, false, false);
+            });
             if(!res || !res.ok) throw new Error(`下载失败: ${img}`);
 
             const downloaded = (imageres[i] = await res.bytes()).byteLength;
@@ -135,7 +135,7 @@ export async function mkCbzOrLongImg(format: string, data: EpubContentOptions[],
     if (meta.cover) {
         try {
             const startTime = Date.now();
-            const res = await bd.fetch(meta.cover, {}, false, false);
+            const res = await bd.fetch(meta.cover, {});
             if (!res.ok) throw new Error(`下载失败: ${(await res.text()).substring(0, 60)}`);
 
             Deno.writeFile(outFolder + '/cover.' + (new URL(meta.cover).pathname.split('.').pop()?.substring(0, 5) || 'jpg')!, await res.bytes());

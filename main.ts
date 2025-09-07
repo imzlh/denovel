@@ -211,15 +211,15 @@ let browser: undefined | SimpleBrowser;
  */
 async function fetch2(
     url: string | URL,
-    options: RequestInit & { timeoutSec?: number, maxRetries?: number, cloudflareBypass?: boolean } = {},
-    measureIP: boolean = false,
-    ignoreStatus = false
+    options: RequestInit & { 
+        timeoutSec?: number, maxRetries?: number, cloudflareBypass?: boolean, measureIP?: boolean, ignoreStatus?: boolean 
+    } = {},
 ): Promise<Response> {
     const originalUrl = typeof url === 'string' ? new URL(url) : url;
     let targetUrl = originalUrl;
 
     // IP测速逻辑
-    if (measureIP) {
+    if (options.measureIP) {
         const hostname = originalUrl.hostname;
 
         // 缓存有效检测
@@ -271,10 +271,12 @@ async function fetch2(
 
     // 确保Host头正确
     const headers = new Headers(options.headers);
-    if (measureIP && targetUrl.hostname !== originalUrl.hostname) {
+    if (options.measureIP && targetUrl.hostname !== originalUrl.hostname) {
         headers.set('Host', originalUrl.hostname);
     }
-    headers.set('Cookie', cookies);
+    headers.set('Cookie', cookies + (cookies ? ';': '') +
+        (headers.has('Cookie') ? ';'+ headers.get('Cookie') : '')
+    );
     if(!headers.has('User-Agent')) headers.set('User-Agent', UA);
     if(options.referrer) headers.set('referer', options.referrer);
     // headers.set('Origin', originalUrl.origin);
@@ -295,7 +297,7 @@ async function fetch2(
                 redirect: 'manual',
                 signal: options.timeoutSec ? timeout(options.timeoutSec, options.signal ?? undefined) : options.signal
             });
-            if(Math.floor(response.status / 100) == 5 && !ignoreStatus){
+            if(Math.floor(response.status / 100) == 5 && !options.ignoreStatus){
                 Deno.writeTextFileSync('error.html', await response.text())
                 throw new Error('Server Error: status ' + response.status);
             }
@@ -327,7 +329,10 @@ async function fetch2(
 
     if ([301, 302, 303, 307, 308].includes(response.status) && (!options.redirect || options.redirect === 'follow')) {
         // 重定向
-        response = await fetch2(new URL(response.headers.get('location')!, url), options, measureIP);
+        response = await fetch2(new URL(response.headers.get('location')!, url), {
+            ...options,
+            referrer: originalUrl.href
+        });
     }
 
     return response;
@@ -412,8 +417,9 @@ class SimpleBrowser {
                     body: req.postData(),
                     signal: timeout(10),
                     redirect: 'manual',
-                    maxRetries: 1
-                }, false, true);
+                    maxRetries: 1,
+                    ignoreStatus: true
+                });
                 req.respond({
                     status: res.status,
                     headers: Object.fromEntries(res.headers.entries()),
@@ -498,13 +504,16 @@ const removeIllegalPath = (path: string) => path?.replaceAll(/[\/:*?"<>|]/ig, '_
 
 let charsetRaw = args.charset || 'utf-8';
 const t_timeout = parseInt(args.timeout || '10');
-async function getDocument(url: URL | string, abort?: AbortSignal, additionalHeaders?: Record<string, string>, ignore_status = false, measureIP = false) {
+async function getDocument(url: URL | string, options?: {
+    abort?: AbortSignal, additionalHeaders?: Record<string, string>, ignore_status?: boolean, measureIP?: boolean,
+    networkOverride?: typeof fetch2
+}) {
     url = typeof url === 'string' ? new URL(url) : url;
-    const response = await fetch2(url, {
+    const response = await (options?.networkOverride ?? fetch2)(url, {
         headers: {
             'Accept-Language': "zh-CN,zh;q=0.9",
             'Accept': 'text/html,application/xhtml+xml',
-            ...additionalHeaders
+            ...(options?.additionalHeaders ?? {})
         },
         keepalive: true,
         timeoutSec: t_timeout,
@@ -512,10 +521,12 @@ async function getDocument(url: URL | string, abort?: AbortSignal, additionalHea
         credentials: 'include',
         referrer: url.protocol + '://' + url.host + '/',
         referrerPolicy: 'unsafe-url',
-        signal: abort,
+        signal: options?.abort,
         cloudflareBypass: true,
-    }, measureIP, ignore_status);
-    if (!response.ok && !ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
+        measureIP: options?.measureIP,
+        ignoreStatus: options?.ignore_status,
+    });
+    if (!response.ok && !options?.ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
     const data = new Uint8Array(await response.arrayBuffer());
 
     // 编码检查
@@ -752,12 +763,14 @@ function processContent(ctx?: Element | null | undefined, parentStyle: Record<st
     return text.replaceAll(/(?:\r\n){3,}/g, '\r\n\r\n');
 }
 
-async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainInfoResult | null> {
+async function defaultGetInfo(page: URL, cfg: Partial<MainInfo & { networkHandler?: typeof fetch }>): Promise<MainInfoResult | null> {
     if(!cfg.mainPageLike || !cfg.mainPageLike.test(page.href)){
         return null;
     }
 
-    const mainPage = await getDocument(page);
+    const mainPage = await getDocument(page, {
+        networkOverride: cfg.networkHandler
+    });
     const firstPage = cfg.mainPageFirstChapter
         ? mainPage.querySelector(cfg.mainPageFirstChapter)?.getAttribute('href')
         : page;
@@ -789,11 +802,12 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo>): Promise<MainIn
     return info;
 }
 
-async function defaultGetInfo2(page: URL): Promise<MainInfoResult | null> {
-    const cfg = (await import('./lib/' + page.hostname + '.t.ts')).default as TraditionalConfig;
+async function defaultGetInfo2(page: URL, networkHandler?: typeof fetch): Promise<MainInfoResult | null> {
+    const mod = await import('./lib/' + page.hostname + '.t.ts');
+    const cfg = mod.default as TraditionalConfig;
     if(!cfg) return null;
 
-    const info = await defaultGetInfo(page, cfg);
+    const info = await defaultGetInfo(page, { ...cfg, networkHandler });
     if(cfg.infoFilter && info) await cfg.infoFilter(page, info);
     return info;
 }
@@ -952,15 +966,16 @@ async function downloadNovel(
     if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
     const callbacks: {
         default: Callback;
-        getInfo?: (url: URL) => Promise<MainInfoResult | null>;
+        getInfo?: typeof defaultGetInfo2;
         networkHandler?: typeof fetch;
     } = options.traditional ? {
         default: tWrapper,
-        getInfo: defaultGetInfo2
+        getInfo: defaultGetInfo2,
+        networkHandler: (await import('./lib/' + url.hostname + '.t.ts')).networkHandler
     } : await import('./lib/' + url.hostname + '.n.ts');
 
     // 获取信息
-    const info = options.hide_meta ? undefined : await callbacks.getInfo?.(url);
+    const info = options.hide_meta ? undefined : await callbacks.getInfo?.(url, callbacks.networkHandler);
     if(info){
         options.summary = options.summary ?? info.summary;
         (!options.cover && info.cover) && (options.cover = info.cover);

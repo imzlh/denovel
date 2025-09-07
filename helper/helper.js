@@ -251,7 +251,7 @@
 
     // 主函数
     const main = () => {
-        if (!window.location.href.includes('bing.com/search')) return;
+        if (!globalThis.location.href.includes('bing.com/search')) return;
 
         // 创建右下角指示器
         createIndicator();
@@ -268,15 +268,15 @@
     // 页面加载完成后执行
     if (document.readyState === 'complete') {
         main();
-        let currentUrl = window.location.href;
+        let currentUrl = globalThis.location.href;
         setInterval(() => {
-            if (window.location.href !== currentUrl) {
-                currentUrl = window.location.href;
+            if (globalThis.location.href !== currentUrl) {
+                currentUrl = globalThis.location.href;
                 console.log('URL changed:', currentUrl);
                 main();
             }
         }, 1000);
     } else {
-        window.addEventListener('load', main);
+        globalThis.addEventListener('load', main);
     }
 })();

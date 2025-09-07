@@ -23,7 +23,7 @@ interface Chapter {
 
 async function getEverything(url: string){
 
-    const document = await getDocument(url, undefined, undefined, false, true);
+    const document = await getDocument(url);
     const t = document.getElementById("chapterContent");
     if (t) {
         const n = t.dataset.ms

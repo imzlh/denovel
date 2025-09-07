@@ -2,9 +2,7 @@
  * 下载蓝奏云盘
  */
 
-import { _TextDecoder } from "https://deno.land/std@0.92.0/node/_utils.ts";
 import { exists, fetch2, getDocument, removeIllegalPath } from "./main.ts";
-import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename, dirname, join } from "jsr:@std/path@^1.0";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
