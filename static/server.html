@@ -526,7 +526,7 @@
                 <button class="btn" onclick="pollQueue()" id="pollBtn" data-state="free">
                     🔁 刷新队列
                 </button>
-                <button class="btn" id="showBookShelf" onclick="document.location.href = '/api/bookshelf';">
+                <button class="btn" id="showBookShelf" onclick="document.location.href = 'api/bookshelf';">
                     📚 你的书架
                 </button>
                 <button class="btn" onclick="addToQueue()" id="downloadBtn" style="display:none;">
@@ -670,7 +670,7 @@
             };
 
             try {
-                const response = await fetch('/api/settings', {
+                const response = await fetch('api/settings', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -692,7 +692,7 @@
         // 加载全局设置
         async function loadSettings() {
             try {
-                const response = await fetch('/api/settings');
+                const response = await fetch('api/settings');
                 if (response.ok) {
                     const settings = await response.json();
                     document.getElementById('delay').value = settings.delay || 1000;
@@ -724,7 +724,7 @@
             checkBtn.disabled = true;
 
             try {
-                const response = await fetch('/api/check-url', {
+                const response = await fetch('api/check-url', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -814,7 +814,7 @@
 
             let tasks;
             try{
-                const response = await fetch('/api/poll-queue');
+                const response = await fetch('api/poll-queue');
                 if(!response.ok) throw new Error('刷新失败: ' + (await response.text()));
                 tasks = await response.json();
                 if(tasks.length == 0){
@@ -864,7 +864,7 @@
             updateQueueDisplay();
 
             try{
-                await fetch('/api/clear-queue');
+                await fetch('api/clear-queue');
             }catch{}
 
             if (!currentDownload) {
@@ -937,7 +937,7 @@
         // 开始下载
         async function startDownload(task) {
             return new Promise((resolve, reject) => {
-                const wsUrl = `ws://${location.host}/api/download?url=${encodeURIComponent(task.url)}`;
+                const wsUrl = `ws://${location.host}api/download?url=${encodeURIComponent(task.url)}`;
                 const ws = new WebSocket(wsUrl);
                 let isCompleted = false;
 

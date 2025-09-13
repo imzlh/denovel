@@ -49,10 +49,18 @@
     </head>
     <body>
         <h1>你的书架 清单</h1>
-        <ul>
-            <% locals.books.forEach(book => { %>
-                <li> <a href="/api/download?name=<%= encodeURIComponent(book) %>"><%= book %></a></li>
-            <% }); %>
-        </ul>
+        <% if (locals.books.length) { %>
+            <ul>
+                <% locals.books.forEach(book => { %>
+                    <li> <a href="api/download?name=<%= encodeURIComponent(book) %>"><%= book %></a></li>
+                <% }); %>
+            </ul>
+        <% } else { %>
+            <br>
+            <hr>
+            <br>
+            <p>你还没有添加任何书籍到你的书架。</p>
+            <p>或者是没有选择“epub模式”转换成epub?</p>
+        <% } %>
     </body>
 </html>

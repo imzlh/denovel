@@ -177,10 +177,30 @@
                 
                 .main {
                     padding: 1.5rem;
+                    margin: 0.5rem auto;
                 }
                 
                 h1 {
                     font-size: 1.5rem;
+                }
+                
+                article {
+                    font-size: 1rem;
+                    line-height: 1.7;
+                }
+                
+                article p {
+                    text-indent: 1.5em;
+                    margin-bottom: 1.2rem;
+                }
+                
+                .navigation {
+                    flex-direction: column;
+                    gap: 1rem;
+                }
+                
+                .navigation button {
+                    width: 100%;
                 }
             }
         </style>
@@ -196,7 +216,7 @@
                         <div class="progress" id="reading-progress"></div>
                     </div>
                     
-                    <article>
+                    <article id="content-article">
                         <%- content %>
                     </article>
                     
@@ -213,7 +233,7 @@
                     // 阅读进度跟踪
                     document.addEventListener('DOMContentLoaded', function() {
                         const progressBar = document.getElementById('reading-progress');
-                        const content = document.querySelector('article');
+                        const content = document.getElementById('content-article');
                         
                         function updateProgress() {
                             const windowHeight = window.innerHeight;
@@ -232,6 +252,28 @@
                                 if(e.key === 'ArrowRight')
                                     window.location.href = '?url=<%= encodeURIComponent(nextChapter) %>';
                             // <% } %>
+                        });
+
+                        // 双击翻页（移动端）
+                        let lastTap = 0;
+                        content.addEventListener('click', function(e) {
+                            const currentTime = new Date().getTime();
+                            const tapLength = currentTime - lastTap;
+                            
+                            if (tapLength < 300 && tapLength > 0) {
+                                // 双击事件
+                                const screenWidth = window.innerWidth;
+                                const clickX = e.clientX;
+                                
+                                // <% if(nextChapter){ %>
+                                    if (clickX > screenWidth / 2) {
+                                        // 点击屏幕右侧 - 下一章
+                                        window.location.href = '?url=<%= encodeURIComponent(nextChapter) %>';
+                                    }
+                                // <% } %>
+                            }
+                            
+                            lastTap = currentTime;
                         });
                     });
                 </script>
@@ -269,7 +311,7 @@
                 <script>
                     function download() {
                         // <% if(currentURL) { %>
-                            const url = '/api/push-download?url=<%= encodeURIComponent(currentURL) %>';
+                            const url = 'api/push-download?url=<%= encodeURIComponent(currentURL) %>';
                             fetch(url).then(async res => alert(res.ok ? '推送成功,请到主页同步下载任务' : '失败:' + await res.text()));
                         // <% } else { %>
                             alert('该书籍暂不支持下载');
