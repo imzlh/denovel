@@ -26,7 +26,14 @@ export default async function cbz2jpg(imgfiles: {
     data: Uint8Array;
     lastModification?: Date;
 }[], outbasename: string = 'out') {
-    const images = imgfiles.filter(e => e.data.byteLength > 16 * 1024).map(e => new Image(e.data));
+    const images = imgfiles.filter(e => e.data.byteLength > 16 * 1024).map(e => {
+        try{
+            return new Image(e.data)
+        }catch(er){
+            console.log(`Error loading image ${e.name}: ${er instanceof Error? er.message : er}`);
+            return null;
+        }
+    }).filter(Boolean) as Image[];
     images.forEach((img, i) => img.onerror = e => {
         e.preventDefault();e.stopPropagation();
         console.log (`Error loading image ${i+1}: ${e instanceof Error? e.message : e}`);
@@ -63,10 +70,13 @@ export default async function cbz2jpg(imgfiles: {
             const subCtx = subCanvas.getContext('2d');
             subCtx.drawImage(canvas, 0, i, width, sizeInEachImage, 0, 0, width, sizeInEachImage);
             subCanvas.save(outbasename + '_' + Math.floor(i / sizeInEachImage) + '.jpg', 'jpeg');
+            console.log(`Saved ${outbasename}_${Math.floor(i / sizeInEachImage)}.jpg part ${i} -> ${i + sizeInEachImage}`);
         }
     }else{
         canvas.save(outbasename + '.jpg', 'jpeg');
+        console.log(`Saved ${outbasename}.jpg`);
     }
+    console.log(`Done!`);
 }
 
 async function cbz2jpg2(buffer: Uint8Array, outbasename: string = 'out'){

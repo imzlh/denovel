@@ -98,19 +98,19 @@
                     margin: 2rem auto;
                 }
                 
-                .content {
+                article {
                     font-size: 1.1rem;
                     line-height: 1.8;
                 }
                 
-                .content p {
+                article p {
                     text-indent: 2em;
                     margin-bottom: 1.5rem;
                     overflow: hidden;
                     word-wrap: break-word;
                 }
 
-                .content img {
+                article img {
                     max-width: 100%;
                     display: block;
                     margin: 1rem auto;
@@ -196,9 +196,9 @@
                         <div class="progress" id="reading-progress"></div>
                     </div>
                     
-                    <div class="content">
+                    <article>
                         <%- content %>
-                    </div>
+                    </article>
                     
                     <div class="navigation">
                         <% if(nextChapter){ %>
@@ -213,7 +213,7 @@
                     // 阅读进度跟踪
                     document.addEventListener('DOMContentLoaded', function() {
                         const progressBar = document.getElementById('reading-progress');
-                        const content = document.querySelector('.content');
+                        const content = document.querySelector('article');
                         
                         function updateProgress() {
                             const windowHeight = window.innerHeight;
