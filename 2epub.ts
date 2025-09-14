@@ -32,7 +32,7 @@ const regexp = [
     /[\r\n]+(?:正文\s*)?第\s*[零一二三四五六七八九十百千万亿0-9]+[章节回话集]([^\r\n]*)[\r\n]+/gi,
     /[\r\n]+(?:正文\s*)?(?:Vol\.?\s*[0-9IVXLC]+\s*[：:]*\s*)?(?:Chapter|Chapt|Ch|卷)\s*[0-9IVXLC]+([^\r\n]*)[\r\n]+/gi,
     /[\r\n]+(?:正文\s*)?(?:第\s*[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*)?(?:序章|前言|楔子|尾声|后记|番外)([^\r\n]*)[\r\n]+/gi,
-    /[\r\n]+(?:正文\s*)?(?:第\s*[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*)?[零一二三四五六七八九十百千万亿0-9]+\s+([^\r\n]+)[\r\n]+/gi,
+    /[\r\n]+(?:正文\s*)?(?:第\s*[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*)?[零一二三四五六七八九十百千万亿0-9]+(?:\s*、\s*|\s+)([^\r\n]+)[\r\n]+/gi,
     
     /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)\d+\s+[、. ：:~，·～．『]\s*(.*)\s*』?[\r\n]+/gi,
     /[\r\n]+\s*No[、.．]\d+\s*(.+)\s*[\r\n]+/gi,
@@ -234,6 +234,8 @@ export function processTXTContent(text: string, jpFormat = false) {
     text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
         return it ? `<img src="${it.replaceAll('一', '-')}" referrerpolicy="no-referrer" />` : ''
     });
+    // [comment]
+    text = text.replaceAll(/\[comment\](.+?)\[\/comment\]/g, '<!-- $1 -->');
     const tagSt = [] as Array<string>;
     text = text.replaceAll(/\[(\/)?([a-z]{1,10})\]/g, (_, has_slash, tag) => {
         const popRes = has_slash ? tagSt.pop() : undefined;
@@ -455,7 +457,7 @@ Example:
     console.time('convert');
     await ensureDir(output);
     for (const file of files) try {
-        const ofile = output + '/' + basename(file) + '.epub';
+        const ofile = output + '/' + basename(file, '.txt') + '.epub';
         if (await exists(ofile)) {
             if (args['delete-exist']) {
                 console.log(`"${ofile}" already exists, delete source file`);
@@ -476,7 +478,7 @@ Example:
             jpFormat: args["jp-format"]
         });
         if (res)
-            console.log(`"${file}" has been converted to "${basename(file)}.epub"`);
+            console.log(`"${file}" has been converted to "${basename(file, '.txt')}.epub"`);
         console.timeLog('convert');
         if (args.delete && res) Deno.removeSync(file);
     } catch (e) {
