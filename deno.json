@@ -7,9 +7,7 @@
     "comic": "deno run -A --unstable-raw-imports --unstable-ffi comic.ts",
     "build": "deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --include templates --include static  --output=app.exe exe.ts"
   },
-  "imports": {
-    "sqlite3": "npm:sqlite3@5.1.7"
-  },
+  "imports": {},
   "nodeModulesDir": "auto",
   "license": "MIT",
   "version": "1.7.0"

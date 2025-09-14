@@ -7,10 +7,14 @@ import { readline } from "./exe.ts";
 import { connect, ConnectResult } from "npm:puppeteer-real-browser";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { Buffer } from "node:buffer";
+import { Agent as AgentS, AgentOptions } from 'node:https';
+import { Agent } from 'node:http';
+import fetchN, { Response as ResponseN, RequestInit as RequestInitN } from "npm:node-fetch";
 
 import BlankPage from './static/blank.html' with { type: "text" };
 import { Cookie } from "npm:puppeteer@22.7.1";
 import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
+import { isArrayBufferView } from "node:util/types";
 
 class NoRetryError extends Error { }
 
@@ -134,9 +138,16 @@ async function lookupIP(domain: string) {
     });
     if(!fe.ok) throw new Error(`Lookup IP failed for ${domain}`);
     const data = await fe.json();
+    console.log(data.records.a.respond);
     const ips = (data.records.a.response.answer.map((i: any) => i.ipInfo.query) as string[])
         .concat(data.records.aaaa.response.answer.map((i: any) => '[' + i.ipInfo.query + ']') as string[]);
     return ips;
+}
+
+async function lookupIP2(domain: string) {
+    const v4 = await Deno.resolveDns(domain, 'A').catch(() => []),
+        v6 = await Deno.resolveDns(domain, 'AAAA').catch(() => []);
+    return v4.map(i => i.toString()).concat(v6.map(i => '[' + i.toString() + ']'));
 }
 
 class BatchDownloader {
@@ -212,21 +223,23 @@ let browser: undefined | SimpleBrowser;
 async function fetch2(
     url: string | URL,
     options: RequestInit & { 
-        timeoutSec?: number, maxRetries?: number, cloudflareBypass?: boolean, measureIP?: boolean, ignoreStatus?: boolean 
+        timeoutSec?: number, maxRetries?: number, 
+        cloudflareBypass?: boolean, ignoreStatus?: boolean ,
+        measureIP?: boolean, specificIP?: string,
     } = {},
 ): Promise<Response> {
-    const originalUrl = typeof url === 'string' ? new URL(url) : url;
-    let targetUrl = originalUrl;
+    const targetUrl = typeof url === 'string' ? new URL(url) : url;
 
     // IP测速逻辑
     if (options.measureIP) {
-        const hostname = originalUrl.hostname;
+        const hostname = targetUrl.hostname;
 
         // 缓存有效检测
         if (!ipCache[hostname] || Date.now() - ipCache[hostname].updated > CACHE_TTL) {
             console.log(`[ INFO ] Measure IP for ${hostname}`);
+            console.warn(`[ WARN ] Please use "--accept-insecure-certs" to allow insecure connection to measure IP`)
 
-            const validIPs = await lookupIP(hostname);
+            const validIPs = await lookupIP2(hostname);
             
             console.log(`[ INFO ] Valid IPs for ${hostname}:`, validIPs);
 
@@ -235,8 +248,10 @@ async function fetch2(
                 const node = await Promise.any(
                     validIPs.map(async ip => {
                         const start = Date.now();
-                        await fetch(`${originalUrl.protocol}//${ip.includes(':') ? `[${ip}]` : ip}/`, {
-                            headers: { Host: hostname }
+                        await fetch(`${targetUrl.protocol}//${ip.includes(':') ? `[${ip}]` : ip}/`, {
+                            headers: { Host: hostname },
+                            keepalive: false,
+                            signal: timeout(10)
                         });
                         console.log(`[ INFO ] IP ${ip} latency: ${Date.now() - start}ms`);
                         return { ip, latency: Date.now() - start };
@@ -251,7 +266,7 @@ async function fetch2(
                     updated: Date.now(),
                     ttl: CACHE_TTL
                 };
-                targetUrl = new URL(`${originalUrl.protocol}//${fastest}${originalUrl.pathname}`);
+                options.specificIP = fastest;
                 console.log(`[ INFO ] Use fastest IP ${fastest}(${node.latency}) for ${hostname}`);
             }catch(e){
                 console.error(e);
@@ -259,7 +274,7 @@ async function fetch2(
             }
         } else if (ipCache[hostname]) {
             console.log(`[ INFO ] Use cached IP ${ipCache[hostname].fastest} for ${hostname}`);
-            targetUrl = new URL(`${originalUrl.protocol}//${ipCache[hostname].fastest}${originalUrl.pathname}`);
+            options.specificIP = ipCache[hostname].fastest;
         } else {
             console.log(`[ INFO ] No or only one valid IP for ${hostname}`);
         }
@@ -271,8 +286,8 @@ async function fetch2(
 
     // 确保Host头正确
     const headers = new Headers(options.headers);
-    if (options.measureIP && targetUrl.hostname !== originalUrl.hostname) {
-        headers.set('Host', originalUrl.hostname);
+    if (options.measureIP && targetUrl.hostname !== targetUrl.hostname) {
+        headers.set('Host', targetUrl.hostname);
     }
     headers.set('Cookie', cookies + (cookies ? ';': '') +
         (headers.has('Cookie') ? ';'+ headers.get('Cookie') : '')
@@ -287,16 +302,48 @@ async function fetch2(
     }
 
     // 重试逻辑（保持原有）
-    let response: Response | undefined;
+    let response: Response | ResponseN | undefined;
     for (var i = 0; i < (options.maxRetries ?? MAX_RETRY ?? 3); i++) {
         try {
             if(options.signal?.aborted)
                 throw new Error('Aborted');
-            response = await fetch(targetUrl, { 
-                ...options, headers, 
-                redirect: 'manual',
-                signal: options.timeoutSec ? timeout(options.timeoutSec, options.signal ?? undefined) : options.signal
-            });
+
+            if(options.specificIP){
+                // deno fetch doesnot support specific IP
+                // use node-fetch instead
+                const ip = options.specificIP,
+                    ipFamily = ip.startsWith('[') ? 6 : 4,
+                    ipReal = ipFamily == 6 ? ip.slice(1, -1) : ip;
+                let body = options.body;
+                if(body instanceof ArrayBuffer)
+                    body = new Blob([body]);
+                if(isArrayBufferView(body))
+                    if(body.buffer instanceof ArrayBuffer)
+                        body = new Blob([body.buffer]);
+                    else throw new Error('SharedArrayBuffer body is not supported');
+                response = await fetchN(targetUrl.href, {
+                    ...options,
+                    body: body as RequestInitN['body'],
+                    agent(url){
+                        const agopt: AgentOptions = {
+                            lookup(hostname, options, callback){
+                                if(hostname != targetUrl.hostname)
+                                    return callback(null, [], 4);
+                                return callback(null, ipReal, ipFamily);
+                            },
+                            family: ipFamily
+                        };
+                        return url.protocol == 'https:'? new AgentS(agopt) : new Agent(agopt);
+                    }
+                });
+            }else{
+                // use deno native fetch
+                response = await fetch(targetUrl, { 
+                    ...options, headers, 
+                    redirect: 'manual',
+                    signal: options.timeoutSec ? timeout(options.timeoutSec, options.signal ?? undefined) : options.signal
+                });
+            }
             if(Math.floor(response.status / 100) == 5 && !options.ignoreStatus){
                 Deno.writeTextFileSync('error.html', await response.text())
                 throw new Error('Server Error: status ' + response.status);
@@ -321,21 +368,23 @@ async function fetch2(
         }
     }
 
-    if (!response) throw new Error(`Fetch failed for ${originalUrl.href} after ${i} attempts`);
+    if (!response) throw new Error(`Fetch failed for ${targetUrl.href} after ${i} attempts`);
 
     // 从响应头中提取 Set-Cookie 并更新 cookieStore
-    const setCookieHeader = response.headers.getSetCookie();
+    const setCookieHeader = response.headers instanceof Headers
+        ? response.headers.getSetCookie()
+        : response.headers.raw()['set-cookie'] ?? [];
     setRawSetCookie(host, setCookieHeader);
 
     if ([301, 302, 303, 307, 308].includes(response.status) && (!options.redirect || options.redirect === 'follow')) {
         // 重定向
         response = await fetch2(new URL(response.headers.get('location')!, url), {
             ...options,
-            referrer: originalUrl.href
+            referrer: targetUrl.href
         });
     }
 
-    return response;
+    return response as Response;
 }
 
 class SimpleBrowser {
@@ -526,7 +575,10 @@ async function getDocument(url: URL | string, options?: {
         measureIP: options?.measureIP,
         ignoreStatus: options?.ignore_status,
     });
-    if (!response.ok && !options?.ignore_status) throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
+    if (!response.ok && !options?.ignore_status){
+        console.log(await response.text());
+        throw new Error(`Failed to fetch ${url}(status: ${response.status})`);
+    }
     const data = new Uint8Array(await response.arrayBuffer());
 
     // 编码检查

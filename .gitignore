@@ -21,3 +21,4 @@ yarn*
 *.lock
 *.nlp
 *.db*
+error.html

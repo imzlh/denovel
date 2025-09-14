@@ -132,37 +132,67 @@ function handleRedirect(nagCode: string){
     return prom;
 }
 
-// const [raw_host, addr_base] = await (async function() {
-//     if(typeof Deno.args[0] == 'string') return [Deno.args[0], new URL(Deno.args[0])];
-
-//     const addr0 = await handleRedirect((await getDocument(ENTRY_LINK, undefined, undefined, true)).getElementsByTagName('script')[0].innerHTML),
-//         addr1 = (await getDocument(addr0, undefined, undefined, true)).querySelector('a[href]')!.getAttribute('href')!,
-//         addr2 = (await getDocument(addr1, undefined, undefined, true)).querySelector('body > div:nth-child(2) > div > b:nth-child(2)')!.innerHTML!,
-//         ctx = (await getDocument(addr2, undefined, undefined, true)).querySelector('script')?.innerHTML!,
-//         addr = new URL(await handleRedirect(ctx));
-
-//     // 尝试源IP
-//     try{
-//         await fetch(addr);
-//     }catch{
-//         addr.hostname = (await Deno.resolveDns(addr.hostname, 'A'))[0];
-//     }
-
-//     return [addr.hostname, addr];
-// })();
-
 const [raw_host, addr_base] = await (async function(){
     const doc = await getDocument(APP_ENTRY_LINK);
     const addr = doc.querySelector('iframe[src]')!.getAttribute('src')!;
     const aurl = new URL(addr, APP_ENTRY_LINK);
-    return [aurl.hostname, aurl];
+
+    // try fetch
+    console.log('Trying to fetch APP URL', aurl.href);
+    try{
+        await fetch2(aurl, {
+            maxRetries: 3,
+            timeoutSec: 2,
+            measureIP: true
+        });
+        return [aurl.hostname, aurl];
+    }catch(e){
+        console.log('WARN', e instanceof Error ? e.message : e);
+    }
+
+    if(typeof Deno.args[0] == 'string' && Deno.args[0].includes('://'))
+        return [Deno.args[0], new URL(Deno.args[0])];
+
+    console.log('WARN', 'Failed to fetch APP URL, using default URL');
+    const addr0 = await handleRedirect((await getDocument(ENTRY_LINK)).getElementsByTagName('script')[0].innerHTML),
+        addr1 = (await getDocument(addr0)).querySelector('a[href]')!.getAttribute('href')!,
+        addr2 = (await getDocument(addr1)).querySelector('body > div:nth-child(2) > div > b:nth-child(2)')!.innerHTML!,
+        ctx = (await getDocument(addr2)).querySelector('script')?.innerHTML!,
+        addrR = new URL(await handleRedirect(ctx));
+
+    // 尝试源IP
+    try{
+        await fetch2(addrR, {
+            maxRetries: 3,
+            timeoutSec: 2,
+            measureIP: true,
+        });
+    }catch{
+        addrR.hostname = (await Deno.resolveDns(addrR.hostname, 'A'))[0];
+    }
+
+    return [addrR.hostname, addrR];
 })();
+
+// async function network(){
+//     let status = 0;
+//     let fe, i = 0;
+//     do{
+//         fe = await fetch2.apply(null, arguments as any);
+//         status = fe.status;
+//         i ++;
+//         console.log(`Retrying ${i} time(s) for ${status} status code...`);
+//     }while(status == 888 && i < 3);
+//     return fe;
+// }
 
 async function getAllLinks(page: string | URL, totalRef?: { value: number }) {
     const doc = await getDocument(page, {
         additionalHeaders: {
-            Host: raw_host
-        }
+            host: raw_host,
+        },
+        measureIP: true
+        // networkOverride: network
     });
     const pageCtx = doc.querySelectorAll('div.content-box div.ran-box div a[href]');
     console.log('Got', pageCtx.length, 'links');
@@ -345,20 +375,23 @@ interface VideoInfo {
 
 async function serverMain(){
     // if(!await exists('17cache.json')) await Deno.writeTextFile('17cache.json', '{}');
-    const contentDB = await Deno.openKv("./17cache.db");
-    // const contentCache: Record<string, VideoInfo> = JSON.parse(Deno.readTextFileSync('17cache.json') || '{}');
+    // const contentDB = await Deno.openKv("./17cache.db");
+    const contentCache: Record<string, VideoInfo> = {};
+    // JSON.parse(Deno.readTextFileSync('17cache.json') || '{}');
 
     await ensureDir('webo');
 
     async function getInfo(video: string | URL) {
         const id = typeof video == 'string' ? video : new URL(video).searchParams.get('vid')!;
-        const _cache = (await contentDB.get([id])).value;
+        // const _cache = (await contentDB.get([id])).value;
+        const _cache = contentCache[id];
         if(_cache) return processInfo(_cache as VideoInfo);
         console.log('Cache not hit', id);
         const [m3, title, thumb] = await getM3U8(video);
         // https://www.uhsuvpj.com:2096/videoplay/0.html?category_id=1&category_child_id=14&vid=218829
         const res = { id, title, m3u8: m3, thumbnail: thumb };
-        contentDB.set([id], res);
+        // contentDB.set([id], res);
+        contentCache[id] = res;
         return processInfo(res);
     } 
 
@@ -388,7 +421,7 @@ async function serverMain(){
 
                 const realdata = await (await fetch2(decodeURIComponent(src))).bytes();
                 const data = decodeImage(realdata);
-                return new Response(data, {
+                return new Response(data.buffer as ArrayBuffer, {
                     headers: {
                         'Content-Type': 'image/jpeg',
                         'Cache-Control': 'public, max-age=31536000'
@@ -514,7 +547,7 @@ async function serverMain(){
     });
 
     globalThis.onbeforeunload = () => {
-        contentDB.close();
+        // contentDB.close();
         server.shutdown();
     }
 }
