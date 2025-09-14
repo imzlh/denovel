@@ -12,8 +12,8 @@ import { removeIllegalPath } from './main.ts';
 
 export default async function main() {
     const arg = parseArgs(Deno.args, {
-        string: ['from', 'to', 'delete', 'input', 'output', 'ab', 'ac', 'vb', 'vc', 'fps', 'vf', 'filter'],
-        boolean: ['help'],
+        string: ['from', 'to', 'delete', 'input', 'output', 'ab', 'ac', 'vb', 'vc', 'fps', 'vf', 'filter', 'af'],
+        boolean: ['help', 'recursive'],
         alias: {
             f: 'from',
             t: 'to',
@@ -25,9 +25,9 @@ export default async function main() {
             v: 'vb',
             c: 'vc',
             r: 'fps',
-            e: 'vf',
             l: 'filter',
-            h: 'help'
+            h: 'help',
+            s:'recursive',
         }
     });
     if(arg.help){
@@ -48,6 +48,8 @@ Args available:
     --vc
     --fps
     --vf
+    --filter
+    --recursive
     `);
         Deno.exit(0);
     }
@@ -66,7 +68,7 @@ Args available:
 
     let progress = 0;
 
-    for await (const file of tree(arg.input || './', globToRegExp(arg.from))) try{
+    for await (const file of tree(arg.input || './', globToRegExp(arg.from), arg.recursive)) try{
         const infilesize = await Deno.stat(file).then(s => s.size);
         if(infilesize < filterSize){
             continue;
