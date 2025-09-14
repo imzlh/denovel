@@ -52,7 +52,7 @@
         <% if (locals.books.length) { %>
             <ul>
                 <% locals.books.forEach(book => { %>
-                    <li> <a href="api/download?name=<%= encodeURIComponent(book) %>"><%= book %></a></li>
+                    <li> <a href="download?name=<%= encodeURIComponent(book) %>"><%= book %></a></li>
                 <% }); %>
             </ul>
         <% } else { %>
