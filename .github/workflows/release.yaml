@@ -12,17 +12,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-latest]
+        arch: [x64, x64, x64, arm64]  # 对应每个OS的架构
         include:
           - os: ubuntu-latest
-            artifact_name: denovel-linux
+            arch: x64
+            artifact_name: denovel-linux-x64
             bin_ext: ''
           - os: macos-latest
-            artifact_name: denovel-macos
+            arch: x64
+            artifact_name: denovel-macos-x64
             bin_ext: ''
           - os: windows-latest
-            artifact_name: denovel-windows
+            arch: x64
+            artifact_name: denovel-windows-x64
             bin_ext: '.exe'
+          - os: ubuntu-latest
+            arch: arm64
+            artifact_name: denovel-linux-arm64
+            bin_ext: ''
     
     steps:
     - name: Checkout repository
@@ -39,8 +47,17 @@ jobs:
     - name: Install dependencies
       run: deno cache --unstable-raw-imports --unstable-kv exe.ts
       
+    - name: Setup QEMU (for ARM64 cross-compilation)
+      if: matrix.arch == 'arm64'
+      uses: docker/setup-qemu-action@v3
+      
     - name: Compile to binary
-      run: deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --no-check --include templates --include static  --output=${{ matrix.artifact_name }}${{ matrix.bin_ext }} exe.ts
+      run: |
+        if [ "${{ matrix.arch }}" = "arm64" ]; then
+          deno compile --target aarch64-unknown-linux-gnu --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --no-check --include templates --include static --output=${{ matrix.artifact_name }}${{ matrix.bin_ext }} exe.ts
+        else
+          deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --no-check --include templates --include static --output=${{ matrix.artifact_name }}${{ matrix.bin_ext }} exe.ts
+        fi
       
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
@@ -57,26 +74,18 @@ jobs:
       contents: write
     
     steps:
-    - name: Download Linux Artifact
+    - name: Download All Artifacts
       uses: actions/download-artifact@v4
       with:
-        name: denovel-linux
+        path: artifacts
         
-    - name: Download macOS Artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: denovel-macos
-        
-    - name: Download Windows Artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: denovel-windows
+    - name: List downloaded artifacts
+      run: ls -la artifacts/
         
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          denovel-*
+        files: artifacts/**/*
         generate_release_notes: true
         tag_name: ${{ github.ref_name }}
       env:
