@@ -1,68 +1,141 @@
 #!/usr/bin/env -S deno run --allow-net --allow-read
 /**
- * M3U8代理重写服务器
- * 将m3u8内的所有URL重写为通过代理服务器访问
+ * M3U8代理重写服务器 - 简化版
+ * 专注于正确处理嵌套m3u8文件
  */
 
-// 服务器配置
 const HOST = "localhost";
 const PORT = 8000;
 const SERVER_URL = `http://${HOST}:${PORT}`;
 
-// 全局变量存储原始m3u8 URL
+// 存储原始M3U8 URL
 let originalM3U8Url: string | null = null;
+
+// 缓存处理过的m3u8内容
+const m3u8Cache = new Map<string, string>();
+
+/**
+ * 构建代理URL
+ */
+function buildProxyUrl(originalUrl: string): string {
+    const encodedUrl = encodeURIComponent(originalUrl);
+    return `${SERVER_URL}/proxy/${encodedUrl}`;
+}
+
+/**
+ * 从代理URL提取原始URL
+ */
+function extractOriginalUrl(proxyUrl: string): string | null {
+    if (!proxyUrl.includes('/proxy/')) return null;
+
+    const parts = proxyUrl.split('/proxy/');
+    if (parts.length < 2) return null;
+
+    return decodeURIComponent(parts[1]);
+}
+
+/**
+ * 判断URL是否指向代理服务器
+ */
+function isProxyUrl(url: string): boolean {
+    return url.includes(`${HOST}:${PORT}/proxy/`);
+}
 
 /**
  * 重写m3u8内容，将所有URL改为通过代理服务器
  */
-function rewriteM3U8(content: string, m3u8Url: string): string {
+async function rewriteM3U8(content: string, baseUrl: string): Promise<string> {
     const lines = content.split('\n');
-    const baseUrl = new URL(m3u8Url);
-    const basePath = baseUrl.pathname.split('/').slice(0, -1).join('/');
+    const base = new URL(baseUrl);
+    const basePath = base.pathname.split('/').slice(0, -1).join('/');
 
-    const rewrittenLines = lines.map(line => {
+    const rewrittenLines: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        let line = lines[i];
         const trimmedLine = line.trim();
 
-        // 跳过注释行和空行（除了EXTINF）
-        if ((trimmedLine.startsWith('#') && !trimmedLine.startsWith('#EXTINF')) || trimmedLine === '') {
-            return line;
+        // 跳过空行和注释行（除了EXTINF）
+        if (trimmedLine === '') {
+            rewrittenLines.push(line);
+            continue;
         }
 
-        // 处理EXTINF行（包含时长信息）
+        // 处理EXTINF行
         if (trimmedLine.startsWith('#EXTINF:')) {
-            return line;
+            rewrittenLines.push(line);
+            continue;
         }
 
-        // 处理URL行 - 重写为代理服务器URL
+        // 处理EXT-X-STREAM-INF（嵌套m3u8）
+        if (trimmedLine.startsWith('#EXT-X-STREAM-INF:')) {
+            rewrittenLines.push(line);
+
+            // 下一行应该是嵌套m3u8的URL
+            if (i + 1 < lines.length) {
+                const nextLine = lines[i + 1].trim();
+                if (nextLine && !nextLine.startsWith('#')) {
+                    let nestedUrl: string;
+
+                    if (nextLine.startsWith('http')) {
+                        nestedUrl = nextLine;
+                    } else if (nextLine.startsWith('/')) {
+                        nestedUrl = `${base.origin}${nextLine}`;
+                    } else {
+                        nestedUrl = `${base.origin}${basePath}/${nextLine}`;
+                    }
+
+                    rewrittenLines.push(buildProxyUrl(nestedUrl));
+                    i++; // 跳过下一行
+                }
+            }
+            continue;
+        }
+
+        // 处理EXT-X-KEY
+        if (trimmedLine.startsWith('#EXT-X-KEY:')) {
+            const uriMatch = trimmedLine.match(/URI="([^"]+)"/);
+            if (uriMatch) {
+                const keyUrl = uriMatch[1];
+                const fullKeyUrl: string = new URL(keyUrl, baseUrl).href;
+                line = line.replace(keyUrl, buildProxyUrl(fullKeyUrl));
+            }
+            rewrittenLines.push(line);
+            continue;
+        }
+
+        // 处理普通URL行
         if (trimmedLine && !trimmedLine.startsWith('#')) {
-            // 如果是完整URL
+            let fullUrl: string;
+
             if (trimmedLine.startsWith('http')) {
-                const url = new URL(trimmedLine);
-                return `${SERVER_URL}/proxy/${encodeURIComponent(trimmedLine)}/index.ts`;
+                fullUrl = trimmedLine;
+            } else if (trimmedLine.startsWith('/')) {
+                fullUrl = `${base.origin}${trimmedLine}`;
+            } else {
+                fullUrl = `${base.origin}${basePath}/${trimmedLine}`;
             }
 
-            // 如果是绝对路径
-            if (trimmedLine.startsWith('/')) {
-                const fullUrl = `${baseUrl.protocol}//${baseUrl.host}${trimmedLine}`;
-                return `${SERVER_URL}/proxy/${encodeURIComponent(fullUrl)}/index.ts`;
-            }
-
-            // 如果是相对路径
-            const fullUrl = `${baseUrl.protocol}//${baseUrl.host}${basePath}/${trimmedLine}`;
-            return `${SERVER_URL}/proxy/${encodeURIComponent(fullUrl)}/index.ts`;
+            rewrittenLines.push(buildProxyUrl(fullUrl));
+            continue;
         }
-
-        return line;
-    });
+            
+        rewrittenLines.push(line);
+    }
 
     return rewrittenLines.join('\n');
 }
 
 /**
- * 代理文件请求
+ * 处理代理请求
  */
 async function handleProxyRequest(url: URL): Promise<Response> {
-    const encodedUrl = url.pathname.split('/proxy/')[1].split('/')[0];
+    const pathParts = url.pathname.split('/');
+    if (pathParts.length < 3) {
+        return new Response("无效的代理URL", { status: 400 });
+    }
+
+    const encodedUrl = pathParts[2];
     if (!encodedUrl) {
         return new Response("无效的代理URL", { status: 400 });
     }
@@ -70,25 +143,57 @@ async function handleProxyRequest(url: URL): Promise<Response> {
     try {
         const originalUrl = decodeURIComponent(encodedUrl);
 
-        // 根据文件类型设置Content-Type
+        // 设置适当的Content-Type
         let contentType = "application/octet-stream";
         if (originalUrl.endsWith('.ts')) {
             contentType = "video/mp2t";
         } else if (originalUrl.endsWith('.m3u8')) {
-            contentType = "application/vnd.apple.mpegurl";
-        } else if (originalUrl.endsWith('.png') || originalUrl.endsWith('.jpg') || originalUrl.endsWith('.jpeg')) {
-            contentType = "image/" + originalUrl.split('.').pop();
+            contentType = url.searchParams.has('text') ? "text/plain" : "application/vnd.apple.mpegurl";
+        } else if (originalUrl.endsWith('.key')) {
+            contentType = "application/octet-stream";
         }
 
-        // 代理请求到原始服务器
+        // 对于m3u8文件，需要特殊处理
+        if (originalUrl.endsWith('.m3u8')) {
+            // 检查缓存
+            if (m3u8Cache.has(originalUrl)) {
+                return new Response(m3u8Cache.get(originalUrl), {
+                    headers: {
+                        "Content-Type": contentType,
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                });
+            }
+
+            // 获取并重写m3u8内容
+            const response = await fetch(originalUrl);
+            if (!response.ok) {
+                return new Response(`获取M3U8失败: ${response.status}`, {
+                    status: response.status,
+                    headers: { "Access-Control-Allow-Origin": "*" }
+                });
+            }
+
+            const content = await response.text();
+            const rewrittenContent = await rewriteM3U8(content, originalUrl);
+
+            // 缓存结果
+            m3u8Cache.set(originalUrl, rewrittenContent);
+
+            return new Response(rewrittenContent, {
+                headers: {
+                    "Content-Type": contentType,
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+
+        // 对于其他文件类型，直接代理
         const response = await fetch(originalUrl);
         if (!response.ok) {
             return new Response(`代理请求失败: ${response.status}`, {
                 status: response.status,
-                headers: {
-                    "Access-Control-Allow-Origin": "*",
-                    "Content-Type": "text/plain"
-                }
+                headers: { "Access-Control-Allow-Origin": "*" }
             });
         }
 
@@ -105,31 +210,44 @@ async function handleProxyRequest(url: URL): Promise<Response> {
         const err = error as Error;
         return new Response(`代理请求失败: ${err.message}`, {
             status: 500,
-            headers: {
-                "Access-Control-Allow-Origin": "*",
-                "Content-Type": "text/plain"
-            }
+            headers: { "Access-Control-Allow-Origin": "*" }
         });
     }
 }
 
 /**
- * 处理m3u8文件请求
+ * 处理主m3u8请求
  */
-async function handleM3U8Request(): Promise<Response> {
+async function handleMainM3U8Request(): Promise<Response> {
     if (!originalM3U8Url) {
         return new Response("M3U8 URL未设置", { status: 400 });
     }
 
     try {
-        // 下载原始m3u8文件
+        // 检查缓存
+        if (m3u8Cache.has(originalM3U8Url)) {
+            return new Response(m3u8Cache.get(originalM3U8Url), {
+                headers: {
+                    "Content-Type": "application/vnd.apple.mpegurl",
+                    "Access-Control-Allow-Origin": "*",
+                },
+            });
+        }
+
+        // 获取原始m3u8内容
         const response = await fetch(originalM3U8Url);
         if (!response.ok) {
-            return new Response(`下载M3U8文件失败: ${response.status}`, { status: 500 });
+            return new Response(`获取M3U8失败: ${response.status}`, {
+                status: response.status,
+                headers: { "Access-Control-Allow-Origin": "*" }
+            });
         }
 
         const content = await response.text();
-        const rewrittenContent = rewriteM3U8(content, originalM3U8Url);
+        const rewrittenContent = await rewriteM3U8(content, originalM3U8Url);
+
+        // 缓存结果
+        m3u8Cache.set(originalM3U8Url, rewrittenContent);
 
         return new Response(rewrittenContent, {
             headers: {
@@ -139,7 +257,10 @@ async function handleM3U8Request(): Promise<Response> {
         });
     } catch (error) {
         const err = error as Error;
-        return new Response(`处理M3U8文件失败: ${err.message}`, { status: 500 });
+        return new Response(`处理M3U8失败: ${err.message}`, {
+            status: 500,
+            headers: { "Access-Control-Allow-Origin": "*" }
+        });
     }
 }
 
@@ -148,7 +269,8 @@ async function handleM3U8Request(): Promise<Response> {
  */
 async function handler(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    console.log(request.method, url.pathname);
+
+    console.log(request.method, request.url);
 
     // 设置CORS头
     if (request.method === "OPTIONS") {
@@ -166,54 +288,42 @@ async function handler(request: Request): Promise<Response> {
         return handleProxyRequest(url);
     }
 
-    // 处理m3u8文件请求
-    if (url.pathname.endsWith(".m3u8")) {
-        return handleM3U8Request();
+    // 处理主m3u8请求
+    if (url.pathname === "/index.m3u8") {
+        return handleMainM3U8Request();
     }
 
-    // 根路径显示使用说明
-    if (url.pathname === "/") {
-        const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>M3U8代理重写服务器</title>
-        <style>
-          body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-          .code { background: #f4f4f4; padding: 10px; border-radius: 5px; }
-        </style>
-      </head>
-      <body>
-        <h1>M3U8代理重写服务器</h1>
-        <p>服务器运行在: ${SERVER_URL}</p>
-        
-        <h2>使用方法:</h2>
-        <ol>
-          <li>启动服务器: <code>deno run --allow-net specialm3u8.ts https://example.com/video.m3u8</code></li>
-          <li>访问: <code>${SERVER_URL}/video.m3u8</code></li>
-          <li>ffmpeg使用: <code>ffmpeg -i "${SERVER_URL}/video.m3u8" output.mp4</code></li>
-        </ol>
-        
-        <h2>功能特点:</h2>
-        <ul>
-          <li>自动重写m3u8内所有URL通过代理服务器</li>
-          <li>支持各种文件类型（ts、m3u8、图片等）</li>
-          <li>完整的CORS支持</li>
-          <li>智能URL路径处理</li>
-        </ul>
-        
-        <h2>当前状态:</h2>
-        <p>原始M3U8 URL: ${originalM3U8Url || "未设置"}</p>
-      </body>
-      </html>
-    `;
-
-        return new Response(html, {
-            headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
-    }
-
-    return new Response("未找到", { status: 404 });
+    // 显示使用说明
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>M3U8代理服务器</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .code { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <h1>M3U8代理服务器</h1>
+    <p>服务器运行在: ${SERVER_URL}</p>
+    
+    <h2>使用方法:</h2>
+    <ol>
+        <li>启动服务器: <code>deno run --allow-net specialm3u8.ts https://example.com/video.m3u8</code></li>
+        <li>访问: <code>${SERVER_URL}/index.m3u8</code></li>
+        <li>ffmpeg使用: <code>ffmpeg -i "${SERVER_URL}/index.m3u8" output.mp4</code></li>
+    </ol>
+    
+    <h2>当前状态:</h2>
+    <p>原始M3U8 URL: ${originalM3U8Url || "未设置"}</p>
+    <p>预览M3U8内容: <a href="${SERVER_URL}/index.m3u8?text" target="_blank">${SERVER_URL}/index.m3u8</a></p>
+</body>
+</html>
+`;
+    return new Response(html, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
 }
 
 /**
@@ -224,12 +334,10 @@ async function main() {
     const args = Deno.args;
 
     if (args.length === 0) {
-        // @ts-ignore
-        args[0] = prompt("请输入原始M3U8 URL:");
-        if(!args[0]) throw new Error("未输入原始M3U8 URL");
+        originalM3U8Url = prompt("请输入原始M3U8 URL:") ?? Deno.exit(1);
+    } else {
+        originalM3U8Url = args[0];
     }
-
-    originalM3U8Url = args[0];
 
     // 验证URL格式
     try {
@@ -240,9 +348,9 @@ async function main() {
         Deno.exit(1);
     }
 
-    console.log(`启动M3U8代理重写服务器在 ${SERVER_URL}`);
-    console.log(`访问 ${SERVER_URL} 查看使用说明`);
-    console.log(`代理后的m3u8: ${SERVER_URL}/${originalM3U8Url.split('/').pop()}`);
+    console.log(`启动M3U8代理服务器在 ${SERVER_URL}`);
+    console.log(`访问 ${SERVER_URL}/index.m3u8 获取代理后的m3u8`);
+    console.log(`访问 ${SERVER_URL}/help 查看使用说明`);
 
     // 启动服务器
     Deno.serve({ hostname: HOST, port: PORT }, handler);
