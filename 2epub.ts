@@ -27,6 +27,8 @@ const MIN_CHARS_PER_CHAPTER = 10;   // 10字最少
 // Part.0 『为什么会变成这样的人』
 // Part.12 『完美假面』no.1
 // 第一卷第一章庄周梦蝶
+// 　　＃1 恭喜！您升级了
+// 　　1-魔女小姐
 const regexp = [
     /[\r\n]+(?:正文\s*)?第\s*[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*第\s*[零一二三四五六七八九十百千万亿0-9]+[章节回话集]([^\r\n]*)[\r\n]+/gi,
     /[\r\n]+(?:正文\s*)?第\s*[零一二三四五六七八九十百千万亿0-9]+[章节回话集]([^\r\n]*)[\r\n]+/gi,
@@ -40,8 +42,9 @@ const regexp = [
 
     /[\r\n]+(?:正文\s*)?(?:第\s*[零一二三四五六七八九十百千万亿0-9]+卷\s*[：:]*\s*)?第\s*[零一二三四五六七八九十百千万亿0-9]+[～~\-－][零一二三四五六七八九十百千万亿0-9]+[章节回话集][^\r\n]*[\r\n]+/gi,
     /[\r\n]+\s*(?:正文\s*)?\[?\d+\]?\s*[、. ：:~，．·～]\s*(.+)\s*[\r\n]+/gi,
-    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9序]+[、. ：:~，·．～]\s*(.+)\s*[\r\n]+/gi,
-    /[\r\n]+\s*(?:(?:chapter|part|ep)\.?\s*)[零一二三四五六七八九十百千万亿序0-9]+\s*(.+?)\s*[\r\n]+/gi,
+    /[\r\n]+\s*[\-零一二三四五六七八九十百千万亿0-9序]+[、. ：:~，·．～-]\s*(.+)\s*[\r\n]+/gi,
+    /[\r\n]+\s*(?:(?:chapter|part|ep|no)\.?\s*)[零一二三四五六七八九十百千万亿序0-9]+\s*(.+?)\s*[\r\n]+/gi,
+    /[\r\n]+\s*[＃]\d+\s*(.+?)\s*[\r\n]+/gi,
     /[\r\n]+.{0,20}\s*[：:]\s*\d+\s+(.+)\s*[\r\n]+/gi,
     /[\r\n]+(.+)[\r\n]+([=\-─])\2{5,}[\r\n]+/gi,
 
@@ -260,7 +263,8 @@ export function toEpub(data: string, input: string, output: string, option: {
     reporter?: (status: Status, message: string) => void, networkHandler?: typeof fetch
 }): boolean {
     input = input ? input.replace(/\.txt$/i, '') : '<inmemory>';
-    data = data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
+    // fix: 前插\r\n以匹配第一章
+    data = '\r\n' + data.replaceAll(/　+/g, '\r\n');  // 特殊中文空格，我们认为是换行
     if (!PRESEL) PRESEL = PRESERVE_EL.concat(WRAP_EL);
     if (!option.reporter) option.reporter = (s, m) => console.log(`[ ${Status[s]} ] ${m}`);
 
@@ -425,9 +429,11 @@ Example:
         let input = args._[0] || prompt('Input title >> ');
         if (typeof input !== 'string') Deno.exit(0);
         input = '\r\n' + input + '\r\n';
+        let i = 0;
         for (const reg of regexp) {
+            i ++;
             if (input.match(reg)) {
-                console.log(`"${input.trim()}" can be processed correctly by ${reg}`);
+                console.log(`"${input.trim()}" can be processed correctly by (id=${i}) ${reg}`);
                 console.log('result:', reg.exec(input));
                 Deno.exit(0);
             }
