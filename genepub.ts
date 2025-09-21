@@ -240,7 +240,7 @@ async function downloadMedia(
 
     if (media.url.indexOf("http") === 0 || media.url.indexOf("//") === 0) {
         try {
-            const response = await networkHandler(media.url, {
+            const response = await networkHandler(new URL(media.url), {
                 headers: { "User-Agent": userAgent },
             });
             
@@ -280,7 +280,7 @@ async function processCover(
     if (cover.startsWith('//')) cover = 'http:' + cover;
     if (cover.slice(0, 4) === "http") {
         try {
-            const response = await networkHandler(cover, {
+            const response = await networkHandler(new URL(cover), {
                 headers: { "User-Agent": userAgent },
             });
             

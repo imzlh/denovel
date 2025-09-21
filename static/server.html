@@ -276,6 +276,10 @@
             color: #333;
         }
 
+        .queue-info {
+            max-width: 22em;
+        }
+
         @media (max-width: 768px) {
             .checkbox-group {
                 flex-direction: column;
@@ -297,6 +301,10 @@
             .log-dialog {
                 width: auto;
                 height: 80vh;
+            }
+
+            .queue-info {
+                max-width: unset;
             }
         }
 
@@ -493,7 +501,7 @@
                     <label>📋 下载选项</label>
                     <div class="checkbox-group">
                         <div class="checkbox-item">
-                            <input type="checkbox" id="toEpub">
+                            <input type="checkbox" id="toEpub" checked>
                             <label for="toEpub">转换为 EPUB</label>
                         </div>
                         <div class="checkbox-item">

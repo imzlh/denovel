@@ -553,11 +553,11 @@ const removeIllegalPath = (path: string) => path?.replaceAll(/[\/:*?"<>|]/ig, '_
 
 let charsetRaw = args.charset || 'utf-8';
 const t_timeout = parseInt(args.timeout || '10');
-async function getDocument(url: URL | string, options?: {
+async function getDocument(_url: URL | string, options?: {
     abort?: AbortSignal, additionalHeaders?: Record<string, string>, ignore_status?: boolean, measureIP?: boolean,
     networkOverride?: typeof fetch2
 }) {
-    url = typeof url === 'string' ? new URL(url) : url;
+    const url = new URL(_url);
     const response = await (options?.networkOverride ?? fetch2)(url, {
         headers: {
             'Accept-Language': "zh-CN,zh;q=0.9",

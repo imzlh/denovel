@@ -122,3 +122,17 @@ export default {
         }
     },
 } satisfies TraditionalConfig;
+
+export async function networkHandler(u: URL) {
+    if(u.hostname.includes('uameta.ai')){
+        return await fetch2(u, arguments[1] ? {
+            ...arguments[1],
+            referrer: 'https://www.uaa.com/'
+        } : {
+            referrer: 'https://www.uaa.com/'
+        });
+    }else{
+        // @ts-ignore fetch2
+        return await fetch2.apply(null, arguments);
+    }
+}

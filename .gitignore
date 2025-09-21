@@ -22,3 +22,4 @@ yarn*
 *.nlp
 *.db*
 error.html
+captcha.*
