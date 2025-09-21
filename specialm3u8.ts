@@ -5,7 +5,7 @@
  */
 
 const HOST = "localhost";
-const PORT = 8000;
+const PORT = 12345;
 const SERVER_URL = `http://${HOST}:${PORT}`;
 
 // 存储原始M3U8 URL

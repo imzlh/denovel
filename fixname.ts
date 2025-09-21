@@ -41,12 +41,12 @@ function levenshteinDistance(s1: string, s2: string): number {
 
 // 从文件内容中提取标题
 function extractTitle(content: string, fname: string): string | null {
-    const lines = content.split('\n');
+    const lines = content.split(/[\r\n]+/);
     let authorIndex = -1;
 
     // 查找作者行
     for (let i = 0; i < lines.length; i++) {
-        if (lines[i].startsWith('作者：')) {
+        if (lines[i].startsWith('作者')) {
             authorIndex = i;
             break;
         }
