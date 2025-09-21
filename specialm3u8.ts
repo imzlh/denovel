@@ -17,9 +17,9 @@ const m3u8Cache = new Map<string, string>();
 /**
  * 构建代理URL
  */
-function buildProxyUrl(originalUrl: string): string {
+function buildProxyUrl(originalUrl: string, name = "index.ts"): string {
     const encodedUrl = encodeURIComponent(originalUrl);
-    return `${SERVER_URL}/proxy/${encodedUrl}`;
+    return `${SERVER_URL}/proxy/${encodedUrl}/${name}`;
 }
 
 /**
@@ -85,7 +85,7 @@ async function rewriteM3U8(content: string, baseUrl: string): Promise<string> {
                         nestedUrl = `${base.origin}${basePath}/${nextLine}`;
                     }
 
-                    rewrittenLines.push(buildProxyUrl(nestedUrl));
+                    rewrittenLines.push(buildProxyUrl(nestedUrl, 'index.m3u8'));
                     i++; // 跳过下一行
                 }
             }
@@ -98,7 +98,7 @@ async function rewriteM3U8(content: string, baseUrl: string): Promise<string> {
             if (uriMatch) {
                 const keyUrl = uriMatch[1];
                 const fullKeyUrl: string = new URL(keyUrl, baseUrl).href;
-                line = line.replace(keyUrl, buildProxyUrl(fullKeyUrl));
+                line = line.replace(keyUrl, buildProxyUrl(fullKeyUrl, 'index.key'));
             }
             rewrittenLines.push(line);
             continue;
@@ -116,7 +116,7 @@ async function rewriteM3U8(content: string, baseUrl: string): Promise<string> {
                 fullUrl = `${base.origin}${basePath}/${trimmedLine}`;
             }
 
-            rewrittenLines.push(buildProxyUrl(fullUrl));
+            rewrittenLines.push(buildProxyUrl(fullUrl, 'index.ts'));
             continue;
         }
             
@@ -124,6 +124,22 @@ async function rewriteM3U8(content: string, baseUrl: string): Promise<string> {
     }
 
     return rewrittenLines.join('\n');
+}
+
+function fixTSStream(content: ArrayBuffer | Uint8Array): Uint8Array<ArrayBuffer> {
+    const data = new Uint8Array(content);
+
+    // TS: 0x47, 0x40, 0x00, 0x10
+    for(let left = 0; left < data.length -4; left++){
+        if(
+            [0x47, 0x40, 0x00, 0x10].every((v, i) => data[left + i] === v)
+        ){
+            console.log('CORRECT ts stream, offset: 0x' + left.toString(16));
+            return data.slice(left);
+        }
+    }
+
+    return data;    // not found
 }
 
 /**
@@ -141,20 +157,22 @@ async function handleProxyRequest(url: URL): Promise<Response> {
     }
 
     try {
-        const originalUrl = decodeURIComponent(encodedUrl);
+        const originalUrl = decodeURIComponent(encodedUrl),
+            fname = pathParts[3] || 'index.ts';
 
         // 设置适当的Content-Type
         let contentType = "application/octet-stream";
-        if (originalUrl.endsWith('.ts')) {
+        const isExt = (extension: string) => fname.endsWith(extension);
+        if (isExt('.ts')) {
             contentType = "video/mp2t";
-        } else if (originalUrl.endsWith('.m3u8')) {
+        } else if (isExt('.m3u8')) {
             contentType = url.searchParams.has('text') ? "text/plain" : "application/vnd.apple.mpegurl";
-        } else if (originalUrl.endsWith('.key')) {
+        } else if (isExt('.key')) {
             contentType = "application/octet-stream";
         }
 
         // 对于m3u8文件，需要特殊处理
-        if (originalUrl.endsWith('.m3u8')) {
+        if (isExt('.m3u8')) {
             // 检查缓存
             if (m3u8Cache.has(originalUrl)) {
                 return new Response(m3u8Cache.get(originalUrl), {
@@ -197,13 +215,12 @@ async function handleProxyRequest(url: URL): Promise<Response> {
             });
         }
 
-        const content = await response.arrayBuffer();
+        const content = fixTSStream(await response.arrayBuffer());
 
         return new Response(content, {
             headers: {
                 "Content-Type": contentType,
-                "Access-Control-Allow-Origin": "*",
-                ...Object.fromEntries(response.headers.entries()),
+                "Access-Control-Allow-Origin": "*"
             },
         });
     } catch (error) {
