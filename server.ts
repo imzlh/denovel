@@ -1,22 +1,35 @@
 // deno-lint-ignore-file require-await no-explicit-any
+// deno-lint-ignore-file require-await no-explicit-any
 /**
- * 小说服务器 v3 - 改进版
- * 改进内容：
- * 1. 使用Object实现简单路由系统
- * 2. 使用SQLite3替代内存缓存
- * 3. 优化阅读页面适配移动设备
+ * 小说服务器 v3
+ * POST /api/settings({"delay":1000,"outputDir":"./downloads"}) - 保存全局设置
+   GET /api/settings - 获取全局设置
+   POST /api/check-url - (body: {url})检查URL并返回是否需要更多信息
+   GET /api/push-download?url=... - 下载接口，不会输出内容，仅仅同步到网页
+   GET /api/poll-queue - 从待下载队列中获取下载任务
+   GET /api/clear-queue - 清空待下载队列
+   WebSocket /api/download?url=... - 下载接口，支持实时消息推送
+   第一条消息传输信息：
+   { novelName: string, coverUrl: string, options: {
+        toEpub: document.getElementById('toEpub').checked,
+        translate: document.getElementById('translate').checked,
+        autoPart: document.getElementById('autoPart').checked,
+        jpFormat: document.getElementById('jpFormat').checked,
+        mergeShort: document.getElementById('mergeShort').checked
+    }}
+    后续服务端传输HTML到前端，直接显示到dialog
  */
 
 import { checkIsTraditional, downloadNovel, exists, Status, defaultGetInfo, traditionalAsyncWrapper, moduleExists } from "./main.ts";
 import mainPage from "./static/server.html" with { type: "text" };
 import { render } from "npm:ejs";
-import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { processTXTContent } from "./2epub.ts";
 import { join } from "node:path";
 
 import CHAPTER_TEMPLATE from "./static/chapter.html.ejs" with { type: "text" };
 import CONTENTAPI_HOMEPAGE from "./static/contentapi.html" with { type: "text" };
 import BOOKSHELF_TEMPLATE from "./static/books.html.ejs" with { type: "text" };
+import BATCH_PAGE from "./static/batch.html" with { type: "text" };
 import DENOVEI_ICO from './static/denovel.ico' with { type: "bytes" };
 
 type Handler2 = (req: Request, url: URL) => PromiseOrNot<Response>;
@@ -116,6 +129,13 @@ const routes: Record<string, Record<string, Handler2>> = {
     // 内容路由
     '/content': {
         GET: handleContentRequest
+    },
+
+    // 批量下载
+    '/utils/batch': {
+        GET: () => new Response(BATCH_PAGE, {
+            headers: { "Content-Type": "text/html; charset=UTF-8" }
+        })
     },
 
     // 主页路由
