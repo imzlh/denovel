@@ -50,5 +50,3 @@ declare interface Data{
 declare type Callback = (url_start: URL | string) => AsyncGenerator<Data, void, void>;
 
 declare const document: import("jsr:@b-fuze/deno-dom").HTMLDocument;
-
-declare type ArrayBufferLike = ArrayBuffer;

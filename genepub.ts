@@ -87,7 +87,7 @@ interface EpubMedia {
 
 interface FileEntry {
     path: string;
-    content: Uint8Array;
+    content: Uint8Array<ArrayBuffer>;
 }
 
 type UnPromise<T> = T extends Promise<infer U> ? U : T;

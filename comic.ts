@@ -117,14 +117,14 @@ export async function mkCbzOrLongImg(format: string, data: EpubContentOptions[],
         if(format == 'cbz'){
             const res = await create(imageres.map((img, i) => ({
                 name: (i + 1).toString().padStart(3, '0') + '.' + images[i].split('.').pop()!,
-                data: img,
+                data: img as Uint8Array<ArrayBuffer>,
                 lastModification: new Date()
             })).concat([ { name: 'ComicInfo.xml', data: new TextEncoder().encode(xml), lastModification: new Date() } ]));
             await Deno.writeFile(path, res);
         }else{
             cbz2jpg(imageres.map((img, i) => ({
                 name: (i + 1).toString().padStart(3, '0') + '.' + images[i].split('.').pop()!,
-                data: img,
+                data: img as Uint8Array<ArrayBuffer>,
                 lastModification: new Date()
             })), path.substring(0, path.lastIndexOf('.')));
         }

@@ -23,7 +23,7 @@ if(self.postMessage && import.meta.main){
 
 export default async function cbz2jpg(imgfiles: {
     name: string;
-    data: Uint8Array;
+    data: Uint8Array<ArrayBuffer>;
     lastModification?: Date;
 }[], outbasename: string = 'out') {
     const images = imgfiles.filter(e => e.data.byteLength > 16 * 1024).map(e => {
@@ -79,7 +79,7 @@ export default async function cbz2jpg(imgfiles: {
     console.log(`Done!`);
 }
 
-async function cbz2jpg2(buffer: Uint8Array, outbasename: string = 'out'){
+async function cbz2jpg2(buffer: Uint8Array<ArrayBuffer>, outbasename: string = 'out'){
     return cbz2jpg(await extract(buffer), outbasename);
 }
 

@@ -78,7 +78,7 @@ class ElementArray<T extends XmlNode> extends Array<T> {
  * @param input 输入的文件名
  * @param output 输出位置
  */
-export async function toTXT2(source: Uint8Array, outdir: string, options = {
+export async function toTXT2(source: Uint8Array<ArrayBuffer>, outdir: string, options = {
     addTitle: true,
     removeHTMLTitle: true
 }) {
