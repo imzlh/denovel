@@ -227,7 +227,7 @@ async function downloadMedia(
     userAgent: string,
     networkHandler: typeof fetch,
     logHandler: (type: "info" | "warn" | "error", message: string) => void
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array<ArrayBuffer> | null> {
     if (media.url.indexOf("file://") === 0) {
         try {
             const auxpath = media.url.substring(7);
@@ -350,7 +350,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
     const logHandler = options.logHandler ?? console.log;
 
     // 存储所有文件的内存映射
-    const files: Map<string, Uint8Array> = new Map();
+    const files: Map<string, Uint8Array<ArrayBuffer>> = new Map();
     const images: Array<EpubMedia> = [];
     const audioVideo: Array<EpubMedia> = [];
     const content: Array<EpubContent> = [];
@@ -489,7 +489,7 @@ export async function generateEpub(options: EpubOptions, outputPath: string): Pr
 
     // 添加封面文件
     if (cover && coverInfo?.content && coverInfo?.extension) {
-        files.set(`OEBPS/cover.${coverInfo.extension}`, coverInfo.content);
+        files.set(`OEBPS/cover.${coverInfo.extension}`, coverInfo.content as Uint8Array<ArrayBuffer>);
     }
 
     if (verbose) {

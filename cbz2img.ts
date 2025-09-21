@@ -23,7 +23,7 @@ if(self.postMessage && import.meta.main){
 
 export default async function cbz2jpg(imgfiles: {
     name: string;
-    data: Uint8Array<ArrayBuffer>;
+    data: Uint8Array;
     lastModification?: Date;
 }[], outbasename: string = 'out') {
     const images = imgfiles.filter(e => e.data.byteLength > 16 * 1024).map(e => {
