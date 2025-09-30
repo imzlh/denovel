@@ -692,7 +692,7 @@ export const WRAP_EL = [
 
     PRESERVE_EL = [
         // 行内文本样式
-        'b', 'strong', 'i', 'em', 'u', 's', 'del', 'ins', 'mark',
+        'b', 'strong', 'i', 'em', 'u', 's', 'del', 'ins', 'mark', 'center',
         
         // 列表容器（实际换行行为由li控制）
         'ul', 'ol', 'dl', 'dt', 'dd',
@@ -708,6 +708,12 @@ export const WRAP_EL = [
         
         // 语义化行内元素
         'cite', 'q', 'abbr', 'dfn', 'time',
+
+        // 特殊元素
+        'a', 'video', 'audio',
+
+        // denovel 特色标签
+        'right', 'tcenter'
     ],
     SCALABLE_STYLE = [
         'font-size',
@@ -731,13 +737,19 @@ export const WRAP_EL = [
         ['vertical-align', 'sub', 'sub'],                  // 下标
         ['display', 'block', 'div'],                       // 块级元素
         ['display', 'inline-block', 'span'],               // 行内块
-        ['text-align', 'center', 'center'],                // 居中文本
+        ['text-align', 'center', 'tcenter'],                // 居中文本
         ['text-align', 'right', 'right']                   // 右对齐文本
     ] as Array<[
         string, 
         string | ((value: string) => boolean), 
         string
     ]>,
+
+    PRESERVE_ATTR_TAGS = [
+        ['a', 'href'],
+        ['video', 'src'],
+        ['audio', 'src']
+    ],
 
     IGNORE_TAGS = [
         'script', 'noscript', 'style',                      // CSS/JS
@@ -779,12 +791,16 @@ function cssToTag(css: Record<string, string>){
     return 'span';
 }
 
-function processContent(ctx?: Element | null | undefined, parentStyle: Record<string, string> = {}) {
+function processContent(
+    ctx?: Element | null | undefined, parentStyle: Record<string, string> = {},
+    relativeURL?: URL
+) {
     let text = '';
     if(!ctx) return text;
 
     for(const node of ctx.childNodes){
-        if(node.nodeName.toLowerCase() == 'img'){
+        const nodeName = node.nodeName.toLowerCase();
+        if(nodeName == 'img'){
             const el = node as Element;
             let src;
             if(el.hasAttribute('src')){
@@ -807,6 +823,19 @@ function processContent(ctx?: Element | null | undefined, parentStyle: Record<st
             }else{
                 console.warn('[warn] 空图片:', el.outerHTML);
             }
+        }else if(nodeName == 'a'){
+            const el = node as Element;
+            if(el.hasAttribute('href')){
+                let href = new URL(el.getAttribute('href')!, relativeURL).href;
+                if(href.startsWith('/') || /^https?:\/\//.test(href)){
+                    href = href.replaceAll(']', '&#93;');
+                    text += `[link=${href}]${processContent(el, parentStyle, relativeURL)}[/link]`;
+                }else{
+                    text += processContent(el, parentStyle, relativeURL);
+                }
+            }else{
+                text += processContent(el, parentStyle, relativeURL);
+            }
         }else if(node.nodeType == node.TEXT_NODE){
             text += ' ' + node.textContent.replaceAll(/[\s^\r\n]+/g, ' ');
         }else if(node.nodeType == node.ELEMENT_NODE){
@@ -828,15 +857,16 @@ function processContent(ctx?: Element | null | undefined, parentStyle: Record<st
                 }
             }
 
-            const inner = processContent(node as Element, style);
+            const inner = processContent(node as Element, style, relativeURL);
             if(!inner.trim()){
                 if(wrap) text += '\r\n';
                 continue;   // skip tags
             }
 
-            if(tag.length) text += tag.map(t => `[${t}]`).join('');
+            const tags2 = Array.from(new Set(tag).values());
+            if(tag.length) text += tags2.map(t => `[${t}]`).join('');
             text += inner;
-            if(tag.length) text += tag.map(t => `[/${t}]`).reverse().join('');
+            if(tag.length) text += tags2.map(t => `[/${t}]`).reverse().join('');
 
             // 模拟display: block
             if(wrap) text += '\r\n';
@@ -876,7 +906,7 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo & { networkHandle
         firstPage: firstPage ? new URL(firstPage, page) : undefined,
         cover: cover ? new URL(cover, page).href : undefined,
         book_name: mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '',
-        summary: processContent(mainPage.querySelector(cfg.mainPageSummary!)),
+        summary: processContent(mainPage.querySelector(cfg.mainPageSummary!), {}, firstPage ? new URL(firstPage) : undefined),
         jpStyle: cfg.jpStyle,
         author: cfg.mainPageAuthor ? mainPage.querySelector(cfg.mainPageAuthor)?.innerText : undefined
     } as MainInfoResult;
@@ -926,7 +956,7 @@ async function* tWrapper(url: URL) {
 
         const data: Data & { url: URL } = {
             title: document.querySelector(config.title)?.innerText!,
-            content: ctx ? processContent(ctx) : '',
+            content: ctx ? processContent(ctx, {}, next_url) : '',
             next_link: document.querySelector(config.next_link)?.getAttribute('href') || '',
             url: next_url
         };

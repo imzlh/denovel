@@ -60,9 +60,9 @@ type SpecialTag = {
 };
 
 const specialTag: SpecialTag = {
-    'dialog': ['「', '」'],
+    'dialogue': ['「', '」'],
     'quote': ['【', '『', '】', '』'],
-    'comment': ['(', ')']
+    'comments': ['(', ')']
 };
 
 function addTags(text: string, sTag = specialTag): string {
@@ -234,8 +234,14 @@ const removeTags = (str: string) => str.replaceAll(
 export function processTXTContent(text: string, jpFormat = false) {
     if(!PRESEL) PRESEL = PRESERVE_EL.concat(WRAP_EL);
     text = encodeContent(text, jpFormat);
+    // [img=width,height]url[/img]
     text = text.replaceAll(/\[img\=\d+,\d+\](.+?)\[\/img\]/g, (_, it) => {
         return it ? `<img src="${it.replaceAll('一', '-')}" referrerpolicy="no-referrer" />` : ''
+    });
+    // [link=url]text[/link]
+    text = text.replaceAll(/\[link\=((?:https?\:\/)?\/.+?)\](.*?)\[\/link\]/g, (_, href, text) => {
+        // todo: handle no text link: remove or preserve ?
+        return href ? `<a href="${href}" target="_blank">${text}</a>` : ''
     });
     // [comment]
     text = text.replaceAll(/\[comment\](.+?)\[\/comment\]/g, (_, it) => '<!-- ' + removeTags(it) + ' -->');

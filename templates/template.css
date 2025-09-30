@@ -56,8 +56,17 @@ quote {
 	background-color: #b9f6ff;
 }
 
-dialog {
+comments {
+	color: #564d4d;
+}
+
+dialogue {
 	color: #23a854;
+}
+
+tcenter {
+	/* diff: not display: block with <center> */
+	text-align: center;
 }
 
 right {

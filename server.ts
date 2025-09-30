@@ -337,7 +337,7 @@ async function handleContentRequest(_: Request, url: URL) {
     } else if (info.content) {
         info.content = processTXTContent(info.content, info.jpStyle);
     } else if (info.summary) {
-        info.summary = processTXTContent(info.summary, info.jpStyle);
+        info.summary = processTXTContent(info.summary);
     }
 
     // render page
@@ -521,7 +521,7 @@ export default async function main() {
         }
 
         // 普通HTTP请求处理
-        const res = handleRequest(req);
+        const res = await handleRequest(req);
         console.log(req.url);
         return res;
     });
