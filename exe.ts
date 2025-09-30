@@ -37,7 +37,7 @@ function splitShellCommand(cmd: string): string[] {
                 current = "";
             }
         } else if (c === '"' || c === "'") {
-            if (current && !inQuotes) throw new SyntaxError(`意料之外的引号字符串：${cmd.substring(i-2)}`);
+            if (current && !inQuotes) throw new SyntaxError(`意料之外的引号字符串：${cmd.substring(i - 2)}`);
             inQuotes = !inQuotes;
         } else {
             current += c;
@@ -54,7 +54,7 @@ function splitShellCommand(cmd: string): string[] {
 const coRead = async (pipe: ReadableStream, cb: (data: Uint8Array) => any) => {
     const rd = pipe.getReader();
     let res;
-    while(!(res = await rd.read()).done) await cb(res.value);
+    while (!(res = await rd.read()).done) await cb(res.value);
 }
 const resizeAndWrite = (data: Uint8Array, target: { value: Uint8Array }) => {
     const rt = target.value;
@@ -66,11 +66,11 @@ const decode = async (data: Uint8Array) => {
     const text = new TextDecoder().decode(data);
     text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
     let pos = 0, prevpos = 0;
-    while(-1 != (pos = text.indexOf("\n", prevpos))){
+    while (-1 != (pos = text.indexOf("\n", prevpos))) {
         await Deno.stdout.write(new TextEncoder().encode(
-            text.substring(prevpos, pos +1)
+            text.substring(prevpos, pos + 1)
         ));
-        prevpos = pos +1;
+        prevpos = pos + 1;
     }
 }
 const coWrite = async (pipe: WritableStream, abort: AbortSignal) => {
@@ -78,12 +78,12 @@ const coWrite = async (pipe: WritableStream, abort: AbortSignal) => {
     const buf = new Uint8Array(1024);
     let done = false;
     wr.closed.then(() => done = true);
-    while(!abort.aborted && !done){
+    while (!abort.aborted && !done) {
         const read = await Deno.stdin.read(buf);
-        if(!read || done) break;
-        try{
+        if (!read || done) break;
+        try {
             await wr.write(buf.subarray(0, read));
-        }catch{ /* broken pipe */ }
+        } catch { /* broken pipe */ }
     }
 }
 type BufRef = { value: Uint8Array, stdin: WritableStreamDefaultWriter };
@@ -97,7 +97,7 @@ async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef
             DENOVEL_TERMINAL: "true"
         }
     }).spawn();
-    if(asyncAble){
+    if (asyncAble) {
         // @ts-ignore
         assert(bufref instanceof Object);
         bufref!.stdin = cmd.stdin.getWriter();
@@ -106,16 +106,16 @@ async function spawn(args: string[], asyncAble: boolean = false, bufref?: BufRef
             coRead(cmd.stdout, d => resizeAndWrite(d, bufref!)),
             coRead(cmd.stderr, d => resizeAndWrite(d, bufref!))
         ]);
-    }else{
+    } else {
         coRead(cmd.stderr, d => decode(d));
         let ctrl;
-        if(!abort) {
+        if (!abort) {
             ctrl = new AbortController();
             abort = ctrl.signal;
         }
         coWrite(cmd.stdin, abort);
         await coRead(cmd.stdout, d => decode(d));
-        if(ctrl) ctrl.abort();
+        if (ctrl) ctrl.abort();
     }
 }
 
@@ -124,11 +124,11 @@ export async function readline(prompt: string) {
     const CRLF = new TextEncoder().encode("\r\n");
     const buf = new Uint8Array(1024);
     let offset = 0;
-    while(true){
+    while (true) {
         const data = await Deno.stdin.read(buf.subarray(offset));
-        if(!data) continue;
-        for(let i = offset; i < offset + data; i++){
-            if(buf[i] == CRLF[1] || buf[i] == CRLF[0]){
+        if (!data) continue;
+        for (let i = offset; i < offset + data; i++) {
+            if (buf[i] == CRLF[1] || buf[i] == CRLF[0]) {
                 const line = new TextDecoder().decode(buf.subarray(0, i));
                 return line;
             }
@@ -137,17 +137,17 @@ export async function readline(prompt: string) {
     }
 }
 
-async function exeMain(){
+async function exeMain() {
     const args = Array.from(Deno.args);
-    if (args.length == 0){
+    if (args.length == 0) {
         // repl
         const startedCorutine = {} as Record<string, BufRef & { done: boolean | undefined } | undefined>;
-        while (true) try{
+        while (true) try {
             const input = await readline("densh # ");
             if (!input) continue;
             const commands = splitShellCommand(input), cmd = commands[0];
-            if(!cmd) continue;
-            if(cmd === 'help'){
+            if (!cmd) continue;
+            if (cmd === 'help') {
                 showHelp();
                 console.log(`
     repl指令：
@@ -158,23 +158,23 @@ async function exeMain(){
         <任务名>         启动同步任务
     `);
                 continue;
-            }else if(cmd === 'exit'){
+            } else if (cmd === 'exit') {
                 Deno.exit(0);
-            }else if(cmd === 'start'){
-                if(commands.length < 2){
+            } else if (cmd === 'start') {
+                if (commands.length < 2) {
                     console.error('缺少异步任务名');
                     continue;
                 }
                 const name = commands[1];
-                if(name in startedCorutine && !startedCorutine[name]?.done){
+                if (name in startedCorutine && !startedCorutine[name]?.done) {
                     console.error(`异步任务${name}正在执行，请等待结束后再执行`);
                     continue;
                 }
-                if(!builtins[name]){
+                if (!builtins[name]) {
                     console.error(`异步执行错误：找不到子模块：${name}`);
                     continue;
                 }
-                if(!builtins[name][2]){
+                if (!builtins[name][2]) {
                     console.error(`模块${name}不能并行执行，无法使用start指令`);
                     continue;
                 }
@@ -190,13 +190,13 @@ async function exeMain(){
                 });
                 console.log(`异步任务 ${name} 启动成功，输入"log ${name}"获取日志`);
                 continue;
-            }else if(cmd == 'log'){
-                if(commands.length < 2){
+            } else if (cmd == 'log') {
+                if (commands.length < 2) {
                     console.error('缺少异步任务名');
                     continue;
                 }
                 const name = commands[1];
-                if(!startedCorutine[name]){
+                if (!startedCorutine[name]) {
                     console.error(`异步任务${name}不存在`);
                     continue;
                 }
@@ -216,14 +216,14 @@ async function exeMain(){
             } catch (e) {
                 console.error(`模块${cmd}执行失败`, e);
             }
-        }catch(e){
+        } catch (e) {
             console.error(e);
         }
     }
 
-    function showHelp(){
+    function showHelp() {
         console.log(
-    `@imzlh/denovel
+            `@imzlh/denovel
     Copyright (c) 2025-${new Date().getFullYear()} imzlh
 
     用法：
@@ -235,7 +235,7 @@ async function exeMain(){
 
     示例：
         denovel downovel -n test.html -o /path/to/output -s 5 -r 10 -c utf-8 -l -u https://www.baidu.com -t 60
-    ` 
+    `
         );
     }
 

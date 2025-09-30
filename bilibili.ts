@@ -6,7 +6,7 @@ if(Deno.args.length === 0){
         while(link = await readline(' >> ')){
             console.log('Start', link);
             new Deno.Command('BBDown', {
-                args: [link, '--dfn-priority', '720P 高清'],
+                args: [link, '--dfn-priority', '1080P 高清'],
                 stdout: 'inherit',
                 stderr: 'inherit',
                 stdin: 'inherit'

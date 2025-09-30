@@ -20,7 +20,7 @@
     后续服务端传输HTML到前端，直接显示到dialog
  */
 
-import { checkIsTraditional, downloadNovel, exists, Status, defaultGetInfo, traditionalAsyncWrapper, moduleExists } from "./main.ts";
+import { checkIsTraditional, downloadNovel, exists, Status, getAppDataDir, defaultGetInfo, traditionalAsyncWrapper, moduleExists } from "./main.ts";
 import mainPage from "./static/server.html" with { type: "text" };
 import { render } from "npm:ejs";
 import { processTXTContent } from "./2epub.ts";
@@ -39,7 +39,7 @@ interface ServerSettings {
 }
 
 // 使用Deno KV作为缓存和队列存储
-const kv = await Deno.openKv(import.meta.dirname + "/contentcache.db");
+const kv = await Deno.openKv(await getAppDataDir() + "/contentcache.db");
 let settings = (await kv.get<ServerSettings>(['winb.core.settings'])).value ?? {
     delay: 1000,
     outputDir: "./downloads"
@@ -406,7 +406,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
 // 启动服务器
 export default async function main() {
-    Deno.serve({
+    const $s = Deno.serve({
         port: 8000,
     }, async (req) => {
         const url = new URL(req.url);
@@ -522,6 +522,13 @@ export default async function main() {
         const res = handleRequest(req);
         console.log(req.url);
         return res;
+    });
+
+    Deno.addSignalListener("SIGINT", async () => {
+        kv.close();
+        await $s.shutdown();
+        console.log("Server stopped");
+        Deno.exit(0);
     });
 }
 

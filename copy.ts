@@ -141,6 +141,9 @@ function copyFilesSync(
         maxFileCount?: number;
 
         randomIndex?: boolean;
+
+        sortByTime?: 'asc' | 'desc';
+        sortBySize?: 'asc' | 'desc';
     }
 ): void {
     // 同步创建目标目录
@@ -157,7 +160,13 @@ function copyFilesSync(
     const copiedFiles: string[] = [];
 
     // 同步遍历目录
-    const files = Array.from(Deno.readDirSync(srcDir)).filter(e => e.isFile);
+    let files = Array.from(Deno.readDirSync(srcDir)).filter(e => e.isFile);
+    if(filter.sortByTime) files = files.sort((a, b) => 
+        (filter.sortByTime == 'asc'? 1 : -1) * a.name.localeCompare(b.name)
+    );
+    else if(filter.sortBySize) files = files.sort((a, b) => 
+        (filter.sortBySize == 'asc'? 1 : -1) * (Deno.statSync(join(srcDir, a.name)).ctime?.getTime() ?? 0 - (Deno.statSync(join(srcDir, b.name)).mtime?.getTime() ?? 0))
+    );
     let __i = 0;
     while(true) {
         const fid = filter.randomIndex ? Math.floor(Math.random() * files.length) : __i ++;
@@ -236,7 +245,7 @@ function formatSize(bytes: number): string {
 // 主程序
 export async function main() {
     const args = parseArgs(Deno.args, {
-        string: ["size", "singleMinSize", "count"],
+        string: ["size", "singleMinSize", "count", "sort-time", "sort-name"],
         collect: ["keyWords", "reverse-preset", "preset"],
         boolean: ["help", "random"],
         alias: {
@@ -248,10 +257,14 @@ export async function main() {
             v: "reverse-preset",
             r: "random",
             h: "help",
+            t: "sort-time",
+            n: "sort-name",
         },
         default: {
             src: ".",
             dest: ".",
+            "sort-name": "none",
+            "sort-time": "none",
         },
     });
 
@@ -268,6 +281,8 @@ export async function main() {
     -p, --preset <preset>           筛选预设小说类型(从标题自动推断,实验性)
     -v, --reverse-preset <preset>   排除预设小说类型(从标题自动推断,实验性)
     -r, --random                    随机复制文件,默认按文件系统顺序复制
+    -t, --sort-time <asc|desc>      按修改时间排序,默认按文件系统顺序复制(优先于其他排序方式)
+    -n, --sort-name <asc|desc>      按文件名排序,默认按文件系统顺序复制
 
 示例:
     deno run -A copy.ts -s e:/docs/ -d e:/backup/ -k .txt -z 10m -m 1k -c 5
@@ -292,7 +307,9 @@ export async function main() {
             maxFileCount: args.count ? parseInt(args.count) : undefined,
             reversePreset: args["reverse-preset"] as string[],
             preset: args.preset as string[],
-            randomIndex: args.random
+            randomIndex: args.random,
+            sortBySize: args['sort-name'] == 'none' ? undefined : args['sort-name'] as any,
+            sortByTime: args['sort-time'] == 'none' ? undefined : args['sort-time'] as any
         });
     } catch (err) {
         console.error("错误:", err);

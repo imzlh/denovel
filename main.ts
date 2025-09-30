@@ -13,16 +13,17 @@ import fetchN, { Response as ResponseN, RequestInit as RequestInitN } from "npm:
 
 import BlankPage from './static/blank.html' with { type: "text" };
 import { Cookie } from "npm:puppeteer@22.7.1";
-import { assert } from "https://deno.land/std@0.224.0/assert/assert.ts";
 import { isArrayBufferView } from "node:util/types";
+import { assert } from "node:console";
+import { join } from "node:path";
 
 class NoRetryError extends Error { }
 
 const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
     args = parseArgs(Deno.args, {
-        string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover', 'error-count'],
-        boolean: ['help', 'epub', 'parted', 'translate', 'login'],
+        string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover', 'error-count', 'data-dir'],
+        boolean: ['help', 'epub', 'parted', 'translate', 'login', 'open-config-dir'],
         alias: {
             h: 'help',
             n: 'name',
@@ -35,7 +36,35 @@ const parser = new DOMParser(),
             p: 'parted',
             l: 'translate',
             b: 'cover',
-            g: 'login'
+            g: 'login',
+            d: 'data-dir'
+        },
+        default: {
+            "data-dir": (function() {
+                const os = Deno.build.os;
+                const home = Deno.env.get("HOME") || Deno.env.get("USERPROFILE") || "";
+
+                let dataDir: string;
+
+                switch (os) {
+                    case "windows": // Windows
+                        dataDir = Deno.env.get("APPDATA") || home;
+                        break;
+                    case "darwin":  // macOS
+                        dataDir = join(home, "Library", "Application Support");
+                        break;
+                    default:        // Linux 和其他类Unix系统
+                        dataDir = Deno.env.get("XDG_DATA_HOME") || join(home, ".local", "share");
+                        break;
+                }
+
+                return join(dataDir, 'denovel');
+            })(),
+            outdir: './downloads/',
+            sleep: '1',
+            retry: '3',
+            charset: 'utf-8',
+            timeout: '10'
         }
     }),
     SLEEP_INTERVAL = parseInt(args.sleep || '0'),               // 间隔时间防止DDOS护盾deny
@@ -47,9 +76,14 @@ const sleep = (sec = SLEEP_INTERVAL) => new Promise(resolve => setTimeout(resolv
 
 const removeNonVisibleChars = String;
 
+function getAppDataDir(): string {
+    return args['data-dir'];
+}
+
 // 用于存储 Cookie 的全局对象
+await ensureDir(args['data-dir']);
 const cookieStore: Record<string, Record<string, string>> =
-    await exists('cookie.json') ? JSON.parse(Deno.readTextFileSync('cookie.json')) : {};
+    await exists(args['data-dir'] + '/cookie.json') ? JSON.parse(Deno.readTextFileSync(args['data-dir'] + '/cookie.json')) : {};
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/132.36 (KHTML, like Gecko) Chrome/46.0.0.0 Safari/132.36 Edg/46.0.0.0';
 
 // cookie from browser cookie header
@@ -108,7 +142,7 @@ type IPInfo = {
     ttl: number;
 };
 
-const IP_CACHE_FILE = "ip_cache.json";
+const IP_CACHE_FILE = args['data-dir'] + "/ip_cache.json";
 const CACHE_TTL = 3600_000; // 1小时缓存
 
 const ipCache: Record<string, IPInfo> = await exists(IP_CACHE_FILE)
@@ -118,7 +152,7 @@ const ipCache: Record<string, IPInfo> = await exists(IP_CACHE_FILE)
 // 在onbeforeunload中添加IP缓存保存
 const forceSaveConfig = globalThis.onbeforeunload = function () {
     if(Object.keys(cookieStore).length)
-        Deno.writeTextFileSync('cookie.json', JSON.stringify(cookieStore, null, 4));
+        Deno.writeTextFileSync(args['data-dir'] + 'cookie.json', JSON.stringify(cookieStore, null, 4));
     if(Object.keys(ipCache).length)
         Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
 } as () => void;
@@ -1013,7 +1047,7 @@ async function downloadNovel(
     let url = new URL(start_url);
     if(!options.reporter) options.reporter = (status, msg, e) =>
             console.log(`[ ${Status[status]} ] ${msg}`, e?.message);
-    if(!options.outdir) options.outdir = args.outdir ?? 'downloads';
+    if(!options.outdir) options.outdir = args.outdir;
     await ensureDir(options.outdir); 
     if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
     const callbacks: {
@@ -1052,7 +1086,7 @@ async function downloadNovel(
     if(options.info_generated && info) options.info_generated(info);
 
     // 打开文件
-    const fpath = (options.outdir || 'out') + '/' + removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt';
+    const fpath = (options.outdir ?? 'out') + '/' + removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt';
     const file = await Deno.open(fpath, {
         create: true, append: options.disable_overwrite, write: !options.disable_overwrite, read: false, truncate: !options.disable_overwrite
     });
@@ -1205,20 +1239,22 @@ export default async function main(){
     if (args._.includes('help') || args.help) {
         console.log(`用法: main.ts [options] [url|file]
 参数:
-    -h, --help          显示帮助信息
-    -n, --name          输出文件名，默认为index.html
-    -o, --outdir        输出目录，默认为当前目录
-    -s, --sleep         间隔时间防止DDOS护盾deny，单位秒，默认0
-    -r, --retry         最大重试次数，默认10
-    -c, --charset       网页编码，默认从网站中获取
-    -t, --timeout       超时时间，单位秒，默认30
-    -p, --parted        指定输入源为分完页的文本，这时不会输出自动生成的标题
-    -e, --epub          输出epub文件
-    -l, --translate     翻译模式，将输出的繁体翻译为简体中文
-    -b, --cover         封面URL，默认为空
-        --error-count   指定多少次连续少内容时退出，默认10
-    -g, --login         打开浏览器窗格。在这个窗格中，任何cookie都会被记录下来
-                        特别适用于登陆账号！
+    -h, --help              显示帮助信息
+    -n, --name              输出文件名，默认为index.html
+    -o, --outdir            输出目录，默认为当前目录
+    -s, --sleep             间隔时间防止DDOS护盾deny，单位秒，默认0
+    -r, --retry             最大重试次数，默认10
+    -c, --charset           网页编码，默认从网站中获取
+    -t, --timeout           超时时间，单位秒，默认30
+    -p, --parted            指定输入源为分完页的文本，这时不会输出自动生成的标题
+    -e, --epub              输出epub文件
+    -l, --translate         翻译模式，将输出的繁体翻译为简体中文
+    -b, --cover             封面URL，默认为空
+        --error-count       指定多少次连续少内容时退出，默认10
+    -g, --login             打开浏览器窗格。在这个窗格中，任何cookie都会被记录下来
+                            特别适用于登陆账号！
+    -d, --data-dir          指定配置文件夹
+        --open-config-dir   打开配置目录，用于备份/恢复配置。
 
 示例:
     - 下载来自www.baidu.com的繁体简体中文小说，输出到"output/test.txt"中
@@ -1226,6 +1262,25 @@ export default async function main(){
     - 更新由denovel生成的"a.txt"文件(小说有更新，继续下载。无需再次指定参数，全自动)
       main.ts a.txt
 `);
+        Deno.exit(0);
+    }
+
+    if(args['open-config-dir']){
+        if(Deno.build.os == 'windows'){
+            new Deno.Command('explorer', {
+                args: [args['data-dir']]
+            }).outputSync();
+        }else if(Deno.build.os == 'linux'){
+            new Deno.Command('xdg-open', {
+                args: [args['data-dir']]
+            }).outputSync();
+        }else if(Deno.build.os == 'darwin'){
+            new Deno.Command('open', {
+                args: [args['data-dir']]
+            }).outputSync();
+        }else{
+            console.error('未知操作系统，无法打开配置目录');
+        }
         Deno.exit(0);
     }
 
@@ -1292,7 +1347,7 @@ export default async function main(){
 export { 
     NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
     args, downloadNovel, downloadFromTXT, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
-    forceSaveConfig,
+    forceSaveConfig, getAppDataDir,
     processContent, defaultGetInfo, BatchDownloader, launchBrowser, tWrapper as traditionalAsyncWrapper
 };
 
