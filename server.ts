@@ -20,7 +20,7 @@
     后续服务端传输HTML到前端，直接显示到dialog
  */
 
-import { checkIsTraditional, downloadNovel, exists, Status, getAppDataDir, defaultGetInfo, traditionalAsyncWrapper, moduleExists } from "./main.ts";
+import { checkIsTraditional, downloadNovel, exists, Status, getAppDataDir, defaultGetInfo, traditionalAsyncWrapper, moduleExists, sleep } from "./main.ts";
 import mainPage from "./static/server.html" with { type: "text" };
 import { render } from "npm:ejs";
 import { processTXTContent } from "./2epub.ts";
@@ -230,7 +230,7 @@ async function handleContentRequest(_: Request, url: URL) {
     // 使用SQLite缓存
     const cachedInfo = await cache.get(novelURL.href);
     if (cachedInfo) {
-        Deno.stdout.writeSync(new TextEncoder().encode('HIT  '));
+        await Deno.stdout.write(new TextEncoder().encode('HIT '));
         info = cachedInfo;
     } else {
         let basicInfo: TraditionalConfig;
@@ -336,6 +336,8 @@ async function handleContentRequest(_: Request, url: URL) {
         });
     } else if (info.content) {
         info.content = processTXTContent(info.content, info.jpStyle);
+    } else if (info.summary) {
+        info.summary = processTXTContent(info.summary, info.jpStyle);
     }
 
     // render page
@@ -524,9 +526,16 @@ export default async function main() {
         return res;
     });
 
+    let $shutting = false;
     Deno.addSignalListener("SIGINT", async () => {
+        if($shutting) return console.log("Server is already shutting down...");
+        $shutting = true;
         kv.close();
-        await $s.shutdown();
+        console.log("Server shutting down...(timeout 3s)");
+        await Promise.race([
+            $s.shutdown(),
+            sleep(3)
+        ]);
         console.log("Server stopped");
         Deno.exit(0);
     });

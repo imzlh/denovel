@@ -62,7 +62,7 @@ type SpecialTag = {
 const specialTag: SpecialTag = {
     'dialog': ['「', '」'],
     'quote': ['【', '『', '】', '』'],
-    'comment': ['<', '>', '(', ')']
+    'comment': ['(', ')']
 };
 
 function addTags(text: string, sTag = specialTag): string {
@@ -238,7 +238,7 @@ export function processTXTContent(text: string, jpFormat = false) {
         return it ? `<img src="${it.replaceAll('一', '-')}" referrerpolicy="no-referrer" />` : ''
     });
     // [comment]
-    text = text.replaceAll(/\[comment\](.+?)\[\/comment\]/g, '<!-- $1 -->');
+    text = text.replaceAll(/\[comment\](.+?)\[\/comment\]/g, (_, it) => '<!-- ' + removeTags(it) + ' -->');
     const tagSt = [] as Array<string>;
     text = text.replaceAll(/\[(\/)?([a-z]{1,10})\]/g, (_, has_slash, tag) => {
         const popRes = has_slash ? tagSt.pop() : undefined;

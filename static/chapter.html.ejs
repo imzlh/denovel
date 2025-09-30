@@ -98,26 +98,6 @@
                     margin: 2rem auto;
                 }
                 
-                article {
-                    font-size: 1.1rem;
-                    line-height: 1.8;
-                }
-                
-                article p {
-                    text-indent: 2em;
-                    margin-bottom: 1.5rem;
-                    overflow: hidden;
-                    word-wrap: break-word;
-                }
-
-                article img {
-                    max-width: 100%;
-                    display: block;
-                    margin: 1rem auto;
-                    border-radius: 8px;
-                    box-shadow: var(--shadow);
-                }
-                
                 .progress-bar {
                     height: 4px;
                     background-color: var(--light-gray);
@@ -142,6 +122,11 @@
                     overflow: hidden;
                 }
 
+                .info {
+                    word-break: break-all;
+                    word-break: break-word;
+                }
+
                 @media screen and (min-width: 512px) {
                     .main {
                         display: flex;
@@ -162,6 +147,14 @@
                     margin: 2rem 0;
                     text-align: left;
                     padding: 0 1rem;
+
+                    max-height: 60vh;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+
+                    /* for scrollbar */
+                    margin-right: -1rem;
+                    padding-right: .5rem;
                 }
                 
                 .start-button {
@@ -169,6 +162,26 @@
                     font-size: 1.1rem;
                 }
             /* <% } %> */
+
+            article {
+                font-size: 1.1rem;
+                line-height: 1.8;
+            }
+                
+            article p {
+                text-indent: 2em;
+                margin-bottom: 1.5rem;
+                overflow: hidden;
+                word-wrap: break-word;
+            }
+
+            article img {
+                max-width: 100%;
+                display: block;
+                margin: 1rem auto;
+                border-radius: 8px;
+                box-shadow: var(--shadow);
+            }
             
             @media (max-width: 768px) {
                 .container {
@@ -295,9 +308,9 @@
                         </h1>
                         
                         <% if(summary) { %>
-                            <div class="summary">
-                                <p><%= summary %></p>
-                            </div>
+                            <article class="summary">
+                                <p><%- summary %></p>
+                            </article>
                         <% } %>
                         
                         <div class="navigation">
