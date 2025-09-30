@@ -100,8 +100,10 @@ function setRawCookie(site: string, cookie: string) {
     }
 }
 
-function getSiteCookie(site: string, cookie_name: string) {
+function getSiteCookie(site: string, cookie_name?: string) {
     const obj = cookieStore[site] || {};
+    if(!cookie_name)
+        return Object.entries(obj).map(([key, value]) => `${key}=${value}`).join('; ');
     for (const key in obj) {
         if (key.toLowerCase() == cookie_name.toLowerCase()) {
             return obj[key];
@@ -1316,15 +1318,15 @@ export default async function main(){
 
     const arg_0 = args._[0];
     if(args.login){
-        console.log('请在浏览器中完成登陆操作。一切cookie都会被记录下来');
-        console.log('完成后，关闭标签页，程序将自动退出');
+        console.log('请在浏览器中自行打开网页，完成登陆操作。一切cookie都会被记录下来');
+        console.log('完成后，关闭打开的浏览器窗口，程序将自动退出');
         browser = new SimpleBrowser();
         await browser.init();
 
         if(arg_0){
             await browser.launch(new URL(arg_0 as string), false);
         }else{
-            await browser.launch(new URL('about:blank'), false);
+            await browser.launch(new URL('data:text/html; charset=utf-8,<h1>打开任意网页</h1><p>在这一页内产生的cookie将被记录下来</p>'), false);
         }
 
         console.log('完成！现在你可以尝试新世界了！');

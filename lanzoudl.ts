@@ -2,11 +2,11 @@
  * 下载蓝奏云盘
  */
 
-import { exists, fetch2, getDocument, removeIllegalPath } from "./main.ts";
+import { exists, fetch2, getDocument, getSiteCookie, removeIllegalPath, setRawCookie } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename, dirname, join } from "jsr:@std/path@^1.0";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
-import { DOMParser } from "jsr:@b-fuze/deno-dom";
+import { Document, DOMParser } from "jsr:@b-fuze/deno-dom";
 import { readline } from "./exe.ts";
 
 interface LanZouFile {
@@ -167,6 +167,27 @@ function sandboxEval(code: string, predef: string) {
     }
 }
 
+function setCookieEval(jscode: string, site: string) {
+    const document = new Document(), site2 = new URL(site).hostname.split('.').slice(-2).join('.');
+    Object.defineProperty(document, 'cookie', {
+        get: () => getSiteCookie(site2),
+        set: (value) => setRawCookie(site2, value)
+    });
+    const url = new URL(site);
+    Object.defineProperty(url, "reload", {
+        value: () => void 0
+    })
+    const window = { document, location: url, atob, btoa };
+    Object.defineProperty(document, 'location', {
+        value: url
+    });
+
+    new Function('window', 'document', 'location', jscode)(window, document, url);
+    if(!getSiteCookie(site2, 'acw_sc__v2')){
+        throw new Error('设置cookie失败！');
+    }
+}
+
 const getFiles = async function (page: string, parentPath = '', files: LanZouFile[]) {
     const doc = await getDocument(page);
     const script = doc.getElementsByTagName('script').find(s =>
@@ -252,14 +273,23 @@ async function downloadFile(docurl: string) {
         }).then(r => r.json());
         if(file.zt != 1) throw new Error('下载 ' + file.name +' 失败: 链接超时');
         const realpath = file.dom + '/file/' + file.url;
+        console.log(realpath)
 
         await delay(324 + 1000 * Math.random());
         const textpath = new URL(realpath, docurl);
-        const text2 = await fetch2(textpath);
+        let text2 = await fetch2(textpath);
         // 网络验证
-        if(text2.headers.get('Content-Type')?.includes('text/html')){
+        if(text2.headers.get('Content-Type')?.includes('text/html')) while(true){
             const document = new DOMParser().parseFromString(await text2.text(), 'text/html');
             const script = document.getElementsByTagName('script').at(-1)!;
+
+            // 处理acw_sc__v2
+            if(script.innerHTML.includes('acw_sc')){
+                setCookieEval(script.innerHTML, textpath.href);
+                text2 = await fetch2(textpath);
+                continue;   // retry
+            }
+
             const func = extractFunctionByName(script.innerHTML, 'down_r')!;
             const { url, data } = sandboxEval(func, 'var el = 2;' + script.innerHTML);
             const formData = new FormData();
@@ -307,7 +337,7 @@ async function downloadCorutine(file: LanZouFile) {
     }
 }
 
-const CO_COUNT = 8;
+const CO_COUNT = 1;
 export default async function main() {
     let files: LanZouFile[] = [];
     
