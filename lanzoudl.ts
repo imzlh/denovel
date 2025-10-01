@@ -273,7 +273,6 @@ async function downloadFile(docurl: string) {
         }).then(r => r.json());
         if(file.zt != 1) throw new Error('下载 ' + file.name +' 失败: 链接超时');
         const realpath = file.dom + '/file/' + file.url;
-        console.log(realpath)
 
         await delay(324 + 1000 * Math.random());
         const textpath = new URL(realpath, docurl);
@@ -337,7 +336,7 @@ async function downloadCorutine(file: LanZouFile) {
     }
 }
 
-const CO_COUNT = 1;
+const CO_COUNT = 8;
 export default async function main() {
     let files: LanZouFile[] = [];
     

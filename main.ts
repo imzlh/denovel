@@ -86,6 +86,16 @@ const cookieStore: Record<string, Record<string, string>> =
     await exists(args['data-dir'] + '/cookie.json') ? JSON.parse(Deno.readTextFileSync(args['data-dir'] + '/cookie.json')) : {};
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/132.36 (KHTML, like Gecko) Chrome/46.0.0.0 Safari/132.36 Edg/46.0.0.0';
 
+let started_save_config = false;
+function delaySaveConfig() {
+    if(started_save_config) return;
+    started_save_config = true;
+    setTimeout(() => {
+        started_save_config = false;
+        forceSaveConfig();
+    }, 10000);
+}
+
 // cookie from browser cookie header
 function setRawCookie(site: string, cookie: string) {
     cookieStore[site] = {
@@ -98,6 +108,7 @@ function setRawCookie(site: string, cookie: string) {
             return acc;
         }, {} as Record<string, string>)
     }
+    delaySaveConfig();
 }
 
 function getSiteCookie(site: string, cookie_name?: string) {
@@ -135,6 +146,7 @@ function setRawSetCookie(host: string, setCookieHeader: string[]) {
         }
     }
     cookieStore[host] = obj;
+    delaySaveConfig();
 }
 
 type IPInfo = {
@@ -158,6 +170,7 @@ const forceSaveConfig = globalThis.onbeforeunload = function () {
     if(Object.keys(ipCache).length)
         Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
 } as () => void;
+Deno.addSignalListener("SIGINT", forceSaveConfig);
 
 const LOOKUP_API = 'https://www.nslookup.io/api/v1/records';
 async function lookupIP(domain: string) {
