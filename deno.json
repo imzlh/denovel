@@ -5,7 +5,8 @@
     "down": "deno run -A --unstable-raw-imports --unstable-ffi main.ts -e -s 2",
     "lanzou": "deno run -A --unstable-raw-imports lanzoudl.ts",
     "comic": "deno run -A --unstable-raw-imports --unstable-ffi comic.ts",
-    "build": "deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --include templates --include static  --output=app.exe exe.ts"
+    "build": "deno compile --unstable-raw-imports --unstable-kv --allow-all --include=data.d.ts --include templates --include static  --output=app.exe exe.ts",
+    "fem3u8": "deno run -A specialm3u8.ts"
   },
   "imports": {},
   "nodeModulesDir": "auto",
