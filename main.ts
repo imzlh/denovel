@@ -166,7 +166,7 @@ const ipCache: Record<string, IPInfo> = await exists(IP_CACHE_FILE)
 // 在onbeforeunload中添加IP缓存保存
 const forceSaveConfig = globalThis.onbeforeunload = function () {
     if(Object.keys(cookieStore).length)
-        Deno.writeTextFileSync(args['data-dir'] + 'cookie.json', JSON.stringify(cookieStore, null, 4));
+        Deno.writeTextFileSync(args['data-dir'] + '/cookie.json', JSON.stringify(cookieStore, null, 4));
     if(Object.keys(ipCache).length)
         Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
 } as () => void;
@@ -498,7 +498,6 @@ class SimpleBrowser {
                         const cookies = req.postData()!;
                         const site = url.searchParams.get('site')!.split('.').slice(-2).join('.');
                         setRawSetCookie(site, cookies.split('\n'));
-                        forceSaveConfig();
                         req.abort('aborted');
                         return;
                     }
@@ -575,7 +574,6 @@ class SimpleBrowser {
                     waitUntil: 'load'
                 });
                 console.log('完成值守，似乎通过验证？');
-                forceSaveConfig();
             }else{
                 await new Promise(rs => page.on('close',rs));
             }

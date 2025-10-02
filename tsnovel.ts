@@ -23,6 +23,8 @@ interface NovelInfo {
     tag: string;
     newTag: string;
     lastIndexUpdateTime: string;
+    purity: string;
+    status: string;
 }
 
 async function __update_db(list: NovelInfo[]){
@@ -120,6 +122,18 @@ async function findInDBBatch(names: string[]): Promise<Record<string, NovelInfo 
     );
 }
 
+async function showNovelInfo(novel: NovelInfo) {
+    console.log('-'.repeat(60))
+    console.log(novel.bookName, '/', novel.authorName, '  (', 
+        novel.crawlSourceName, novel.status == '1' ? '完结' : '连载', ')');
+    console.log('标签:', novel.tag);
+    console.log('字数:', novel.wordCount, '  百合浓度:', novel.purity);
+    // console.log('封面:', new URL(novel.picUrl, api).href);
+    console.log('信息:', 'https://index.tsyuri.com/book/' + novel.id + '.html')
+    console.log('简介:', novel.bookDesc);
+    console.log('-'.repeat(60))
+}
+
 async function* findInFileSystem(fspath: string) {
     for await (const dirEntry of Deno.readDir(fspath)) {
         if(dirEntry.isFile && dirEntry.name.endsWith('.txt')) {
@@ -159,8 +173,10 @@ async function main() {
                 console.log('请输入要搜索的小说名：');
                 const name = await readline('?');
                 const info = await findInDB(name);
-                if(info) console.log('找到', name, '的小说信息:', info);
-                else console.log('未找到', name, '的小说信息');
+                if(info) {
+                    console.log('找到', name, '的小说信息:');
+                    showNovelInfo(info);
+                }else console.log('未找到', name, '的小说信息');
             } break;
             case '3':{
                 console.log('请输入要筛选的txt文件路径：');
