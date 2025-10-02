@@ -172,7 +172,7 @@ const forceSaveConfig = globalThis.onbeforeunload = function () {
 } as () => void;
 Deno.addSignalListener("SIGINT", () => {
     forceSaveConfig();
-    // Deno.exit(0);
+    if(import.meta.main) Deno.exit(0);
 });
 
 const LOOKUP_API = 'https://www.nslookup.io/api/v1/records';
@@ -922,7 +922,7 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo & { networkHandle
         firstPage: firstPage ? new URL(firstPage, page) : undefined,
         cover: cover ? new URL(cover, page).href : undefined,
         book_name: mainPage.querySelector(cfg.mainPageTitle!)?.innerText ?? '',
-        summary: processContent(mainPage.querySelector(cfg.mainPageSummary!), {}, firstPage ? new URL(firstPage) : undefined),
+        summary: processContent(mainPage.querySelector(cfg.mainPageSummary!), {}, firstPage ? new URL(firstPage, page) : undefined),
         jpStyle: cfg.jpStyle,
         author: cfg.mainPageAuthor ? mainPage.querySelector(cfg.mainPageAuthor)?.innerText : undefined
     } as MainInfoResult;

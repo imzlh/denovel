@@ -32,6 +32,12 @@
  - sfacg漫画(manhua.sfacg.com)
  - 拷贝漫画(www.mangacopy.com)
 
+# 预览
+![首页](docs/image.png)
+![content API](docs/image-2.png)
+![终端漫画下载](docs/image-3.png)
+![densh 二进制](docs/image-4.png)
+
 # 怎么用？
 文档搬迁到[Github Pages](https://imzlh.github.io/denovel/)
 
