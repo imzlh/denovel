@@ -21,6 +21,7 @@ const builtins: Record<string, [() => Promise<any>, string, boolean]> = {
     "cbz2img": [useModule("cbz2img"), "将cbz文件转换为长图片", true],
     "copy": [useModule("copy"), "带多样化功能的复制文件夹下文件工具", true],
     "find": [useModule("findkeyword"), "查找文件中包含指定关键字的文件，并输出和归类", true],
+    'm3u8': [useModule("specialm3u8"), '为ffmpeg代理m3u8，实现基于图床的m3u8视频下载', false],
     "17c": [useModule("17c"), "猜猜看，这是什么", false],
 };
 

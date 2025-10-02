@@ -172,7 +172,7 @@ const forceSaveConfig = globalThis.onbeforeunload = function () {
 } as () => void;
 Deno.addSignalListener("SIGINT", () => {
     forceSaveConfig();
-    Deno.exit(0);
+    // Deno.exit(0);
 });
 
 const LOOKUP_API = 'https://www.nslookup.io/api/v1/records';
