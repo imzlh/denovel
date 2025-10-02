@@ -1,23 +1,22 @@
-import { fill } from "npm:pdf-lib@^1.17.1";
 import { readline } from "../exe.ts";
 import { fetch2, getDocument, getSiteCookie, setRawCookie, NoRetryError } from "../main.ts";
+import { openFile, processContent } from "../main.ts";
+import YDGConfig, { findInYDG } from './www.yeduge.com.t.ts';
 
-console.log('UAA限制蛮多，建议去www.yeduge.com（不是打广告），同步UAA');
+console.log('UAA限制蛮多，输入简介页将自动尝试从www.yeduge.com免费下载');
 
-async function showCaptcha(caUrl: string) {
-    const caRes = await fetch2(caUrl);
+async function showCaptcha(caUrl: string, refer?: string) {
+    const caRes = await fetch2(caUrl, {
+        headers: {
+            'Referer': refer || 'https://www.uaa.com/'
+        }
+    });
     if (!caRes.ok || !caRes.body) {
         console.log('验证码获取失败，请重试');
         return;
     }
     await Deno.writeFile('captcha.jpg', caRes.body);
-    if (Deno.build.os === 'windows') {
-        new Deno.Command('explorer.exe', {
-            args: ['captcha.jpg']
-        }).outputSync();
-    } else {
-        console.log('请查看captcha.jpg并输入验证码');
-    }
+    openFile(Deno.realPathSync('captcha.jpg'))
 }
 
 // login
@@ -26,7 +25,7 @@ while(true) try{
     const unEl = testDoc.querySelector("body > div.main_box > div.user_box > div.info_box > div.account_box > div");
     if(!unEl){
         await fetch2('https://www.uaa.com/');   // get SessionID
-        const rawCache = getSiteCookie('www.uaa.com', '__DN_USPW__');
+        const rawCache = getSiteCookie('uaa.com', '__DN_USPW__');
         let uname, upass;
         if(rawCache){
             console.log('尝试自动登录...');
@@ -79,8 +78,47 @@ export default {
     mainPageCover: 'body > div.main_box > div.content_box > div.left_box > div.novel_box > img',
     mainPageSummary: 'body > div.main_box > div.content_box > div.left_box > div.detail_box > div.brief_box > div.txt.ellipsis',
     mainPageFirstChapter: 'body > div.main_box > div.content_box > div.left_box > div.detail_box > a',
+    mainPageAuthor: 'body > div.main_box > div.content_box > div.left_box > div.novel_box > div > div:nth-child(4) > a',
+
+    request(_url, options) {
+        const url = new URL(_url);
+        if (url.searchParams.has('__ydg__')){
+            const ydgU = new URL(url.searchParams.get('__ydg__')!);
+            _url = ydgU;
+        }
+        const doc = getDocument(_url, options);
+        return doc;
+    },
 
     async filter(document, filled_data) {
+        // 当被request拦截时，文档是ydg的，URL是初始URL
+        // 这只在输入info URL后有效
+        if (filled_data.url.searchParams.has('__ydg__')){
+            const dataCTX = document.querySelector(YDGConfig.content)!;
+            filled_data.content = processContent(dataCTX);
+            filled_data.title = document.querySelector(YDGConfig.title)?.textContent.trim()!;
+            if(dataCTX.getElementsByTagName('p').at(-3)?.innerText.includes('需要VIP会员')){
+                // 这时再使用原来的URL
+                const doc = await getDocument(filled_data.url);
+                // 找到地址
+                for (const el of doc.querySelectorAll(this.__list_sel)){
+                    if (el.innerText.trim() == filled_data.title){
+                        // 找到，使用原内容
+                        // 清空
+                        filled_data.content = '';
+                        filled_data.next_link = new URL(el.getAttribute('href')!, filled_data.url);
+                        filled_data.title = '';
+                        return;
+                    }
+                }
+            }
+            const mixURL = new URL(filled_data.url);
+            const nextU = document.querySelector(YDGConfig.next_link)?.getAttribute('href')!;
+            mixURL.searchParams.set('__ydg__', new URL(nextU, filled_data.url.searchParams.get('__ydg__')!).href);
+            filled_data.next_link = mixURL;
+            return;
+        }
+
         if(filled_data.content?.includes('以下正文内容已隐藏')){
             filled_data.content = filled_data.content.split('…………………………')[0].trim();
             
@@ -121,7 +159,25 @@ export default {
             filled_data.next_link = filled_data.url.toString();
         }
     },
-} satisfies TraditionalConfig;
+
+    __list_sel:  'body > div.main_box > div.content_box > div.left_box > div.catalog_box > ul a',
+    async mainPageFilter(url, document, filled_data) {
+        const selector = this.__list_sel;
+        const links = Array.from(document.querySelectorAll(selector));
+        if (links.length >= 12){
+            // 要开始收费了，尝试ydg
+            const ydgU = await findInYDG(filled_data);
+            if (ydgU) {
+                const spDoc = await getDocument(ydgU);
+                const startURL = spDoc.querySelector('body > main > section.novel > div.detail > div.info > div > a')?.getAttribute('href');
+                if (!startURL) return;
+                const rolledURL = new URL(url);
+                rolledURL.searchParams.set('__ydg__', new URL(startURL, ydgU).href);
+                filled_data.firstPage = rolledURL;
+            }
+        }
+    },
+} satisfies TraditionalConfig & Record<string, any>;
 
 export async function networkHandler(u: URL) {
     if(u.hostname.includes('uameta.ai')){

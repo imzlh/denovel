@@ -174,6 +174,7 @@ Deno.addSignalListener("SIGINT", () => {
     forceSaveConfig();
     if(import.meta.main) Deno.exit(0);
 });
+globalThis.addEventListener('unhandledrejection', () => forceSaveConfig());
 
 const LOOKUP_API = 'https://www.nslookup.io/api/v1/records';
 async function lookupIP(domain: string) {
@@ -605,7 +606,7 @@ let charsetRaw = args.charset || 'utf-8';
 const t_timeout = parseInt(args.timeout || '10');
 async function getDocument(_url: URL | string, options?: {
     abort?: AbortSignal, additionalHeaders?: Record<string, string>, ignore_status?: boolean, measureIP?: boolean,
-    networkOverride?: typeof fetch2
+    networkOverride?: typeof fetch2, referer?: string
 }) {
     const url = new URL(_url);
     const response = await (options?.networkOverride ?? fetch2)(url, {
@@ -618,7 +619,7 @@ async function getDocument(_url: URL | string, options?: {
         timeoutSec: t_timeout,
         redirect: 'follow',
         credentials: 'include',
-        referrer: url.protocol + '://' + url.host + '/',
+        referrer: options?.referer ?? (url.protocol + '://' + url.host + '/'),
         referrerPolicy: 'unsafe-url',
         signal: options?.abort,
         cloudflareBypass: true,
@@ -809,7 +810,7 @@ function cssToTag(css: Record<string, string>){
 
 function processContent(
     ctx?: Element | null | undefined, parentStyle: Record<string, string> = {},
-    relativeURL?: URL
+    relativeURL: URL = new URL('file:///')
 ) {
     let text = '';
     if(!ctx) return text;
@@ -1281,6 +1282,24 @@ async function launchBrowser(url: URL, waitForFirstNavigation = true) {
     return browser.launch(url, waitForFirstNavigation);
 }
 
+function openFile(file: string) {
+    if (Deno.build.os == 'windows') {
+        new Deno.Command('explorer', {
+            args: [file]
+        }).outputSync();
+    } else if (Deno.build.os == 'linux') {
+        new Deno.Command('xdg-open', {
+            args: [file]
+        }).outputSync();
+    } else if (Deno.build.os == 'darwin') {
+        new Deno.Command('open', {
+            args: [file]
+        }).outputSync();
+    } else {
+        console.error('未知操作系统，无法打开配置目录');
+    }
+}
+
 export default async function main(){
     if (args._.includes('help') || args.help) {
         console.log(`用法: main.ts [options] [url|file]
@@ -1312,21 +1331,7 @@ export default async function main(){
     }
 
     if(args['open-config-dir']){
-        if(Deno.build.os == 'windows'){
-            new Deno.Command('explorer', {
-                args: [args['data-dir']]
-            }).outputSync();
-        }else if(Deno.build.os == 'linux'){
-            new Deno.Command('xdg-open', {
-                args: [args['data-dir']]
-            }).outputSync();
-        }else if(Deno.build.os == 'darwin'){
-            new Deno.Command('open', {
-                args: [args['data-dir']]
-            }).outputSync();
-        }else{
-            console.error('未知操作系统，无法打开配置目录');
-        }
+        openFile(getAppDataDir());
         Deno.exit(0);
     }
 
@@ -1393,7 +1398,7 @@ export default async function main(){
 export { 
     NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
     args, downloadNovel, downloadFromTXT, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
-    forceSaveConfig, getAppDataDir,
+    forceSaveConfig, getAppDataDir, openFile,
     processContent, defaultGetInfo, BatchDownloader, launchBrowser, tWrapper as traditionalAsyncWrapper
 };
 
