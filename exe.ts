@@ -128,10 +128,14 @@ export async function readline(prompt: string) {
         const data = await Deno.stdin.read(buf.subarray(offset));
         if (!data) continue;
         for (let i = offset; i < offset + data; i++) {
-            if (buf[i] == CRLF[1] || buf[i] == CRLF[0]) {
-                const line = new TextDecoder().decode(buf.subarray(0, i));
-                return line;
-            }
+            if (buf[i] == CRLF[1] || buf[i] == CRLF[0])
+                for(const codec of ['utf-8', 'gbk', 'gb2312', 'big5']) try{
+                    const line = new TextDecoder(codec, {
+                        fatal: true,
+                        ignoreBOM: false
+                    }).decode(buf.subarray(0, i));
+                    return line;
+            }catch{}
         }
         offset += data;
     }
