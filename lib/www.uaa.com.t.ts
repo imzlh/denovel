@@ -119,6 +119,11 @@ export default {
             return;
         }
 
+        // 去除script
+        const ctxel = document.querySelector(this.content);
+        ctxel?.getElementsByTagName('div').filter(e => e.getAttribute('style')?.includes('none')).forEach(e => e.remove());
+        filled_data.content = processContent(ctxel, {}, new URL(filled_data.url));
+
         if(filled_data.content?.includes('以下正文内容已隐藏')){
             filled_data.content = filled_data.content.split('…………………………')[0].trim();
             
@@ -148,6 +153,7 @@ export default {
                 // 探测
                 if(code == '3'){
                     console.log('你似乎用完了免费额度，请充值后再试');
+                    filled_data.content = '';   // prevent retry
                 }
 
                 if(code == '4'){

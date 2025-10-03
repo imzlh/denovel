@@ -2,6 +2,8 @@ import { get } from "node:http";
 import { readline } from "../exe.ts";
 import { fetch2, getDocument, getSiteCookie, openFile, processContent, setRawCookie } from "../main.ts";
 
+console.log('po18的付费很有特色，我们将把所有能免费观看的全部下载');
+
 async function showCaptcha(caUrl: string, refer?: string) {
     const caRes = await fetch2(caUrl, {
         headers: {
