@@ -492,23 +492,23 @@ class SimpleBrowser {
                 req.continue();
                 return;
             }
-            if(url.hostname == 'internal.local'){
-                console.log('BROADCAST', url.pathname);
-                switch(url.pathname){
-                    case '/set-cookie': {
-                        const cookies = req.postData()!;
-                        const site = url.searchParams.get('site')!.split('.').slice(-2).join('.');
-                        setRawSetCookie(site, cookies.split('\n'));
-                        req.abort('aborted');
-                        return;
-                    }
+            // if(url.hostname == 'internal.local'){
+            //     console.log('BROADCAST', url.pathname);
+            //     switch(url.pathname){
+            //         case '/set-cookie': {
+            //             const cookies = req.postData()!;
+            //             const site = url.searchParams.get('site')!.split('.').slice(-2).join('.');
+            //             setRawSetCookie(site, cookies.split('\n'));
+            //             req.abort('aborted');
+            //             return;
+            //         }
 
-                    default: {
-                        req.abort('blockedbyclient');
-                        return;
-                    }
-                }
-            }
+            //         default: {
+            //             req.abort('blockedbyclient');
+            //             return;
+            //         }
+            //     }
+            // }
 
             try{
                 console.log('PROXY', req.method(), url.href);
@@ -554,27 +554,41 @@ class SimpleBrowser {
                         return ['zh-CN', 'zh-TW', 'en-US'];
                     },
                 });
-                let __cookie_store = document.cookie;
-                Object.defineProperty(document, 'cookie', {
-                    get: function () {
-                        return __cookie_store;
-                    },
-                    set: function (value) {
-                        __cookie_store = value;
-                        // will be blocked
-                        fetch('https://internal.local/set-cookie?site=' + encodeURIComponent(location.hostname), {
-                            method: 'POST',
-                            body: __cookie_store,
-                            mode: 'cors'
-                        });
-                    }
-                });
+                // let __cookie_store = document.cookie;
+                // Object.defineProperty(document, 'cookie', {
+                //     get: function () {
+                //         return __cookie_store;
+                //     },
+                //     set: function (value) {
+                //         __cookie_store = value;
+                //         // will be blocked
+                //         fetch('https://internal.local/set-cookie?site=' + encodeURIComponent(location.hostname), {
+                //             method: 'POST',
+                //             body: __cookie_store,
+                //             mode: 'cors'
+                //         });
+                //     }
+                // });
             });
             if(waitFor){
                 await page.waitForNavigation({
                     waitUntil: 'load'
                 });
                 console.log('完成值守，似乎通过验证？');
+
+                // 同步cookie
+                const cookies = await this.browser?.browser.cookies();
+                let cookieCount = 0;
+                if (cookies) {
+                    const domain = url.hostname.split('.').slice(-2).join('.');
+                    const cookieLocal = cookieStore[domain] ?? {};
+                    for (const cookie of cookies){
+                        cookieLocal[cookie.name] = cookie.value;
+                        cookieCount ++;
+                    }
+                    cookieStore[domain] = cookieLocal;
+                }
+                console.log('同步了', cookieCount, '个cookie');
             }else{
                 await new Promise(rs => page.on('close',rs));
             }
@@ -932,6 +946,11 @@ async function defaultGetInfo(page: URL, cfg: Partial<MainInfo & { networkHandle
     if (!info.firstPage) {
         throw new Error('未找到第一章');
     }
+
+    for (const key in info)
+        // @ts-ignore in operator
+        if(typeof info[key] == 'string') info[key] = info[key].trim();
+
     return info;
 }
 
