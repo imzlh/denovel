@@ -1,10 +1,9 @@
 import { assert } from "node:console";
-import { getAppDataDir } from "./main.ts";
+import { getAppDataDir, tryReadTextFile } from "./main.ts";
 import { basename } from "node:path";
 import { readline } from './exe.ts'
 import ProgressBar from "https://deno.land/x/progressbar@v0.2.0/progressbar.ts";
-import {percentageWidget, amountWidget} from "https://deno.land/x/progressbar@v0.2.0/widgets.ts";
-import { existsSync } from "node:fs";
+import { percentageWidget, amountWidget } from "https://deno.land/x/progressbar@v0.2.0/widgets.ts";
 import { exists } from "https://deno.land/std@0.224.0/fs/exists.ts";
 
 const db = await Deno.openKv(getAppDataDir() + '/tsnovel.db'),
@@ -140,7 +139,7 @@ async function* findInFileSystem(fspath: string) {
             const name = basename(dirEntry.name, '.txt');
             const info = await findInDB(name);
             if(info){
-                console.log('找到', name, '的小说信息:', info);
+                showNovelInfo(info);
                 yield info;
             }
         }
@@ -191,9 +190,15 @@ async function main() {
                 let i = 0;
                 for await (const it of findInFileSystem(fspath)){
                     i ++;
-                    if(linkpath){
+                    if(linkpath) {
                         if (autoCover && it.picUrl){
-                            let txt = Deno.readTextFileSync(it.bookName + '.txt');
+                            let txt;
+                            try{
+                                txt = tryReadTextFile(it.bookName + '.txt');
+                            }catch(e){
+                                console.warn('读取', it.bookName + '.txt', '失败:', e);
+                                continue;
+                            }
                             if (!(/^[\s\S]{0, 1000}[\r\n]\s+封面[:：].{10,}[\r\n]/.test(txt))) {
                                 txt = `封面：${new URL(it.picUrl, api).href}\n\n${txt}`;
                                 console.log('为', it.bookName, '自动添加封面:', it.picUrl);

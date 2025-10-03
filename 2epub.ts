@@ -3,11 +3,12 @@ import { basename, dirname } from "jsr:@std/path";
 import { generateEpub, EpubContentOptions, EpubOptions } from "./genepub.ts";
 import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL, fromHTML, Status } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
+import { assert } from "node:console";
 
 // deno-lint-ignore no-control-regex
 const rep = /[\x00-\x1F\x7F-\x9F\u200B-\u200F\uFEFF]/g;
-const MAX_CHARS_PER_CHAPTER = 1e5 * 1;
-const MIN_CHARS_PER_CHAPTER = 10;   // 10字最少
+const MAX_CHARS_PER_CHAPTER = 1e4 * 3; // 3w字阈值
+const MIN_CHARS_PER_CHAPTER = 80;   // 80字最少
 
 // 1~奇怪的传单
 // chapter 1~偷吃？不，没有
@@ -448,7 +449,7 @@ Example:
         Deno.exit(1);
     }
 
-    const input = args._[0] ?? 'E:\\docs\\Documents\\novelout\\downloads\\战败后诞下勇者的未亡人魔王小姐.txt';
+    const input = args._[0];
     const output = dirname(args.output || input as string);
     if (typeof input !== 'string')
         throw new Error('Input file is required');

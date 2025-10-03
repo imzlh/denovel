@@ -170,11 +170,8 @@ const forceSaveConfig = globalThis.onbeforeunload = function () {
     if(Object.keys(ipCache).length)
         Deno.writeTextFileSync(IP_CACHE_FILE, JSON.stringify(ipCache, null, 4));
 } as () => void;
-Deno.addSignalListener("SIGINT", () => {
-    forceSaveConfig();
-    if(import.meta.main) Deno.exit(0);
-});
-globalThis.addEventListener('unhandledrejection', () => forceSaveConfig());
+globalThis.addEventListener('unload', forceSaveConfig);
+globalThis.addEventListener('unhandledrejection', forceSaveConfig);
 
 const LOOKUP_API = 'https://www.nslookup.io/api/v1/records';
 async function lookupIP(domain: string) {
