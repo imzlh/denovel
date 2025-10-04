@@ -25,6 +25,7 @@
  - 起点(实验性)：web + 浏览器辅助验证
  - esjZone：web + WebAPI
  - <del>masiro</del> 暂时未攻破CF防火墙，可以选择在浏览器中
+ - ...(各种笔趣阁，各种盗版小说网站，欢迎issue告诉哪些好用)
 
 漫画支持(`cbz` / `epub`)
  - 包子漫画(baozimh.org www.baozimhcn.com manhuafree.com)

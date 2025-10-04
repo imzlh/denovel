@@ -104,16 +104,16 @@ async function listFiles(dirID: string) {
     return res.data.list as FileInfo[];
 }
 
-async function listAndDownloadRecursively(dirID: string, outputDir: string) {
+async function listAndDownloadRecursively(dirID: string, dirName: string, outputDir: string) {
     const files = await listFiles(dirID);
-    console.log(`LIST ${dirID} ${files.length} files`);
+    console.log(`LIST ${dirName} (${dirID}) ${files.length} files`);
     await ensureDir(outputDir);
     await downloadFiles(files, outputDir);
 
     await delay(1000 + Math.random() * 1000);
     for(const file of files){
         if(file.dir){
-            await listAndDownloadRecursively(file.fid, join(outputDir, file.file_name));
+            await listAndDownloadRecursively(file.fid, file.file_name, join(outputDir, file.file_name));
         }
     }
 }
@@ -140,9 +140,9 @@ async function main() {
     }
 
     const dirID = await readline("输入文件夹ID，默认根目录 >") ?? '0';
-    const outputDir = Deno.realPathSync(await readline("输入输出目录，默认当前目录 >"))
+    const outputDir = Deno.realPathSync(await readline("输入输出目录，默认当前目录 >") || '.')
        ?? join(Deno.cwd(), 'qkout');
-    await listAndDownloadRecursively(dirID, outputDir);
+    await listAndDownloadRecursively(dirID, '<root>', outputDir);
 }
 
 if (import.meta.main) main();
