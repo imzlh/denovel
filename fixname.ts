@@ -104,7 +104,20 @@ async function main() {
                 console.log(`处理文件: ${file}`);
 
                 // 读取文件内容
-                const content = await Deno.readTextFile(file);
+                // const contentHex = Deno.readFileSync(file).slice(0, 8192);
+                // let content;
+                // for (const codec of ['utf-8', 'gbk', 'utf-16']) try{
+                //     content = new TextDecoder(codec, {
+                //         fatal: true,
+                //         ignoreBOM: false
+                //     }).decode(contentHex);
+                // }catch{}
+                // if(!content) {
+                //     console.log(`  无法识别文件编码，跳过: ${file}\n`);
+                //     continue;
+                // }
+                // console.log(content);
+                const content = Deno.readTextFileSync(file);
 
                 // 提取标题
                 const extractedTitle = extractTitle(content, basename(file, '.txt'));
