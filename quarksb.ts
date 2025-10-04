@@ -46,7 +46,7 @@ interface FileInfo {
 
 
 const API = {
-    list: 'https://drive-pc.quark.cn/1/clouddrive/file/sort?pr=ucpro&fr=pc&uc_param_str=&pdir_fid={{fid}}&_page=1&_size=1000&_fetch_total=1&_fetch_sub_dirs=0&_sort=file_type:asc,updated_at:desc',
+    list: 'https://drive-pc.quark.cn/1/clouddrive/file/sort?pr=ucpro&fr=pc&uc_param_str=&pdir_fid={{fid}}&_page=1&_size=2000&_fetch_total=1&_fetch_sub_dirs=0&_sort=file_type:asc,updated_at:desc',
     // POST，{"fids":["8be71cfaee614676b1a847f9371ea285"]}
     download: 'https://drive-pc.quark.cn/1/clouddrive/file/download?pr=ucpro&fr=pc&uc_param_str=',
     name: 'https://pan.quark.cn/account/info?fr=pc&platform=pc'
@@ -120,8 +120,9 @@ async function listAndDownloadRecursively(dirID: string, outputDir: string) {
 
 async function checkLogin() {
     const name = await fetch2(API.name).then(res => res.json());
-    if(!name.data.nickname){
+    if(!name.data?.nickname){
         console.error('未登录，请先登录');
+        console.log(name);
         return false;
     }else{
         console.log(`已登录，欢迎 ${name.data.nickname}`);
