@@ -1,6 +1,6 @@
 import { readline } from "../exe.ts";
 import { fetch2, getDocument, getSiteCookie, setRawCookie, NoRetryError } from "../main.ts";
-import { openFile, processContent } from "../main.ts";
+import { openFile, processContent, rpcNodeModule } from "../main.ts";
 import YDGConfig, { findInYDG } from './www.yeduge.com.t.ts';
 
 console.log('UAA限制蛮多，输入简介页将自动尝试从www.yeduge.com免费下载');
@@ -12,11 +12,25 @@ async function showCaptcha(caUrl: string, refer?: string) {
         }
     });
     if (!caRes.ok || !caRes.body) {
-        console.log('验证码获取失败，请重试');
-        return;
+        throw new Error('验证码获取失败，请重试');
     }
-    await Deno.writeFile('captcha.jpg', caRes.body);
-    openFile(Deno.realPathSync('captcha.jpg'))
+    await Deno.writeFile('captcha.png', caRes.body);
+    openFile(Deno.realPathSync('captcha.png'))
+
+    // OCR
+    // const res = await rpcNodeModule('ocr', {
+    //     fpath: Deno.realPathSync('captcha.png')
+    // }).then(r => r.text());
+    // console.log('验证码识别结果:', res);
+    // return res;
+
+    const captcha = await readline('请输入验证码 > ');
+    return captcha;
+}
+
+// 测试
+if (import.meta.main){
+    showCaptcha('https://www.uaa.com/email/captcha');
 }
 
 // login
@@ -39,11 +53,9 @@ while(true) try{
 
         // 验证码
         const caUrl = 'https://uaa.com/email/captcha';
-        await showCaptcha(caUrl);
-
-        const captcha = await readline('验证码 > ');
+        const captcha = await showCaptcha(caUrl);
         await fetch2('https://accounts.livechatinc.com/v2/customer/token'); // token
-        Deno.removeSync('captcha.jpg');
+        Deno.removeSync('captcha.png');
         const res = await fetch2('https://www.uaa.com/login', {
             method: 'POST',
             body: new URLSearchParams({
@@ -132,8 +144,7 @@ export default {
                 // 检测网络状况
                 if(code == '478'){
                     const chUrl = 'https://www.uaa.com/captcha';
-                    await showCaptcha(chUrl);
-                    const accessCode = await readline('请输入访问码 > ');
+                    const accessCode = await showCaptcha(chUrl, filled_data.url.toString());
 
                     const fe = await fetch2('https://www.uaa.com/checkLimitCode', {
                         method: 'POST',

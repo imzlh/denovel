@@ -5,15 +5,11 @@ import { Converter } from './t2cn.js';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { readline } from "./exe.ts";
 import { connect, ConnectResult } from "npm:puppeteer-real-browser";
-import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { Buffer } from "node:buffer";
-import { Agent as AgentS, AgentOptions } from 'node:https';
-import { Agent } from 'node:http';
-import fetchN, { Response as ResponseN, RequestInit as RequestInitN } from "npm:node-fetch";
+// import fetchN, { Response as ResponseN, RequestInit as RequestInitN } from "npm:node-fetch";
 
 import BlankPage from './static/blank.html' with { type: "text" };
 import { Cookie } from "npm:puppeteer@22.7.1";
-import { isArrayBufferView } from "node:util/types";
 import { assert } from "node:console";
 import { join } from "node:path";
 
@@ -23,7 +19,7 @@ const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
     args = parseArgs(Deno.args, {
         string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover', 'error-count', 'data-dir'],
-        boolean: ['help', 'epub', 'parted', 'translate', 'login', 'open-config-dir'],
+        boolean: ['help', 'epub', 'parted', 'translate', 'login', 'open-config-dir', 'no-overwrite'],
         alias: {
             h: 'help',
             n: 'name',
@@ -37,7 +33,8 @@ const parser = new DOMParser(),
             l: 'translate',
             b: 'cover',
             g: 'login',
-            d: 'data-dir'
+            d: 'data-dir',
+            w: 'no-overwrite'
         },
         default: {
             "data-dir": (function() {
@@ -94,6 +91,22 @@ function delaySaveConfig() {
         started_save_config = false;
         forceSaveConfig();
     }, 10000);
+}
+
+let subAPIProcess: Deno.ChildProcess | undefined;
+function startNodeSubAPI(){
+    if(subAPIProcess) return subAPIProcess;
+    console.log('Starting Node sub API...');
+    return subAPIProcess = new Deno.Command('node', {
+        "args": ['--experimental-modules', 'node/index.js']
+    }).spawn();
+}
+
+function rpcNodeModule(modName: string, args: Record<string, string | undefined>) {
+    startNodeSubAPI();
+    const path = new URL('/' + modName, "http://localhost:7384/");
+    for (const key in args) if(args[key]) path.searchParams.set(key, args[key]!);
+    return fetch(path).then(r => r.ok ? r : r.text().then(r => Promise.reject(new Error(r))));
 }
 
 // cookie from browser cookie header
@@ -352,7 +365,7 @@ async function fetch2(
     }
 
     // 重试逻辑（保持原有）
-    let response: Response | ResponseN | undefined;
+    let response: Response  | undefined // | ResponseN;
     for (var i = 0; i < (options.maxRetries ?? MAX_RETRY ?? 3); i++) {
         try {
             if(options.signal?.aborted)
@@ -361,31 +374,32 @@ async function fetch2(
             if(options.specificIP){
                 // deno fetch doesnot support specific IP
                 // use node-fetch instead
-                const ip = options.specificIP,
-                    ipFamily = ip.startsWith('[') ? 6 : 4,
-                    ipReal = ipFamily == 6 ? ip.slice(1, -1) : ip;
-                let body = options.body;
-                if(body instanceof ArrayBuffer)
-                    body = new Blob([body]);
-                if(isArrayBufferView(body))
-                    if(body.buffer instanceof ArrayBuffer)
-                        body = new Blob([body.buffer]);
-                    else throw new Error('SharedArrayBuffer body is not supported');
-                response = await fetchN(targetUrl.href, {
-                    ...options,
-                    body: body as RequestInitN['body'],
-                    agent(url){
-                        const agopt: AgentOptions = {
-                            lookup(hostname, options, callback){
-                                if(hostname != targetUrl.hostname)
-                                    return callback(null, [], 4);
-                                return callback(null, ipReal, ipFamily);
-                            },
-                            family: ipFamily
-                        };
-                        return url.protocol == 'https:'? new AgentS(agopt) : new Agent(agopt);
-                    }
-                });
+                throw new Error('This version stripped specific IP support');
+                // const ip = options.specificIP,
+                //     ipFamily = ip.startsWith('[') ? 6 : 4,
+                //     ipReal = ipFamily == 6 ? ip.slice(1, -1) : ip;
+                // let body = options.body;
+                // if(body instanceof ArrayBuffer)
+                //     body = new Blob([body]);
+                // if(isArrayBufferView(body))
+                //     if(body.buffer instanceof ArrayBuffer)
+                //         body = new Blob([body.buffer]);
+                //     else throw new Error('SharedArrayBuffer body is not supported');
+                // response = await fetchN(targetUrl.href, {
+                //     ...options,
+                //     body: body as RequestInitN['body'],
+                //     agent(url){
+                //         const agopt: AgentOptions = {
+                //             lookup(hostname, options, callback){
+                //                 if(hostname != targetUrl.hostname)
+                //                     return callback(null, [], 4);
+                //                 return callback(null, ipReal, ipFamily);
+                //             },
+                //             family: ipFamily
+                //         };
+                //         return url.protocol == 'https:'? new AgentS(agopt) : new Agent(agopt);
+                //     }
+                // });
             }else{
                 // use deno native fetch
                 response = await fetch(targetUrl, { 
@@ -421,9 +435,11 @@ async function fetch2(
     if (!response) throw new Error(`Fetch failed for ${targetUrl.href} after ${i} attempts`);
 
     // 从响应头中提取 Set-Cookie 并更新 cookieStore
-    const setCookieHeader = response.headers instanceof Headers
-        ? response.headers.getSetCookie()
-        : response.headers.raw()['set-cookie'] ?? [];
+    const setCookieHeader = 
+        // response.headers instanceof Headers
+        // ? 
+        response.headers.getSetCookie()
+        // : response.headers.raw()['set-cookie'] ?? [];
     setRawSetCookie(host, setCookieHeader);
 
     if ([301, 302, 303, 307, 308].includes(response.status) && (!options.redirect || options.redirect === 'follow')) {
@@ -592,7 +608,7 @@ class SimpleBrowser {
         } catch (e) {
             console.error(e);
         } finally {
-            await delay(1000).then(() => page.close({ runBeforeUnload: false }));
+            await sleep(1).then(() => page.close({ runBeforeUnload: false }));
         }
     }
 
@@ -1063,6 +1079,7 @@ function downloadFromTXT(fpath: string) {
  *  - v2: 完成重构，放弃维护两个函数，使用`tWrapper`兼容传统配置
  *  - v2.1: 支持CSS/HTML标签解析，如保留粗体格式<b>或`font-weight: bold`
  *  - v3: 现在可以保存进度，方便下次继续下载。
+ *  - v3.1: 修复大量问题
  * @param start_url 
  * @param options 
  * @returns 
@@ -1104,7 +1121,7 @@ async function downloadNovel(
         timestrap?: number,
         hide_meta?: boolean,
         skip_first_chapter?: boolean,
-        disable_overwrite?: boolean,
+        disable_overwrite?: boolean
     }
 ) {
     let url = new URL(start_url);
@@ -1149,7 +1166,18 @@ async function downloadNovel(
     if(options.info_generated && info) options.info_generated(info);
 
     // 打开文件
-    const fpath = (options.outdir ?? 'out') + '/' + removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt';
+    const fpath = join(options.outdir ?? 'out', removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt');
+    if(await exists(fpath)) try{
+        // 恢复上下文
+        return void await downloadFromTXT(fpath);
+    }catch(e){
+        options.reporter(Status.WARNING, '无法使用现有库存，可能不是由新版本denovel生成的');
+        options.reporter(Status.WARNING, fpath + 'e:' + (e instanceof Error ? e.message : e));
+        if(options.disable_overwrite){
+            options.reporter(Status.ERROR, '禁止覆盖已有文件');
+            return;
+        }
+    }
     const file = await Deno.open(fpath, {
         create: true, append: options.disable_overwrite, write: !options.disable_overwrite, read: false, truncate: !options.disable_overwrite
     });
@@ -1162,11 +1190,11 @@ async function downloadNovel(
 
     if(!options.chapter_id) options.chapter_id = 1;
     options.timestrap = Date.now();
-    options.last_chapter_url = url.href;
     let real_writed = 0;
     // 开始循环
     try{
         let errorcount = 0;
+        let prev_t: string | undefined = url.href;
         for await (let { title, content, next_link } of callbacks.default(url)) {
             if (options.sig_abort?.aborted) {
                 options.reporter(Status.CANCELLED, '下载被用户终止');
@@ -1214,13 +1242,14 @@ async function downloadNovel(
             if (options.disable_parted || !title || similarTitle(title, options.previous_title ?? '')) {
                 // 直接写入
                 text += '\n' + content;
-                options.last_chapter_url = next_link?.toString();
             } else {
                 text = (options.disable_parted ? '' : (`\r\n第${options.chapter_id++}章 ${title ?? ''}\r\n`))
-                    + (content ?? '[ERROR: 内容获取失败]') + '\r\n';
-                options.previous_title = title;
+                    + (content ?? '[ERROR: 内容获取失败]') + '\r\n';    
             }
 
+            options.previous_title = title;
+            options.last_chapter_url = prev_t;
+            prev_t = next_link ? String(next_link) : undefined;
             options.reporter(Status.DOWNLOADING, `第 ${options.chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
             if (options.sig_abort?.aborted) {
@@ -1330,6 +1359,7 @@ export default async function main(){
     -p, --parted            指定输入源为分完页的文本，这时不会输出自动生成的标题
     -e, --epub              输出epub文件
     -l, --translate         翻译模式，将输出的繁体翻译为简体中文
+    -w, --no-overwrite      禁止覆盖已有文件
     -b, --cover             封面URL，默认为空
         --error-count       指定多少次连续少内容时退出，默认10
     -g, --login             打开浏览器窗格。在这个窗格中，任何cookie都会被记录下来
@@ -1399,7 +1429,8 @@ export default async function main(){
             to_epub: args.epub,
             outdir: args.outdir,
             disable_parted: args.parted,
-            translate: args.translate
+            translate: args.translate,
+            disable_overwrite: args['no-overwrite']
         });
     else
         downloadNovel(start_url, {
@@ -1407,14 +1438,15 @@ export default async function main(){
             to_epub: args.epub,
             outdir: args.outdir,
             disable_parted: args.parted,
-            translate: args.translate
+            translate: args.translate,
+            disable_overwrite: args['no-overwrite']
         });
 }
 
 export { 
     NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
     args, downloadNovel, downloadFromTXT, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
-    forceSaveConfig, getAppDataDir, openFile,
+    forceSaveConfig, getAppDataDir, openFile, rpcNodeModule,
     processContent, defaultGetInfo, BatchDownloader, launchBrowser, tWrapper as traditionalAsyncWrapper
 };
 
