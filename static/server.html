@@ -74,6 +74,12 @@
             color: #555;
         }
 
+        .form-check {
+            margin: 0 8px;
+            transform-origin: center;
+            transform: scale(1.25);
+        }
+
         .form-control {
             width: 100%;
             padding: 12px 16px;
@@ -131,7 +137,6 @@
             padding: 15px;
             background: rgba(102, 126, 234, 0.05);
             border-radius: 8px;
-            display: none;
         }
 
         .sub-options.show {
@@ -572,6 +577,10 @@
                         <label for="outputDir">输出目录</label>
                         <input type="text" id="outputDir" class="form-control" value="./downloads" placeholder="例: ./downloads">
                     </div>
+                    <div class="form-group">
+                        <label for="overwritePrefer"><input type="checkbox" id="overwritePrefer" class="form-check" />允许覆盖</label>
+                        
+                    </div>
                     <div class="settings-buttons">
                         <button class="btn" onclick="saveSettings()">
                             💾 保存设置
@@ -677,7 +686,8 @@
         async function saveSettings() {
             const settings = {
                 delay: parseInt(document.getElementById('delay').value),
-                outputDir: document.getElementById('outputDir').value
+                outputDir: document.getElementById('outputDir').value,
+                overwrite: document.getElementById('overwritePrefer').checked
             };
 
             try {
@@ -708,6 +718,7 @@
                     const settings = await response.json();
                     document.getElementById('delay').value = settings.delay || 1000;
                     document.getElementById('outputDir').value = settings.outputDir || './downloads';
+                    document.getElementById('overwritePrefer').checked = !!settings.overwrite;
                     showToast('设置加载成功！', 'success');
                 }
             } catch (error) {

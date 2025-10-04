@@ -36,13 +36,15 @@ type Handler2 = (req: Request, url: URL) => PromiseOrNot<Response>;
 interface ServerSettings {
     delay: number;
     outputDir: string;
+    overwrite: boolean;
 }
 
 // 使用Deno KV作为缓存和队列存储
 const kv = await Deno.openKv(await getAppDataDir() + "/contentcache.db");
 let settings = (await kv.get<ServerSettings>(['winb.core.settings'])).value ?? {
     delay: 1000,
-    outputDir: "./downloads"
+    outputDir: "./downloads",
+    overwrite: false
 };
 
 // 简单路由系统
@@ -70,7 +72,8 @@ const routes: Record<string, Record<string, Handler2>> = {
                 const { url: novelUrl } = await req.json();
                 const needsMoreInfo = await downloadNovel(novelUrl, {
                     check_needs_more_data: true,
-                    traditional: await checkIsTraditional(new URL(novelUrl))
+                    traditional: await checkIsTraditional(new URL(novelUrl)),
+                    disable_overwrite: !settings.overwrite,
                 });
                 return new Response(JSON.stringify({ needsInfo: needsMoreInfo }), {
                     headers: { "Content-Type": "application/json" }
@@ -479,7 +482,8 @@ export default async function main() {
                                 sleep_time: settings.delay / 1000,
                                 outdir: settings.outputDir,
                                 no_input: true,
-                                translate: novelOptions.options?.translate
+                                translate: novelOptions.options?.translate,
+                                disable_overwrite: !settings.overwrite,
                             });
                             socket.send(JSON.stringify({
                                 finalChunk: true

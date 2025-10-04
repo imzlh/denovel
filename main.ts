@@ -1019,7 +1019,7 @@ async function* tWrapper(url: URL) {
 
         yield {
             content: data.content?.trim(), title: data.title?.trim(),
-            next_url
+            next_link: next_url
         };
         // __ = true;
     }
@@ -1194,7 +1194,7 @@ async function downloadNovel(
     // 开始循环
     try{
         let errorcount = 0;
-        let prev_t: string | undefined = url.href;
+        let cur_t: string | undefined = url.href;
         for await (let { title, content, next_link } of callbacks.default(url)) {
             if (options.sig_abort?.aborted) {
                 options.reporter(Status.CANCELLED, '下载被用户终止');
@@ -1248,8 +1248,8 @@ async function downloadNovel(
             }
 
             options.previous_title = title;
-            options.last_chapter_url = prev_t;
-            prev_t = next_link ? String(next_link) : undefined;
+            options.last_chapter_url = cur_t;
+            cur_t = next_link ? String(next_link) : undefined;
             options.reporter(Status.DOWNLOADING, `第 ${options.chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
             if (options.sig_abort?.aborted) {
