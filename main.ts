@@ -17,7 +17,7 @@ class NoRetryError extends Error { }
 
 const parser = new DOMParser(),
     utf8decoder = new TextDecoder('utf-8'),
-    args = parseArgs(Deno.args, {
+    args = parseArgs(import.meta.main ? Deno.args : [], {
         string: ['name', 'outdir', 'charset', 'sleep', 'retry', 'timeout', 'cover', 'error-count', 'data-dir'],
         boolean: ['help', 'epub', 'parted', 'translate', 'login', 'open-config-dir', 'no-overwrite'],
         alias: {
