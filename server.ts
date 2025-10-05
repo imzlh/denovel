@@ -279,10 +279,10 @@ async function handleContentRequest(_: Request, url: URL) {
                         headers: { "Content-Type": "text/plain; charset=UTF-8" }
                     });
                 }
-                const { content, title, next_url } = value;
+                const { content, title, next_link } = value;
                 info.title = title;
                 info.content = content;
-                info.nextChapter = next_url?.protocol.startsWith('http') ? next_url.toString() : undefined;
+                info.nextChapter = next_link?.protocol.startsWith('http') ? next_link.toString() : undefined;
             } catch {
                 endRequestTask();
                 return new Response("页面不存在", {
