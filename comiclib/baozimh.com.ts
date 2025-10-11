@@ -28,7 +28,7 @@ async function getImages2(page: string) {
         title = title2;
         imgs.push(...images);
         next = nextUrl;
-    } while(page && similarTitle(title, previousTitle));
+    } while(page && similarTitle(previousTitle, title));
     return [
         imgs,
         title,

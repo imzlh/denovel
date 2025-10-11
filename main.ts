@@ -711,13 +711,35 @@ enum Status {
     CANCELLED
 }
 
-function similarTitle(title1: string, title2: string) {
+/**
+ * 检测两个标题是否相似（用于分卷）
+ * 注意顺序会影响`strict`后的判断
+ * @param title1 标题1（先前的）
+ * @param title2 标题2（当前的）
+ * @param strict 是否严格匹配（标题末尾数字）
+ */
+function similarTitle(title1: string, title2: string, strict = true) {
     title1 = title1.trim(), title2 = title2.trim();
     if(title1 == title2) return true;
-    const format = /^\s*(.+?)\s*\(\d(?:\/\d)?\)\s*$/;
+    const format = /^\s*(.+?)\s*\(\d(?:[\/\-]\d)?\)\s*$/,
+        format2 = /^\s*(.+?)\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|\d{1,2})\s*$/;
     const t1res = title1.match(format),
         t2res = title2.match(format);
-    return t1res && t2res && t1res[1] == t2res[1];
+    let res = t1res && t2res && t1res[1] == t2res[1];
+    if (!res){
+        const t1res2 = title1.match(format2),
+            t2res2 = title2.match(format2);
+        if(t1res2 && t2res2 && t1res2[1] == t2res2[1]){
+            if(strict){
+                const map = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳',
+                    getId = (c: string) => /[0-9]/.test(c) ? parseInt(c) : map.indexOf(c);
+                res = getId(t2res2[2]) - getId(t1res2[2]) == 1;
+            }else{
+                res = true;
+            }
+        }
+    }
+    return res;
 }
 
 export const WRAP_EL = [
@@ -1240,7 +1262,7 @@ async function downloadNovel(
 
             // 章节分卷？
             let text = '';
-            if (options.disable_parted || !title || similarTitle(title, options.previous_title ?? '')) {
+            if (options.disable_parted || !title || similarTitle(options.previous_title ?? '', title, true)) {
                 // 直接写入
                 text += '\n' + content;
             } else {
