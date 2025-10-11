@@ -86,9 +86,10 @@ async function buildDB() {
     console.log('数据库构建完成，共计', list.length, '本小说');
 }
 
-async function updateDB(){
+async function updateDB(record = false){
     const dbLastUpdate = (await db.get(['meta', 'last_update'])).value as number ?? 0;
     let pageID = 1, newBookCount = 0;
+    const newRecord = [];
     while(true){
         const res = await fetch(updateAPI.replace('{{page}}', pageID.toString())).then(r => r.json());
         assert(res.code == '200', '获取小说列表失败');
@@ -99,6 +100,7 @@ async function updateDB(){
         if(index != -1) list.splice(index);
 
         await __update_db(list);
+        if(record) newRecord.push(...list);
         pageID ++;
         newBookCount += list.length;
 
@@ -106,6 +108,7 @@ async function updateDB(){
     }
 
     console.log('数据库更新完成，共计', pageID - 1, '页', newBookCount, '本小说');
+    return newRecord;
 }
 
 async function findInDB(name: string) {
@@ -165,9 +168,17 @@ async function main() {
   4. 退出`);
         const input = await readline('>');
         switch (input) {
-            case '1':
-                await updateDB();
+            case '1':{
+                const nr = await updateDB(true);
+                if(nr.length < 100) {
+                    for (const novel of nr){
+                        showNovelInfo(novel);
+                    }
+                }else{
+                    console.log('更新小说数目过多，不予展示');
+                }
                 break;
+            }
             case '2':{
                 console.log('请输入要搜索的小说名：');
                 const name = await readline('?');

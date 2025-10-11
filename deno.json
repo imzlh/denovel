@@ -1,6 +1,7 @@
 {
   "tasks": {
     "server": "deno run -A --unstable-raw-imports --unstable-ffi --unstable-kv server.ts",
+    "epub": "deno run -A --unstable-raw-imports --unstable-ffi --unstable-kv 2epub.ts",
     "dev": "deno run -A --watch --unstable-raw-imports --unstable-ffi --unstable-kv server.ts",
     "down": "deno run -A --unstable-raw-imports --unstable-ffi main.ts -e -s 2 -w",
     "lanzou": "deno run -A --unstable-raw-imports lanzoudl.ts",
