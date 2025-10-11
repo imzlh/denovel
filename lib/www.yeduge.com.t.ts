@@ -6,7 +6,7 @@ export default {
     next_link: 'body > main > section:nth-child(2) > div > a:nth-child(3)',
 
     // https://www.yeduge.com/book/92001/
-    mainPageLike: /yeduge\.com\/book\/\d+\/?$/,
+    mainPageLike: /yeduge\.com\/(?:free)?book\/\d+\/?$/,
     mainPageTitle: 'body > main > section.novel > div.detail > div.info > h1',
     mainPageCover: 'body > main > section.novel > div.detail > div.cover > img',
     mainPageSummary: 'body > main > section.novel > div.desc',
