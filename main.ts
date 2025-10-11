@@ -1130,6 +1130,7 @@ async function downloadNovel(
     if(!options.outdir) options.outdir = args.outdir;
     await ensureDir(options.outdir); 
     if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
+    const sleep_time = options.sleep_time /2;
     const callbacks: {
         default: Callback;
         getInfo?: typeof defaultGetInfo2;
@@ -1260,7 +1261,7 @@ async function downloadNovel(
             real_writed ++;
             await Promise.all([
                 file.write(new TextEncoder().encode(text)),
-                sleep(Math.random() * options.sleep_time!),
+                sleep(Math.random() * sleep_time + sleep_time),
             ]);
         }
     }catch(e){
