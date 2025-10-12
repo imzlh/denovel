@@ -999,6 +999,17 @@ async function defaultGetInfo2(page: URL, networkHandler?: typeof fetch): Promis
     return info;
 }
 
+async function getInfoEX(url: URL): Promise<MainInfoResult | null> {
+    if(await checkIsTraditional(url)){
+        const cfg = (await import('./lib/' + url.hostname + '.t.ts')).default;
+        return await defaultGetInfo(url, { ...cfg, networkHandler: fetch });
+    }else{
+        const cfg = await import('./lib/' + url.hostname + '.n.ts');
+        assert(cfg.getInfo, 'getInfo() is required');
+        return await cfg.getInfo(url);
+    }
+}
+
 export const convert = Converter({ from: 'tw', to: 'cn' });
 
 // 包装配置
@@ -1511,7 +1522,7 @@ export default async function main(){
 
 export { 
     NoRetryError, similarTitle, tryReadTextFile, getDocument, removeIllegalPath, exists, existsSync, moduleExists,
-    args, downloadNovel, downloadFromTXT, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional,
+    args, downloadNovel, downloadFromTXT, fetch2, getSiteCookie, setRawCookie, fromHTML, removeNonVisibleChars, Status, sleep, checkIsTraditional, getInfoEX,
     forceSaveConfig, getAppDataDir, openFile, rpcNodeModule,
     processContent, defaultGetInfo, BatchDownloader, launchBrowser, tWrapper as traditionalAsyncWrapper
 };

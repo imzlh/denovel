@@ -1,14 +1,17 @@
 import { parseArgs } from "jsr:@std/cli/parse-args";
 import { basename, dirname } from "jsr:@std/path";
 import { generateEpub, EpubContentOptions, EpubOptions } from "./genepub.ts";
-import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL, fromHTML, Status } from "./main.ts";
+import { exists, PRESERVE_EL, tryReadTextFile, WRAP_EL, fromHTML, Status, sleep, fetch2 } from "./main.ts";
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
-import { assert } from "node:console";
 
 // deno-lint-ignore no-control-regex
 const rep = /[\x00-\x1F\x7F-\x9F\u200B-\u200F\uFEFF]/g;
 const MAX_CHARS_PER_CHAPTER = 1e4 *5; // 5w字阈值
 const MIN_CHARS_PER_CHAPTER = 80;   // 80字最少
+
+const hostReplace = {
+    "novel-cdn.kuangxiangit.com": "c1.kuangxiangit.com"
+};
 
 // 1~奇怪的传单
 // chapter 1~偷吃？不，没有
@@ -399,7 +402,7 @@ export const encodeContent = (str: string, jpFormat = false) => {
 
 export default async function main() {
     const args = parseArgs(Deno.args, {
-        string: ['output', 'chapter-max'],
+        string: ['output', 'chapter-max', 'pending-limit'],
         boolean: ['help', 'delete', 'force', 'delete-exist', 'test-title', 'jp-format', 'merge'],
         alias: {
             o: 'output',
@@ -410,7 +413,8 @@ export default async function main() {
             c: 'chapter-max',
             t: 'test-title',
             j: 'jp-format',
-            m: 'merge'
+            m: 'merge',
+            l: 'pending-limit'
         }
     });
 
@@ -421,17 +425,17 @@ Usage:
   deno run 2epub.ts [options] <input>
     
 Options:
-    -o, --output <output>  Output dir (default: auto-generated)
-    -h, --help             Show help
-    -d, --delete           Delete input file after conversion
-    -f, --force            Overwrite existing output file
-    -e, --delete-exist     Delete source file if existing output file
-    -c, --chapter-max <n>  Max chars per chapter (default: 1w)
-    -t, --test-title <t>   Test title whether it can be processed correctly
-    -m, --merge            Merge chapters less than 10 chars into one chapter
-    -j, --jp-format        Format for special translated books(mostly for Japanese/Korean light novel)
-    -m, --merge            Merge chapters less than 10 chars into one chapter(mostly for 2txt processed text)
-    
+    -o, --output <output>       Output dir (default: auto-generated)
+    -h, --help                  Show help
+    -d, --delete                Delete input file after conversion
+    -f, --force                 Overwrite existing output file
+    -e, --delete-exist          Delete source file if existing output file
+    -c, --chapter-max <n>       Max chars per chapter (default: 1w)
+    -t, --test-title <t>        Test title whether it can be processed correctly
+    -m, --merge                 Merge chapters less than 10 chars into one chapter
+    -j, --jp-format             Format for special translated books(mostly for Japanese/Korean light novel)
+    -l, --pending-limit <n>     Enable pending task limit to avoid OOM (default: 0, no limit)
+
 Example:
     deno run 2epub.ts input.txt -m -o output.epub`);
         Deno.exit(0);
@@ -469,11 +473,13 @@ Example:
     }
 
     let chapMax = MAX_CHARS_PER_CHAPTER;
+    const pendingLimit = parseInt(args['pending-limit'] || '0');
     if (args['chapter-max']) chapMax = parseInt(args['chapter-max']);
     if (isNaN(chapMax) || chapMax < 1) chapMax = MAX_CHARS_PER_CHAPTER;
 
     console.time('convert');
     await ensureDir(output);
+    let pendingTasks = 0;
     for (const file of files) try {
         const ofile = output + '/' + basename(file, '.txt') + '.epub';
         if (await exists(ofile)) {
@@ -490,11 +496,41 @@ Example:
         }
 
         const data = tryReadTextFile(file);
-        const res = toEpub(data, file, ofile, {
-            per_page_max: chapMax,
-            merge: args.merge,
-            jpFormat: args["jp-format"]
-        });
+        let res;
+        try{
+            res = toEpub(data, file, ofile, {
+                per_page_max: chapMax,
+                merge: args.merge,
+                jpFormat: args["jp-format"],
+                thenCB() {
+                    pendingTasks --;
+                },
+                networkHandler(inp, ini){
+                    if(inp instanceof Request){
+                        return fetch(inp);
+                    }
+                    inp = new URL(inp, ini?.referrer);
+                    for (const host in hostReplace) {
+                        if (inp.hostname == host){
+                            // @ts-ignore replace hostname
+                            inp.hostname = hostReplace[host];
+                        }
+                    }
+                    return fetch2(inp, {
+                        ... (ini ?? {}),
+                        timeoutSec: 10
+                    });
+                }
+            });
+            if(res) pendingTasks ++;
+        }catch(e){
+            pendingTasks --;
+            throw e;
+        }
+        while(pendingLimit != 0 && pendingTasks >= pendingLimit){
+            console.log(`Pending task limit reached, waiting for ${pendingTasks} tasks to complete...`);
+            await sleep(1);
+        }
         if (res)
             console.log(`"${file}" has been converted to "${basename(file, '.txt')}.epub"`);
         console.timeLog('convert');

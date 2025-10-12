@@ -26,3 +26,4 @@ error.html
 captcha.*
 test.*
 *.traineddata
+noveldb/**
