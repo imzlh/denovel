@@ -10,8 +10,8 @@ import { Buffer } from "node:buffer";
 
 import BlankPage from './static/blank.html' with { type: "text" };
 import { Cookie } from "npm:puppeteer@22.7.1";
-import { assert } from "node:console";
 import { join } from "node:path";
+import assert from "node:assert";
 
 class NoRetryError extends Error { }
 
@@ -1067,28 +1067,40 @@ async function checkIsTraditional(siteURL: URL) {
     return res;
 }
 
-function downloadFromTXT(fpath: string) {
+function downloadFromTXT(fpath: string, override: Parameters<typeof downloadNovel>[1] = {}) {
     const content = tryReadTextFile(fpath).trimEnd().split(/[\r\n]+/);
     let text = '';
+    if(!override.reporter) override.reporter = (status, msg, e) =>
+        console.log(`[ ${Status[status]} ] ${msg}`, e?.message ?? '');
     // 最后一行理应为[/comment]
-    assert(content.pop() == '[/comment]', '找不到denovel META。如果上一次中断，请手动打开txt并删除最后一次[/comment]后内容');
+    if(content.pop() != '[/comment]'){
+        override.reporter(Status.ERROR, '找不到denovel META。如果上一次中断，请手动打开txt并删除最后一次[/comment]后内容');
+        throw new Error('Cannot find denovel META');
+    }
     for(let i = content.length - 1; i >= 0; i--){
         if(content[i] == META_HEADER) break;
         text = content[i] + text;
     }
-    if(!text) throw new Error('未找到denovel META');
+    if(!text){
+        override.reporter(Status.ERROR, 'denovel META为空');
+        throw new Error('META is empty');
+    }
     let res: Parameters<typeof downloadNovel>[1];
     try{
         res = JSON.parse(text);
         if(!res.last_chapter_url) throw new Error('缺少last_chapter_url');
     }catch(e){
-        throw new Error('META解析失败：' + (e instanceof Error ? e.message : e));
+        override.reporter(Status.ERROR, 'META解析失败：' + (e instanceof Error ? e.message : e));
+        throw new Error('META解析失败');
     }
+    override.reporter(Status.QUEUED, '继续断点下载, start=' + res.last_chapter_url);
     return downloadNovel(res.last_chapter_url, {
         ...res,
         hide_meta: true,
         skip_first_chapter: true,
-        disable_overwrite: true
+        disable_overwrite: true,
+        no_continue: true,
+        ...override
     });
 }
 
@@ -1143,12 +1155,13 @@ async function downloadNovel(
         timestrap?: number,
         hide_meta?: boolean,
         skip_first_chapter?: boolean,
-        disable_overwrite?: boolean
+        disable_overwrite?: boolean,
+        no_continue?: boolean
     }
 ) {
     let url = new URL(start_url);
     if(!options.reporter) options.reporter = (status, msg, e) =>
-            console.log(`[ ${Status[status]} ] ${msg}`, e?.message);
+            console.log(`[ ${Status[status]} ] ${msg}`, e?.message ?? '');
     if(!options.outdir) options.outdir = args.outdir;
     await ensureDir(options.outdir); 
     if(undefined === options.sleep_time) options.sleep_time = SLEEP_INTERVAL;
@@ -1190,12 +1203,12 @@ async function downloadNovel(
 
     // 打开文件
     const fpath = join(options.outdir ?? 'out', removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt');
-    if(await exists(fpath)) try{
+    if(!options.no_continue && await exists(fpath)) try{
         // 恢复上下文
         return void await downloadFromTXT(fpath);
     }catch(e){
-        options.reporter(Status.WARNING, '无法使用现有库存，可能不是由新版本denovel生成的');
-        options.reporter(Status.WARNING, fpath + 'e:' + (e instanceof Error ? e.message : e));
+        options.reporter(Status.WARNING, '无法使用现有库存，可能不是由新版本denovel生成的或没有完全下载完');
+        options.reporter(Status.WARNING, fpath + ', e:' + (e instanceof Error ? e.message : e));
         if(options.disable_overwrite){
             options.reporter(Status.ERROR, '禁止覆盖已有文件');
             return;
@@ -1219,10 +1232,6 @@ async function downloadNovel(
         let errorcount = 0;
         let cur_t: string | undefined = url.href;
         for await (let { title, content, next_link } of callbacks.default(url)) {
-            if (options.sig_abort?.aborted) {
-                options.reporter(Status.CANCELLED, '下载被用户终止');
-                break;
-            }
 
             if (options.skip_first_chapter){
                 options.skip_first_chapter = undefined;
@@ -1285,6 +1294,11 @@ async function downloadNovel(
                 file.write(new TextEncoder().encode(text)),
                 sleep(Math.random() * sleep_time + sleep_time),
             ]);
+
+            if (options.sig_abort?.aborted) {
+                options.reporter(Status.CANCELLED, '下载被用户终止');
+                break;
+            }
         }
     }catch(e){
         options.reporter(Status.WARNING, '发生错误,下载结束', e as Error);
@@ -1421,9 +1435,20 @@ export default async function main(){
         Deno.exit(0);
     }
 
+    const globalExitSignal = new AbortController();
+    let exiting = 0;
+    Deno.addSignalListener('SIGINT', () => {
+        globalExitSignal.abort()
+        console.log('^C');
+        if(exiting ++ == 0) console.log('等待任务终止，或再按两下Ctrl-C退出...')
+        if(exiting >= 3) Deno.exit(0)
+    });
+
     if(typeof arg_0 === 'string' && arg_0.endsWith('.txt')){
         console.log('从文件下载小说');
-        await downloadFromTXT(arg_0);
+        await downloadFromTXT(arg_0, {
+            sig_abort: globalExitSignal.signal
+        });
         Deno.exit(0);
     }
 
@@ -1453,7 +1478,8 @@ export default async function main(){
             outdir: args.outdir,
             disable_parted: args.parted,
             translate: args.translate,
-            disable_overwrite: args['no-overwrite']
+            disable_overwrite: args['no-overwrite'],
+            sig_abort: globalExitSignal.signal
         });
     else
         downloadNovel(start_url, {
@@ -1462,7 +1488,8 @@ export default async function main(){
             outdir: args.outdir,
             disable_parted: args.parted,
             translate: args.translate,
-            disable_overwrite: args['no-overwrite']
+            disable_overwrite: args['no-overwrite'],
+            sig_abort: globalExitSignal.signal
         });
 }
 
