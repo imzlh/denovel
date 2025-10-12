@@ -1,52 +1,40 @@
-import { getDocument, processContent, sleep } from "../main.ts";
+import { getDocument, launchBrowser, processContent, sleep } from "../main.ts";
 
 console.log('请务必使用"--parted -p"标志！本程序无法自动分离标题！');
 
 const CTX_SELECTOR = '.d_post_content';
 const MIN_CHARS = 200;
-const NEXT_PAGE = '#thread_theme_7 > div.l_thread_info > ul > li.l_pager.pb_list_pager > a';
+const NEXT_PAGE = 'div.l_thread_info > ul > li.l_pager > a:nth-last-child(2)';
 const NEXT_PAGE_NAME = '下一页';
 
-async function getChaps(url: string){
-    const doc = await getDocument(url);
-    const res = { c: [] as Array<string>, next: '' }
-    for(const el of doc.querySelectorAll(CTX_SELECTOR)){
-        const txt = processContent(el);
-        if(txt.length >= MIN_CHARS){
-            res.c.push(txt);
+export default (async function* (_url: URL | string) {
+    let curUrl: URL | undefined = new URL(_url);
+    while(curUrl){
+        const doc = await getDocument(curUrl, {
+            ignore_status: true
+        });
+        if(doc.getElementsByTagName('title')[0].innerText.includes('百度安全验证')){
+            console.log('百度安全验证，查水表了!');
+            await launchBrowser(curUrl, true);
+            continue;
         }
-    }
-    const el = Array.from(doc.querySelectorAll(NEXT_PAGE)).at(-2);
-    if(el?.innerText == NEXT_PAGE_NAME){
-        const href = el.getAttribute('href');
-        res.next = href ? new URL(href, url).href : '';
-    }
-    return res;
-}
-
-export default (async function* (urlStart: URL | string) {
-    let contents: string[] = [];
-    let nextUrl = urlStart.toString();
-
-    while (true) {
-        // 加载新内容
-        if (contents.length === 0) {
-            if (!nextUrl) break; // 终止条件
-            
-            const result = await getChaps(nextUrl);
-            contents = result.c;
-            nextUrl = result.next;
-            
-            if (contents.length === 0) {
-                throw new Error('Failed to load chapter content');
-            }
+        let text = '';
+        for(const el of doc.querySelectorAll(CTX_SELECTOR)){
+            const txt = processContent(el, {}, new URL(curUrl));
+            if(txt.length >= MIN_CHARS || txt.includes('[img')) text += txt;
+        }
+        const el = doc.querySelector(NEXT_PAGE);
+        let next_link = undefined;
+        if(el?.innerText == NEXT_PAGE_NAME){
+            const href = el.getAttribute('href');
+            next_link = href ? new URL(href, curUrl) : undefined;
         }
 
-        // 产出内容
         yield {
-            content: contents.join('\n'),
-            title: '',       // 保持与原逻辑兼容
-            next_link: nextUrl
-        };
+            title: '',
+            content: text,
+            next_link
+        }
+        curUrl = next_link;
     }
 } satisfies Callback);

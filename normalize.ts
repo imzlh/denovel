@@ -30,7 +30,7 @@ if(import.meta.main && Deno.args.length > 0){
     const dir = Deno.args[0];
     Deno.chdir(dir);
     const filemap: Record<string, [string, number][]> = {};
-    for await (const entry of Deno.readDir(".")) {
+    for (const entry of Deno.readDirSync(".")) {
         if (entry.isFile) {
             const name = entry.name;
             const match = name.match(regexp);

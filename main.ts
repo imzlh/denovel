@@ -1200,8 +1200,8 @@ async function downloadNovel(
                 return true;
             else
                 return false;
-        !options.cover && !options.no_input && (options.cover = await readline("请输入封面URL(可选) >> ") || '');
         !options.book_name && !options.no_input && (options.book_name = await readline("请输入书名 >> ") || '');
+        !options.cover && !options.no_input && (options.cover = await readline("请输入封面URL(可选) >> ") || '');
         if(!options.book_name){
             throw new Error('请输入书名');
         }
@@ -1332,6 +1332,13 @@ async function downloadNovel(
     }
     await file.sync();
     file.close();
+
+    if(real_writed == 0){
+        // delete empty file
+        await Deno.remove(fpath);
+        options.reporter(Status.ERROR, '下载失败，文件为空');
+        return;
+    }
 
     if (!options.sig_abort?.aborted && options.to_epub) {
         options.reporter(Status.CONVERTING, '开始生成epub文件');
@@ -1477,36 +1484,29 @@ export default async function main(){
     if(!args.sleep) console.warn('警告：缺少-s参数，可能导致DDOS防护拦截');
     console.log.apply(console, logs);
 
+    const initArgs = {
+        traditional: false,
+        to_epub: args.epub,
+        outdir: args.outdir,
+        disable_parted: args.parted,
+        translate: args.translate,
+        disable_overwrite: args['no-overwrite'],
+        sig_abort: globalExitSignal.signal
+    } as Parameters<typeof downloadNovel>[1];
+
     if (Deno.stdin.isTerminal() || Deno.env.has('DENOVEL_TERMINAL')){
         start_url = arg_0 || await readline("请输入起始URL >> ") || '';
         // cover = args.cover || await readline("请输入封面URL(可选,自动) >> ");
     } else {
         start_url = JSON.parse(Deno.readTextFileSync('debug.json')).url;
         console.log('从debug.json中读取url:', start_url);
+        initArgs.no_input = true;
+        initArgs.book_name = 'debug';
     }
     if (!start_url) Deno.exit(1);
 
-    const host = new URL(start_url).hostname;
-    if (await checkIsTraditional(new URL(start_url)))
-        downloadNovel(start_url, {
-            traditional: true,
-            to_epub: args.epub,
-            outdir: args.outdir,
-            disable_parted: args.parted,
-            translate: args.translate,
-            disable_overwrite: args['no-overwrite'],
-            sig_abort: globalExitSignal.signal
-        });
-    else
-        downloadNovel(start_url, {
-            traditional: false,
-            to_epub: args.epub,
-            outdir: args.outdir,
-            disable_parted: args.parted,
-            translate: args.translate,
-            disable_overwrite: args['no-overwrite'],
-            sig_abort: globalExitSignal.signal
-        });
+    initArgs.traditional = await checkIsTraditional(new URL(start_url));
+    await downloadNovel(start_url, initArgs);
 }
 
 export { 
