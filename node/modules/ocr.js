@@ -25,8 +25,6 @@ export default async  function ocr(req, res, url) {
 if (import.meta.main) {
     // test OCR
     const fctx = readFileSync('./test.png');
-    const rs = await worker.recognize(fctx, {}, {
-        ""
-    });
+    const rs = await worker.recognize(fctx, {});
     console.log(rs.data);
 }

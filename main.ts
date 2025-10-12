@@ -721,7 +721,7 @@ enum Status {
 function similarTitle(title1: string, title2: string, strict = true) {
     title1 = title1.trim(), title2 = title2.trim();
     if(title1 == title2) return true;
-    const format = /^\s*(.+?)\s*\(\d(?:[\/\-]\d)?\)\s*$/,
+    const format = /^\s*(.+?)\s*[\(（]\d(?:[\/\-]\d)?[\)）]\s*$/,
         format2 = /^\s*(.+?)\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|\d{1,2})\s*$/;
     const t1res = title1.match(format),
         t2res = title2.match(format);
@@ -1067,7 +1067,15 @@ async function checkIsTraditional(siteURL: URL) {
     return res;
 }
 
-function downloadFromTXT(fpath: string, override: Parameters<typeof downloadNovel>[1] = {}) {
+/**
+ * 从TXT文件中恢复下载进度，并继续下载。
+ * 
+ * @param fpath 文件路径
+ * @param override 覆盖配置(注意，随意修改可能导致下载失败)
+ * @param defaults 默认配置(安全配置，部分会被程序覆盖)
+ * @returns 
+ */
+function downloadFromTXT(fpath: string, override: Parameters<typeof downloadNovel>[1] = {}, defaults: Parameters<typeof downloadNovel>[1] = {}) {
     const content = tryReadTextFile(fpath).trimEnd().split(/[\r\n]+/);
     let text = '';
     if(!override.reporter) override.reporter = (status, msg, e) =>
@@ -1095,6 +1103,7 @@ function downloadFromTXT(fpath: string, override: Parameters<typeof downloadNove
     }
     override.reporter(Status.QUEUED, '继续断点下载, start=' + res.last_chapter_url);
     return downloadNovel(res.last_chapter_url, {
+        ...defaults,
         ...res,
         hide_meta: true,
         skip_first_chapter: true,
@@ -1205,7 +1214,7 @@ async function downloadNovel(
     const fpath = join(options.outdir ?? 'out', removeIllegalPath(options.book_name ?? args.name ?? 'unknown') + '.txt');
     if(!options.no_continue && await exists(fpath)) try{
         // 恢复上下文
-        return void await downloadFromTXT(fpath);
+        return void await downloadFromTXT(fpath, {}, options);
     }catch(e){
         options.reporter(Status.WARNING, '无法使用现有库存，可能不是由新版本denovel生成的或没有完全下载完');
         options.reporter(Status.WARNING, fpath + ', e:' + (e instanceof Error ? e.message : e));
@@ -1285,6 +1294,7 @@ async function downloadNovel(
             options.reporter(Status.DOWNLOADING, `第 ${options.chapter_id - 1} 章  ${title || ''} (${text.length})`);
 
             if (options.sig_abort?.aborted) {
+                await file.write(new TextEncoder().encode(text));
                 options.reporter(Status.CANCELLED, '下载被用户终止');
                 break;
             }
@@ -1294,6 +1304,11 @@ async function downloadNovel(
                 file.write(new TextEncoder().encode(text)),
                 sleep(Math.random() * sleep_time + sleep_time),
             ]);
+
+            if (options.last_chapter_url == next_link?.toString()){
+                options.reporter(Status.ERROR, '出现无效循环(next_link未变化)，下载结束');
+                break;
+            }
 
             if (options.sig_abort?.aborted) {
                 options.reporter(Status.CANCELLED, '下载被用户终止');
@@ -1306,6 +1321,7 @@ async function downloadNovel(
 
     // meta: 必须写入，否则无法识别
     if(real_writed){
+        options.sig_abort = undefined;  // remove signal
         await file.write(new TextEncoder().encode(
             '\r\n[comment]' + 
             '\r\n' + 
