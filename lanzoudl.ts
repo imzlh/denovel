@@ -8,6 +8,8 @@ import { basename, dirname, join } from "jsr:@std/path@^1.0";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { Document, DOMParser } from "jsr:@b-fuze/deno-dom";
 import { readline } from "./exe.ts";
+import ProgressBar from "https://deno.land/x/progressbar@v0.2.0/progressbar.ts";
+import { amountWidget, percentageWidget } from "https://deno.land/x/progressbar@v0.2.0/widgets.ts";
 
 interface LanZouFile {
     icon: string;
@@ -316,7 +318,7 @@ async function downloadFile(docurl: string) {
     throw new Error('下载 ' + docurl +' 失败: 找不到文件下载链接！');
 }
 
-async function downloadCorutine(file: LanZouFile) {
+async function downloadCorutine(file: LanZouFile, report: (more: number) => any) {
     try{
         if(await exists(join('lanout', file._path))){
             console.log(`文件 ${file._path} 已存在，跳过下载...`);
@@ -329,14 +331,46 @@ async function downloadCorutine(file: LanZouFile) {
             f = await downloadFile(file._link);
         }while(!f.ok)
         if(!f?.body) throw new Error('下载 ' + file._path +' 失败！');
-        await Deno.writeFile(`lanout/${file._path}`, f?.body!);
-        console.log(`下载 ${basename(file._path)} 成功，大小: ${file.size} 字节！`);
+        const stream = new TransformStream<Uint8Array<ArrayBufferLike>>({
+            transform(chunk){
+                report(chunk.byteLength);
+            }
+        });
+        f.body.pipeTo(stream.writable);
+        await Deno.writeFile(`lanout/${file._path}`, stream.readable);
+        // console.log(`下载 ${basename(file._path)} 成功，大小: ${file.size} 字节！`);
     }catch(e){
         console.error(e);
     }
 }
 
-const CO_COUNT = 8;
+function parseFileSize(sizeStr: string): number {
+    const units: Record<string, number> = {
+        'B': 1,
+        'K': 1024,
+        'M': 1024 * 1024,
+        'G': 1024 * 1024 * 1024
+    };
+
+    const match = sizeStr.match(/^([\d.]+)\s*([BKMGT])?/i);
+    if (!match) return 0;
+
+    const value = parseFloat(match[1]);
+    const unit = match[2]?.toUpperCase() || 'B';
+    return value * (units[unit] || 1);
+}
+
+function sizeToHuman(size: number): string {
+    const units = ['B', 'K', 'M', 'G'];
+    let unit = 0;
+    while (size >= 1024 && unit < units.length - 1) {
+        size /= 1024;
+        unit++;
+    }
+    return `${size.toFixed(2)}${units[unit]}`;
+}
+
+const CO_COUNT = 16;
 export default async function main() {
     let files: LanZouFile[] = [];
     
@@ -355,8 +389,23 @@ export default async function main() {
 
     await ensureDir('lanout');
     for (let i = 0; i < files.length; i+=CO_COUNT){
+        console.clear();
         console.log(`## 开始下载第 ${i/CO_COUNT+1}/${Math.ceil(files.length/CO_COUNT+1)} 批文件...`);
-        await Promise.all(files.slice(i, i + CO_COUNT).map(downloadCorutine));
+        const total = files.slice(i, i + CO_COUNT).reduce((acc, cur) => acc + parseFileSize(cur.size), 0);
+        const startTime = Date.now();
+        const prog = new ProgressBar({
+            total: total,
+            widgets: [
+                percentageWidget, 
+                (i, t) => `${sizeToHuman(i)}/${sizeToHuman(t)}`,
+                // 速度
+                (i, t) => `${sizeToHuman((i / (Date.now() - startTime)) * 1000)}/s`,
+            ]
+        });
+        let curr = 0;
+        await prog.start();
+        await Promise.all(files.slice(i, i + CO_COUNT).map(it => downloadCorutine(it, s => prog.update(curr += s))));
+        await prog.finish();
     }
 }
 if(import.meta.main) main();

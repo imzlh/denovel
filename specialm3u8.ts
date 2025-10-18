@@ -110,6 +110,8 @@ async function rewriteM3U8(content: string, baseUrl: string): Promise<string> {
 
             if (trimmedLine.startsWith('http')) {
                 fullUrl = trimmedLine;
+            } else if (trimmedLine.startsWith('//')) {
+                fullUrl = `http:${trimmedLine}`;
             } else if (trimmedLine.startsWith('/')) {
                 fullUrl = `${base.origin}${trimmedLine}`;
             } else {
