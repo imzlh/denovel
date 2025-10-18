@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小说批量导入</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .description {
+            margin-bottom: 20px;
+            color: #666;
+            text-align: center;
+        }
+
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        button.secondary {
+            background-color: white;
+            color: #3498db;
+            border: 1px solid #3498db;
+        }
+
+        button.secondary:hover {
+            background-color: #f0f4f8;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .status.success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+            display: block;
+        }
+
+        .status.error {
+            background-color: #ffebee;
+            color: #c62828;
+            display: block;
+        }
+
+        .result {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+
+        .result-item {
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            word-wrap: break-word;
+            overflow: hidden;
+        }
+
+        .result-item.success {
+            border-left: 4px solid #4CAF50;
+        }
+
+        .result-item.error {
+            border-left: 4px solid #f44336;
+        }
+
+        .loading {
+            text-align: center;
+            display: none;
+            margin: 20px 0;
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #3498db;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>小说批量导入</h1>
+        <p class="description">在此处批量导入小说链接，每行一个URL
+        <br>选择覆盖会覆盖掉之前的导入结果，请谨慎操作！</p>
+        
+
+        <textarea id="urls" placeholder="请输入小说链接，每行一个，支持自动提取链接，例如：
+https://www.example.com/novel/1
+这是我推荐的小说：https://www.example.com/novel/2
+Hello! https://www.example.com/novel/3 is my favorite novel."></textarea>
+
+        <div class="options">
+            <input type="checkbox" name="overwrite" id="overwrite">
+            <label for="overwrite">覆盖</label>
+        </div>
+
+        <div class="buttons">
+            <button id="importBtn">开始导入</button>
+            <button class="secondary" id="clearBtn">清空</button>
+        </div>
+
+        <div id="status" class="status"></div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>正在处理中...</p>
+        </div>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        function extractURL(text) {
+            if(text[0] == '[' && text[text.length - 1] == ']')
+                text = text.slice(1, -1);
+            const urlRegex = /https?:\/\/[^\s]+/g;
+            const match = text.match(urlRegex);
+            return match && match[0];
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const importBtn = document.getElementById('importBtn');
+            const overwriteCB = document.getElementById('overwrite');
+            const clearBtn = document.getElementById('clearBtn');
+            const urlsTextarea = document.getElementById('urls');
+            const statusDiv = document.getElementById('status');
+            const loadingDiv = document.getElementById('loading');
+            const resultDiv = document.getElementById('result');
+
+            // 清空按钮点击事件
+            clearBtn.addEventListener('click', function () {
+                urlsTextarea.value = '';
+                resultDiv.innerHTML = '';
+                statusDiv.style.display = 'none';
+            });
+
+            // 导入按钮点击事件
+            importBtn.addEventListener('click', async function () {
+                const urls = urlsTextarea.value.trim();
+                if (!urls) {
+                    showStatus('请输入至少一个URL', 'error');
+                    return;
+                }
+
+                const urlList = urls.split('\n')
+                    .map(url => extractURL(url.trim()))
+                    .filter(url => url && url.length > 0);
+
+                if (urlList.length === 0) {
+                    showStatus('请输入有效的URL', 'error');
+                    return;
+                }
+
+                // 显示加载状态
+                loadingDiv.style.display = 'block';
+                resultDiv.innerHTML = '';
+                statusDiv.style.display = 'none';
+
+                // 清空
+                if(overwriteCB.checked)
+                    await fetch('../api/clear-queue');
+
+                try {
+                    let successCount = 0;
+                    let failedCount = 0;
+
+                    // 处理每个URL
+                    for (const url of urlList) {
+                        try {
+                            // 先检查URL
+                            const checkResponse = await fetch('../api/check-url', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ url })
+                            });
+
+                            if (!checkResponse.ok) {
+                                throw new Error('URL检查失败');
+                            }
+
+                            const checkResult = await checkResponse.json();
+
+                            // 添加到下载队列
+                            const pushResponse = await fetch(`../api/push-download?url=${encodeURIComponent(url)}`);
+
+                            if (!pushResponse.ok) {
+                                throw new Error('添加到下载队列失败');
+                            }
+
+                            addResultItem(url, '已添加到下载队列', 'success');
+                            successCount++;
+                        } catch (error) {
+                            addResultItem(url, error.message || '处理失败', 'error');
+                            failedCount++;
+                        }
+                    }
+
+                    showStatus(`处理完成: 成功 ${successCount} 个, 失败 ${failedCount} 个`,
+                        failedCount === 0 ? 'success' : 'error');
+                } catch (error) {
+                    showStatus('批量导入过程中出错: ' + (error.message || '未知错误'), 'error');
+                } finally {
+                    loadingDiv.style.display = 'none';
+                }
+            });
+
+            function showStatus(message, type) {
+                statusDiv.textContent = message;
+                statusDiv.className = 'status ' + type;
+                statusDiv.style.display = 'block';
+            }
+
+            function addResultItem(url, message, type) {
+                const item = document.createElement('div');
+                item.className = `result-item ${type}`;
+                item.innerHTML = `
+                    <strong>${url}</strong><br>
+                    ${message}
+                `;
+                resultDiv.appendChild(item);
+            }
+
+            function isValidUrl(string) {
+                try {
+                    new URL(string);
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

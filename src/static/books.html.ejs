@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Book Shelf</title>
+
+        <style>
+            html {
+                background-color: whitesmoke;
+            }
+            body {
+                font-family: Arial, sans-serif;
+                background-color: white;
+                width: 50rem;
+                margin: 3rem auto;
+                max-width: 90%;
+                padding: 2rem;
+                box-shadow: 0 .05rem .5rem #e5e5e5;
+            }
+            h1 {
+                margin: 1rem .75rem;
+            }
+            /* ul {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            li {
+                margin: 10px;
+                padding: 10px;
+                background-color: #f2f2f2;
+                border-radius: 5px;
+                box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+                text-align: center;
+                width: 200px;
+            } */
+            li{
+                margin: .5rem 0;
+            }
+            a {
+                text-decoration: none;
+                color: #333;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>你的书架 清单</h1>
+        <% if (locals.books.length) { %>
+            <ul>
+                <% locals.books.forEach(book => { %>
+                    <li> <a href="download?name=<%= encodeURIComponent(book) %>"><%= book %></a></li>
+                <% }); %>
+            </ul>
+        <% } else { %>
+            <br>
+            <hr>
+            <br>
+            <p>你还没有添加任何书籍到你的书架。</p>
+            <p>或者是没有选择“epub模式”转换成epub?</p>
+        <% } %>
+    </body>
+</html>

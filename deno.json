@@ -1,0 +1,26 @@
+{
+  "tasks": {
+    "dev": "deno run --watch main.ts"
+  },
+  "imports": {
+    "@std/fs": "jsr:@std/fs@1",
+    "@std/cli": "jsr:@std/cli@1",
+    "@std/path": "jsr:@std/path@1",
+    "zip": "jsr:@quentinadam/zip",
+    "dom": "jsr:@b-fuze/deno-dom",
+    "browser": "npm:puppeteer-real-browser",
+    "puppeteer": "npm:puppeteer@22",
+    "ejs": "npm:ejs",
+    "entities": "npm:entities",
+    "image-size": "npm:image-size",
+    "mime": "npm:mime",
+    "rehype-parse": "npm:rehype-parse",
+    "unified": "npm:unified",
+    "unist/visit": "npm:unist-util-visit",
+    "rehype-stringify": "npm:rehype-stringify"
+  },
+  "version": "2.0.0",
+  "nodeModulesDir": "auto",
+  "license": "MIT",
+  "unstable": ["ffi", "kv", "raw-imports"]
+}

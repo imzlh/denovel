@@ -1,0 +1,1 @@
+export { default } from './www.1qxs.com.t.ts';

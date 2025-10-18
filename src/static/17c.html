@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频管理器</title>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-webgl@0.16.0/lib/xterm-addon-webgl.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <script src="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.10/dist/hls.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        
+        .header { background: white; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .search-bar { display: flex; gap: 1rem; max-width: 800px; margin: 0 auto; }
+        .search-input { flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
+        .btn { padding: 0.5rem 1rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #0056b3; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #545b62; }
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #1e7e34; }
+        
+        .main { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+        .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .video-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .video-thumbnail { width: 100%; height: 200px; object-fit: cover; background: #eee; }
+        .video-info { padding: 1rem; }
+        .video-title { font-weight: bold; margin-bottom: 0.5rem; }
+        .video-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .video-actions .btn { flex: 1; padding: 0.4rem 0.8rem; font-size: 0.9rem; }
+        
+        .loading { text-align: center; padding: 2rem; color: #666; }
+        .no-results { text-align: center; padding: 2rem; color: #999; }
+        
+        .dialog { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .dialog-content { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 8px; max-width: 90vw; max-height: 90vh; overflow: hidden; }
+        .dialog-header { padding: 1rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .dialog-body { padding: 1rem; }
+        .dialog-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #999; }
+        
+        .terminal-dialog .dialog-content { width: 90vw; max-width: 1200px; height: 80vh; }
+        .terminal-dialog .dialog-body { padding: 1rem; height: calc(100% - 60px); }
+        .terminal-container { height: 100%; padding: .75rem; background: #1e1e1e; border-radius: 8px; overflow: hidden; }
+        
+        .queue-dialog .dialog-content { width: 600px; max-height: 80vh; }
+        .queue-list { max-height: 400px; overflow-y: auto; }
+        .queue-item { padding: 1rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .queue-item:last-child { border-bottom: none; }
+        .queue-status { padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+        .status-pending { background: #ffeaa7; color: #d63031; }
+        .status-downloading { background: #74b9ff; color: #2d3436; }
+        .status-completed { background: #00b894; color: white; }
+        .status-failed { background: #e17055; color: white; }
+        
+        .video-player { width: 100%; height: 400px; background: #000; }
+        .player-dialog .dialog-content { width: 90vw; max-width: 1000px; }
+        .art-video-player { border-radius: 8px; }
+        
+        .action-bar { margin: 1rem 0; text-align: center; display: flex; justify-content: space-between; align-items: center; }
+        .pagination { display: flex; gap: 0.5rem; align-items: center; }
+        .pagination .btn { padding: 0.3rem 0.6rem; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="search-bar">
+            <input type="text" class="search-input" placeholder="搜索视频..." id="searchInput">
+            <button class="btn" onclick="searchVideos(1)">搜索</button>
+            <button class="btn btn-secondary" onclick="loadAllVideos(1)">全部视频</button>
+            <button class="btn btn-secondary" onclick="showQueue()">下载队列</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="action-bar">
+            <span id="videoCount">正在加载...</span>
+            <div class="pagination" id="pagination" style="display: none;">
+                <button class="btn btn-secondary" id="prevBtn" onclick="prevPage()">上一页</button>
+                <span id="pageInfo">1/1</span>
+                <button class="btn btn-secondary" id="nextBtn" onclick="nextPage()">下一页</button>
+            </div>
+        </div>
+        <div id="videoContainer" class="video-grid"></div>
+    </div>
+
+    <!-- 视频播放对话框 -->
+    <div id="playerDialog" class="dialog player-dialog">
+        <div class="dialog-content">
+            <div class="dialog-header">
+                <h3 id="playerTitle">视频播放</h3>
+                <button class="dialog-close" onclick="closePlayer()">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <div class="video-player" id="videoPlayerContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 终端对话框 -->
+    <div id="terminalDialog" class="dialog terminal-dialog">
+        <div class="dialog-content">
+            <div class="dialog-header">
+                <h3 id="terminalTitle">下载进度</h3>
+                <button class="dialog-close" onclick="closeTerminal()">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <div class="terminal-container" id="terminalContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 队列对话框 -->
+    <div id="queueDialog" class="dialog queue-dialog">
+        <div class="dialog-content">
+            <div class="dialog-header">
+                <h3>下载队列</h3>
+                <button class="dialog-close" onclick="closeQueue()">&times;</button>
+            </div>
+            <div class="dialog-body">
+                <div class="queue-list" id="queueList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局状态
+        let currentVideos = [];
+        let downloadQueue = [];
+        let terminal = null;
+        let currentWs = null;
+        let currentPage = 1;
+        let totalPages = 1;
+        let currentQuery = '';
+        let artPlayer = null;
+
+        // API 基础URL
+        const API_BASE = '/api';
+
+        // 页面加载时获取所有视频
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAllVideos();
+            
+            // 搜索框回车事件
+            document.getElementById('searchInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') searchVideos(1);
+            });
+        });
+
+        // 获取所有视频
+        async function loadAllVideos(page = 1) {
+            currentPage = page;
+            currentQuery = '';
+            showLoading();
+            try {
+                const response = await fetch(`${API_BASE}/videos?p=${page}`);
+                const data = await response.json();
+                currentVideos = data.videos;
+                totalPages = data.totalPages;
+                displayVideos(data.videos, data.total);
+                updatePagination();
+            } catch (error) {
+                console.error('加载视频失败:', error);
+                showError('加载视频失败');
+            }
+        }
+
+        // 搜索视频
+        async function searchVideos(page = 1) {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) {
+                loadAllVideos(page);
+                return;
+            }
+            
+            currentPage = page;
+            currentQuery = query;
+            showLoading();
+            try {
+                const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}&p=${page}`);
+                const data = await response.json();
+                currentVideos = data.videos;
+                totalPages = data.totalPages;
+                displayVideos(data.videos, data.total);
+                updatePagination();
+            } catch (error) {
+                console.error('搜索失败:', error);
+                showError('搜索失败');
+            }
+        }
+
+        // 显示视频列表
+        function displayVideos(videos, total = videos.length) {
+            const container = document.getElementById('videoContainer');
+            const countEl = document.getElementById('videoCount');
+            
+            countEl.textContent = `共 ${total} 个视频`;
+            
+            if (videos.length === 0) {
+                container.innerHTML = '<div class="no-results">没有找到视频</div>';
+                return;
+            }
+            
+            container.innerHTML = videos.map(video => `
+                <div class="video-card">
+                    <div class="video-thumbnail" style="background-image: url(${video.thumbnail || ''})"></div>
+                    <div class="video-info">
+                        <div class="video-title">${escapeHtml(video.title)}</div>
+                        <div class="video-id">ID: ${video.id}</div>
+                        <div class="video-actions">
+                            <button class="btn btn-success" onclick="playVideo('${video.id}', '${escapeHtml(video.title)}', '${video.m3u8}')">播放</button>
+                            <button class="btn" onclick="downloadVideo('${video.id}', '${escapeHtml(video.title)}')">下载</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新分页控件
+        function updatePagination() {
+            const pagination = document.getElementById('pagination');
+            const pageInfo = document.getElementById('pageInfo');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            
+            if (totalPages > 1) {
+                pagination.style.display = 'flex';
+                pageInfo.textContent = `${currentPage}/${totalPages}`;
+                prevBtn.disabled = currentPage <= 1;
+                nextBtn.disabled = currentPage >= totalPages;
+            } else {
+                pagination.style.display = 'none';
+            }
+        }
+
+        // 上一页
+        function prevPage() {
+            if (currentPage > 1) {
+                if (currentQuery) {
+                    searchVideos(currentPage - 1);
+                } else {
+                    loadAllVideos(currentPage - 1);
+                }
+            }
+        }
+
+        // 下一页
+        function nextPage() {
+            if (currentPage < totalPages) {
+                if (currentQuery) {
+                    searchVideos(currentPage + 1);
+                } else {
+                    loadAllVideos(currentPage + 1);
+                }
+            }
+        }
+
+        // 播放视频
+        function playVideo(id, title, m3u8Url) {
+            document.getElementById('playerTitle').textContent = title;
+            document.getElementById('playerDialog').style.display = 'block';
+            
+            // 销毁之前的播放器实例
+            if (artPlayer) {
+                artPlayer.destroy();
+            }
+            
+            // 初始化ArtPlayer
+            artPlayer = new Artplayer({
+                container: '#videoPlayerContainer',
+                url: m3u8Url,
+                title: title,
+                volume: 0.5,
+                autoplay: false,
+                pip: true,
+                setting: true,
+                playbackRate: true,
+                aspectRatio: true,
+                fullscreen: true,
+                fullscreenWeb: true,
+                miniProgressBar: true,
+                mutex: true,
+                backdrop: true,
+                playsInline: true,
+                autoPlayback: true,
+                airplay: true,
+                theme: '#007bff',
+                lang: navigator.language.toLowerCase(),
+                whitelist: ['*'],
+                moreVideoAttr: {
+                    crossOrigin: 'anonymous',
+                },
+                customType: {
+                    m3u8: function(video, url) {
+                        if (Hls.isSupported()) {
+                            const hls = new Hls({
+                                debug: false,
+                                enableWorker: true,
+                                lowLatencyMode: true,
+                                backBufferLength: 90
+                            });
+                            hls.loadSource(url);
+                            hls.attachMedia(video);
+                            
+                            // 可选：监听HLS事件
+                            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                                console.log('HLS manifest loaded');
+                            });
+                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            video.src = url;
+                        } else {
+                            console.error('HLS is not supported');
+                        }
+                    }
+                }
+            });
+            
+            // 播放器准备就绪
+            artPlayer.on('ready', () => {
+                console.log('Player ready');
+            });
+            
+            // 错误处理
+            artPlayer.on('video:error', (err) => {
+                console.error('Video error:', err);
+            });
+        }
+
+        // 下载视频
+        function downloadVideo(videoId, title) {
+            const task = {
+                id: Date.now(),
+                videoId: videoId,
+                title,
+                status: 'pending',
+                addTime: new Date().toLocaleString()
+            };
+            
+            downloadQueue.push(task);
+            updateQueueDisplay();
+            
+            // 开始下载
+            startDownload(task);
+        }
+
+        // 开始下载
+        async function startDownload(task) {
+            task.status = 'downloading';
+            updateQueueDisplay();
+            
+            // 显示终端
+            showTerminal(task.title);
+            
+            try {
+                // 创建WebSocket连接，直接使用video_id，使用当前域名
+                const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${wsProtocol}//${location.host}/download/${task.videoId}`;
+                currentWs = new WebSocket(wsUrl);
+                currentWs.binaryType = 'arraybuffer';
+                
+                currentWs.onmessage = (event) => {
+                    // 直接将ffmpeg输出传给xterm，不做任何处理
+                    if (terminal) {
+                        if(event.data instanceof ArrayBuffer)
+                            terminal.write(new Uint8Array(event.data));
+                        else
+                            terminal.write(event.data);
+                    }
+                };
+                
+                currentWs.onclose = () => {
+                    task.status = 'completed';
+                    updateQueueDisplay();
+                };
+                
+                currentWs.onerror = () => {
+                    task.status = 'failed';
+                    updateQueueDisplay();
+                };
+                
+            } catch (error) {
+                console.error('下载失败:', error);
+                task.status = 'failed';
+                updateQueueDisplay();
+            }
+        }
+
+        // 显示终端
+        function showTerminal(title) {
+            document.getElementById('terminalTitle').textContent = `下载进度 - ${title}`;
+            document.getElementById('terminalDialog').style.display = 'block';
+            
+            // 初始化xterm.js终端
+            if (!terminal) {
+                // 计算终端容器尺寸
+                const container = document.getElementById('terminalContainer');
+                const containerWidth = container.clientWidth - 32; // 减去padding
+                const containerHeight = container.clientHeight - 32;
+                
+                // 根据字体大小计算行列数
+                const fontSize = 14;
+                const lineHeight = fontSize * 1.2;
+                const charWidth = fontSize * 0.6;
+                
+                const cols = Math.floor(containerWidth / charWidth);
+                const rows = Math.floor(containerHeight / lineHeight);
+                
+                terminal = new Terminal({
+                    rows: Math.max(rows, 20),
+                    cols: Math.max(cols, 60),
+                    fontSize: fontSize,
+                    fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, Monaco, "Courier New", monospace',
+                    theme: {
+                        background: '#1e1e1e',
+                        foreground: '#d4d4d4',
+                        cursor: '#ffffff',
+                        selection: '#3a3d41',
+                        black: '#000000',
+                        red: '#cd3131',
+                        green: '#0dbc79',
+                        yellow: '#e5e510',
+                        blue: '#2472c8',
+                        magenta: '#bc3fbc',
+                        cyan: '#11a8cd',
+                        white: '#e5e5e5',
+                        brightBlack: '#666666',
+                        brightRed: '#f14c4c',
+                        brightGreen: '#23d18b',
+                        brightYellow: '#f5f543',
+                        brightBlue: '#3b8eea',
+                        brightMagenta: '#d670d6',
+                        brightCyan: '#29b8db',
+                        brightWhite: '#e5e5e5'
+                    },
+                    cursorBlink: true,
+                    cursorStyle: 'block',
+                    allowTransparency: false,
+                    convertEol: true,
+                    scrollback: 10000
+                });
+                
+                // 启用WebGL渲染器以获得更好的性能
+                try {
+                    const webglAddon = new WebglAddon.WebglAddon();
+                    terminal.loadAddon(webglAddon);
+                } catch (e) {
+                    console.warn('WebGL addon failed to load:', e);
+                }
+
+                // fit addon
+                const fitAddon = new FitAddon.FitAddon();
+                terminal.loadAddon(fitAddon);
+                terminal.open(container);
+                fitAddon.fit();
+                
+                // 监听窗口大小变化
+                window.addEventListener('resize', () => fitAddon.fit());
+                
+            } else {
+                terminal.clear();
+            }
+        }
+
+        // 显示队列
+        function showQueue() {
+            updateQueueDisplay();
+            document.getElementById('queueDialog').style.display = 'block';
+        }
+
+        // 更新队列显示
+        function updateQueueDisplay() {
+            const queueList = document.getElementById('queueList');
+            
+            if (downloadQueue.length === 0) {
+                queueList.innerHTML = '<div class="no-results">队列为空</div>';
+                return;
+            }
+            
+            queueList.innerHTML = downloadQueue.map(task => `
+                <div class="queue-item">
+                    <div>
+                        <div><strong>${escapeHtml(task.title)}</strong></div>
+                        <div style="font-size: 0.9rem; color: #666;">${task.addTime}</div>
+                    </div>
+                    <div>
+                        <span class="queue-status status-${task.status}">${getStatusText(task.status)}</span>
+                        ${task.status === 'pending' || task.status === 'downloading' ? 
+                            `<button class="btn btn-danger" style="margin-left: 0.5rem; padding: 0.2rem 0.5rem; font-size: 0.8rem;" onclick="cancelDownload(${task.id})">取消</button>` : 
+                            ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 取消下载
+        function cancelDownload(taskId) {
+            const taskIndex = downloadQueue.findIndex(t => t.id === taskId);
+            if (taskIndex > -1) {
+                const task = downloadQueue[taskIndex];
+                if (task.status === 'downloading' && currentWs) {
+                    currentWs.close();
+                }
+                downloadQueue.splice(taskIndex, 1);
+                updateQueueDisplay();
+            }
+        }
+
+        // 获取状态文本
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '等待中',
+                'downloading': '下载中',
+                'completed': '已完成',
+                'failed': '失败'
+            };
+            return statusMap[status] || status;
+        }
+
+        // 关闭对话框
+        function closePlayer() {
+            document.getElementById('playerDialog').style.display = 'none';
+            if (artPlayer) {
+                artPlayer.pause();
+                artPlayer.destroy();
+                artPlayer = null;
+            }
+        }
+
+        function closeTerminal() {
+            document.getElementById('terminalDialog').style.display = 'none';
+            if (currentWs) {
+                currentWs.close();
+            }
+        }
+
+        function closeQueue() {
+            document.getElementById('queueDialog').style.display = 'none';
+        }
+
+        // 显示加载状态
+        function showLoading() {
+            document.getElementById('videoContainer').innerHTML = '<div class="loading">正在加载...</div>';
+            document.getElementById('videoCount').textContent = '加载中...';
+        }
+
+        // 显示错误
+        function showError(message) {
+            document.getElementById('videoContainer').innerHTML = `<div class="no-results">${message}</div>`;
+            document.getElementById('videoCount').textContent = '加载失败';
+        }
+
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 点击对话框外部关闭
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('dialog')) {
+                if (e.target.id === 'playerDialog') closePlayer();
+                if (e.target.id === 'terminalDialog') closeTerminal();
+                if (e.target.id === 'queueDialog') closeQueue();
+            }
+        });
+    </script>
+</body>
+</html>
