@@ -1,12 +1,12 @@
 # denovel 超级下载器V2
 
-![ico](static/denovel.webp)
+![ico](src/static/denovel.webp)
 
 下载各个盗版网站/正版网站web版的小说/漫画程序<br>
 同时也有各种周边工具，如转epub、格式化、查找等<br>
 写了主要是给自己用的，欢迎大家补充
 
-> [!TIPS]
+> [!TIP]
 > denovel V2正在开发中！<br>
 > 这个分支将尝试重构项目混乱的结构，添加更多功能！<br>
 > 不过由于精力有限，可能进度缓慢，欢迎PR!
