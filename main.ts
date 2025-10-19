@@ -66,7 +66,7 @@ const parser = new DOMParser(),
     }),
     SLEEP_INTERVAL = parseInt(args.sleep || '0'),               // 间隔时间防止DDOS护盾deny
     MAX_RETRY = parseInt(args.retry ?? '10'),                   // 最大重试次数
-    MAX_ERROR_COUNT = parseInt(args["error-count"] ?? '10'),    // 最大错误计数
+    MAX_ERROR_COUNT = parseInt(args["error-count"] ?? '3'),    // 最大错误计数
     META_HEADER = ':: org.imzlh.denovel.meta';                  // 元数据标识
 
 const sleep = (sec = SLEEP_INTERVAL) => new Promise(resolve => setTimeout(resolve, sec * 1000));
@@ -1317,8 +1317,9 @@ async function downloadNovel(
             ]);
 
             if (options.last_chapter_url == next_link?.toString()){
-                options.reporter(Status.ERROR, '出现无效循环(next_link未变化)，下载结束');
-                break;
+                errorcount++;
+                options.reporter(Status.ERROR, '出现无效循环(next_link未变化)');
+                continue;
             }
 
             if (options.sig_abort?.aborted) {
