@@ -181,7 +181,7 @@ export default {
     async mainPageFilter(url, document, filled_data) {
         const selector = this.__list_sel;
         const links = Array.from(document.querySelectorAll(selector));
-        if (links.length >= 12){
+        if (links.length >= 3){
             // 要开始收费了，尝试ydg
             const ydgU = await findInYDG(filled_data);
             if (ydgU) {

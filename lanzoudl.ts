@@ -39,7 +39,7 @@ function extractFunctionByName(source: string, functionName: string): string | n
     // 定位第一个左花括号
     while (position < source.length) {
         const char = source[position];
-        
+
         // 处理注释
         if (!inString && !inComment) {
             if (char === '/' && source[position + 1] === '/') {
@@ -134,7 +134,7 @@ function extractFunctionByName(source: string, functionName: string): string | n
         position++;
     }
 
-    return braceCount === 0 
+    return braceCount === 0
         ? source.slice(codeStart, codeEnd).trim()
         : null;
 }
@@ -149,7 +149,7 @@ function sandboxEval(code: string, predef: string) {
             // 非函数声明
             if (line.trimStart().match(/\(.+\)/)) {
                 break;
-            }else{
+            } else {
                 def += line + '\n';
             }
         }
@@ -162,9 +162,9 @@ function sandboxEval(code: string, predef: string) {
     }
 
     const ecode = env + '\n' + def + '\n' + code + '\n' + 'return res;';
-    try{
+    try {
         return new Function(ecode)() as { url: string, data: any };
-    }catch(e){
+    } catch (e) {
         throw e;
     }
 }
@@ -185,7 +185,7 @@ function setCookieEval(jscode: string, site: string) {
     });
 
     new Function('window', 'document', 'location', jscode)(window, document, url);
-    if(!getSiteCookie(site2, 'acw_sc__v2')){
+    if (!getSiteCookie(site2, 'acw_sc__v2')) {
         throw new Error('设置cookie失败！');
     }
 }
@@ -214,8 +214,8 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
             method: 'POST',
             body: formData
         }).then(r => r.json());
-        if(list.info != 'sucess'){
-            if(typeof list.info === 'string' && list.info.includes('重试')){
+        if (list.info != 'sucess') {
+            if (typeof list.info === 'string' && list.info.includes('重试')) {
                 console.warn(`获取第 ${pgnum} 页文件列表出现问题：蓝奏云限制！`);
                 await delay(1000 * Math.random() + 834);
                 continue;
@@ -252,7 +252,7 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
 
 async function downloadFile(docurl: string) {
     const document1 = await getDocument(docurl);
-    for(const iframe of document1.getElementsByTagName('iframe')){
+    for (const iframe of document1.getElementsByTagName('iframe')) {
         await delay(475 + 1000 * Math.random());
         const docurl2 = new URL(iframe.getAttribute('src')!, docurl);
         const document = await getDocument(docurl2);
@@ -273,19 +273,19 @@ async function downloadFile(docurl: string) {
                 "X-Requested-With": "XMLHttpRequest"
             }
         }).then(r => r.json());
-        if(file.zt != 1) throw new Error('下载 ' + file.name +' 失败: 链接超时');
+        if (file.zt != 1) throw new Error('下载 ' + file.name + ' 失败: 链接超时');
         const realpath = file.dom + '/file/' + file.url;
 
         await delay(324 + 1000 * Math.random());
         const textpath = new URL(realpath, docurl);
         let text2 = await fetch2(textpath);
         // 网络验证
-        if(text2.headers.get('Content-Type')?.includes('text/html')) while(true){
+        if (text2.headers.get('Content-Type')?.includes('text/html')) while (true) {
             const document = new DOMParser().parseFromString(await text2.text(), 'text/html');
             const script = document.getElementsByTagName('script').at(-1)!;
 
             // 处理acw_sc__v2
-            if(script.innerHTML.includes('acw_sc')){
+            if (script.innerHTML.includes('acw_sc')) {
                 setCookieEval(script.innerHTML, textpath.href);
                 text2 = await fetch2(textpath);
                 continue;   // retry
@@ -307,39 +307,40 @@ async function downloadFile(docurl: string) {
                     "X-Requested-With": "XMLHttpRequest"
                 }
             }).then(r => r.json());
-            if(file2.zt != 1) throw new Error('下载 ' + file.name +' 失败: 验证网络：链接超时');
+            if (file2.zt != 1) throw new Error('下载 ' + file.name + ' 失败: 验证网络：链接超时');
             const urlreal = new URL(file2.url, textpath);
             await delay(1000 * Math.random() + 621);
             return await fetch2(urlreal);
-        }else{
+        } else {
             return text2;
         }
     }
-    throw new Error('下载 ' + docurl +' 失败: 找不到文件下载链接！');
+    throw new Error('下载 ' + docurl + ' 失败: 找不到文件下载链接！');
 }
 
 async function downloadCorutine(file: LanZouFile, report: (more: number) => any) {
-    try{
-        if(await exists(join('lanout', file._path))){
+    try {
+        if (await exists(join('lanout', file._path))) {
             console.log(`文件 ${file._path} 已存在，跳过下载...`);
             return;
         }
         await ensureDir('lanout/' + dirname(file._path));
         let f;
-        do{
-            if(f) console.log(`下载 ${basename(file._path)} 失败，重试...`);
+        do {
+            if (f) console.log(`下载 ${basename(file._path)} 失败，重试...`);
             f = await downloadFile(file._link);
-        }while(!f.ok)
-        if(!f?.body) throw new Error('下载 ' + file._path +' 失败！');
+        } while (!f.ok)
+        if (!f?.body) throw new Error('下载 ' + file._path + ' 失败！');
         const stream = new TransformStream<Uint8Array<ArrayBufferLike>>({
-            transform(chunk){
+            transform(chunk, ctrl) {
                 report(chunk.byteLength);
+                ctrl.enqueue(chunk);
             }
         });
         f.body.pipeTo(stream.writable);
         await Deno.writeFile(`lanout/${file._path}`, stream.readable);
         // console.log(`下载 ${basename(file._path)} 成功，大小: ${file.size} 字节！`);
-    }catch(e){
+    } catch (e) {
         console.error(e);
     }
 }
@@ -373,39 +374,38 @@ function sizeToHuman(size: number): string {
 const CO_COUNT = 16;
 export default async function main() {
     let files: LanZouFile[] = [];
-    
-    if(!Deno.args.length){
+
+    if (!Deno.args.length) {
         const link = await readline('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
         if (!link) return;
-        
+
         const intv = setInterval(() => Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4)), 10000);
 
         await getFiles(link, '', files);
         Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4));
         clearInterval(intv);
-    }else{
+    } else {
         files = JSON.parse(Deno.readTextFileSync(Deno.args[0] ?? 'files.json'));
     }
 
     await ensureDir('lanout');
-    for (let i = 0; i < files.length; i+=CO_COUNT){
-        console.clear();
-        console.log(`## 开始下载第 ${i/CO_COUNT+1}/${Math.ceil(files.length/CO_COUNT+1)} 批文件...`);
-        const total = files.slice(i, i + CO_COUNT).reduce((acc, cur) => acc + parseFileSize(cur.size), 0);
-        const startTime = Date.now();
-        const prog = new ProgressBar({
-            total: total,
-            widgets: [
-                percentageWidget, 
-                (i, t) => `${sizeToHuman(i)}/${sizeToHuman(t)}`,
-                // 速度
-                (i, t) => `${sizeToHuman((i / (Date.now() - startTime)) * 1000)}/s`,
-            ]
-        });
-        let curr = 0;
-        await prog.start();
+    const total = files.reduce((acc, cur) => acc + parseFileSize(cur.size), 0);
+    const startTime = Date.now();
+    const prog = new ProgressBar({
+        total: total,
+        widgets: [
+            percentageWidget,
+            (i, t) => `${sizeToHuman(i)}/${sizeToHuman(t)}`,
+            // 速度
+            (i, _t) => `${sizeToHuman((i / (Date.now() - startTime)) * 1000)}/s`,
+        ]
+    });
+    let curr = 0;
+    console.log(`共获取 ${files.length} 个文件，总大小: ${sizeToHuman(total)}`);
+    await prog.start();
+    for (let i = 0; i < files.length; i += CO_COUNT) {
         await Promise.all(files.slice(i, i + CO_COUNT).map(it => downloadCorutine(it, s => prog.update(curr += s))));
-        await prog.finish();
     }
+    await prog.finish();
 }
-if(import.meta.main) main();
+if (import.meta.main) main();
