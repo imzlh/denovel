@@ -85,6 +85,6 @@ export const getInfo = async (u: URL) => {
         author: apiR.data.author,
         book_name: apiR.data.book_name,
         summary: apiR.data.abstract,
-        cover: apiR.data.thumb_url
+        cover: apiR.data.audio_thumb_uri
     } satisfies MainInfoResult
 }

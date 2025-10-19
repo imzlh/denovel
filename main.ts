@@ -721,7 +721,7 @@ enum Status {
 function similarTitle(title1: string, title2: string, strict = true) {
     title1 = title1.trim(), title2 = title2.trim();
     if(title1 == title2) return true;
-    const format = /^\s*(.+?)\s*[\(（]\d(?:[\/\-]\d)?[\)）]\s*$/,
+    const format = /^\s*(.+?)\s*[\(（]\d+(?:[\/\-]\d+)?[\)）]\s*$/,
         format2 = /^\s*(.+?)\s*([①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|\d{1,2})\s*$/;
     const t1res = title1.match(format),
         t2res = title2.match(format);
