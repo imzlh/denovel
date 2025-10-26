@@ -1260,7 +1260,7 @@ async function downloadNovel(
             }
 
             if (content) {
-                if(content.trim().length >= 200){
+                if(content.trim().length >= 20){
                     // 替换HTML转义
                     content = fromHTML(content);
                     // 移除不可见字符

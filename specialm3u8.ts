@@ -1,4 +1,7 @@
 #!/usr/bin/env -S deno run --allow-net --allow-read
+
+import { basename } from "node:path";
+
 /**
  * M3U8代理重写服务器 - 简化版
  * 专注于正确处理嵌套m3u8文件
@@ -298,6 +301,18 @@ async function handler(request: Request): Promise<Response> {
                 "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET, OPTIONS",
                 "Access-Control-Allow-Headers": "Content-Type",
+            },
+        });
+    }
+
+    // 自动转码
+    if (url.pathname.startsWith("/@")){
+        const realUrl = url.pathname.slice(2);
+        return new Response(null, {
+            status: 302,
+            headers: {
+                "Location": '/proxy/' + encodeURIComponent(realUrl) + '/' + basename(realUrl),
+                "Access-Control-Allow-Origin": "*",
             },
         });
     }
