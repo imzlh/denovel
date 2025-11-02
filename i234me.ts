@@ -1,3 +1,4 @@
+import { extname } from "node:path";
 import { fetch2, getDocument, sleep } from "./main.ts";
 
 const BOOK_SEL = 'body > div.container-fluid > div > div.col-sm-10 > div.discover.load-more > div > div.book';
@@ -58,13 +59,17 @@ async function login(){
 
 async function download(book: Book) {
     const doc = await getDocument(book.entry);
-    const el = doc.querySelector('#btnGroupDrop1epub > a');
-    if(!el) throw new Error('No download link found');
+    const els = Array.from(doc.querySelectorAll('.button-link[href]'));
+    if(!els.length) throw new Error('No download link found');
+    let el = els.find(el => el.getAttribute('href')?.includes('epub'))
+    if(!el) el = els.find(el => el.getAttribute('href')?.includes('txt'));
+    if(!el) el = els[0];
 
     const url = el.getAttribute('href')!;
+    console.log('GET', url);
     const req = (await fetch2(new URL(url, book.entry))).body;
     if(!req) throw new Error('Failed to download book');
-    return Deno.writeFile('./out/' + book.name + '.epub', req);
+    return Deno.writeFile('./out/' + book.name + extname(url), req);
 }
 
 if(import.meta.main){

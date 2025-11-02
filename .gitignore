@@ -27,3 +27,5 @@ captcha.*
 test.*
 *.traineddata
 noveldb/**
+*.txt
+*.epub

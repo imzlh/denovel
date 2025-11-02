@@ -171,7 +171,9 @@ export async function toTXT2(source: Uint8Array<ArrayBuffer>, outdir: string, op
 
         // 删除标题
         if(options.removeHTMLTitle){
-            document.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => h.remove());
+            Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'))
+                .filter(e => e.textContent.trim() != '')
+                .forEach(h => h.remove());
         }
 
         // 提取图片
@@ -221,7 +223,7 @@ export async function toTXT(source: string, outdir: string, options = {
     removeHTMLTitle: true
 }): Promise<string> {
     let doc;
-    switch(basename(source).split('.').pop()){
+    switch(basename(source).split('.').pop()?.toLowerCase()){
         case "epub":
             return toTXT2(await Deno.readFile(source), outdir, options);
         // break;
@@ -574,7 +576,7 @@ async function processDirectory(dirPath: string, options: ConvertOptions): Promi
             if (dirEntry.isFile) {
                 // 处理支持的文件格式
                 const supportedExtensions = ['.epub', '.pdf', '.docx'];
-                if (supportedExtensions.some(ext => dirEntry.name.endsWith(ext))) {
+                if (supportedExtensions.some(ext => dirEntry.name.toLowerCase().endsWith(ext))) {
                     await processSingleFile(fullPath, options);
                 }
             } else if (dirEntry.isDirectory && options["to-epub"]) {
