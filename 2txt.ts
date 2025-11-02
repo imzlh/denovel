@@ -637,4 +637,5 @@ export default async function main(): Promise<void> {
 if (import.meta.main) {
     await main()
     globalThis.addEventListener("unhandledrejection", (e) => e.preventDefault())
+    globalThis.addEventListener("error", e => e.preventDefault())
 }

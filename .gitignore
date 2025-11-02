@@ -29,3 +29,5 @@ test.*
 noveldb/**
 *.txt
 *.epub
+*transout*/
+* - 副本/
