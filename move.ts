@@ -29,7 +29,7 @@ class TxtFileMover {
             const stat = await Deno.stat(path);
             return stat.size;
         } catch (error) {
-            throw new Error(`无法获取文件大小: ${error.message}`);
+            throw new Error(`无法获取文件大小: ${error}`);
         }
     }
 
@@ -52,7 +52,7 @@ class TxtFileMover {
         try {
             sourceSize = await this.getFileSize(sourcePath);
         } catch (error) {
-            console.error(`获取源文件大小失败: ${error.message}`);
+            console.error(`获取源文件大小失败: ${error}`);
             return false;
         }
 
@@ -65,7 +65,7 @@ class TxtFileMover {
             try {
                 targetSize = await this.getFileSize(targetPath);
             } catch (error) {
-                console.error(`获取目标文件大小失败: ${error.message}`);
+                console.error(`获取目标文件大小失败: ${error}`);
                 return false;
             }
 
@@ -95,7 +95,7 @@ class TxtFileMover {
             console.log(`移动: ${fileName} -> ${targetDir}`);
             return true;
         } catch (error) {
-            console.error(`移动失败: ${fileName} - ${error.message}`);
+            console.error(`移动失败: ${fileName} - ${error}`);
             return false;
         }
     }
@@ -108,7 +108,7 @@ class TxtFileMover {
             await copy(sourcePath, targetPath, { overwrite: true });
             return true;
         } catch (error) {
-            console.error(`拷贝失败: ${error.message}`);
+            console.error(`拷贝失败: ${error}`);
             return false;
         }
     }
