@@ -61,7 +61,8 @@ const parser = new DOMParser(),
             sleep: '1',
             retry: '3',
             charset: 'utf-8',
-            timeout: '10'
+            timeout: '10',
+            "no-overwrite": false,
         }
     }),
     SLEEP_INTERVAL = parseInt(args.sleep || '0'),               // 间隔时间防止DDOS护盾deny

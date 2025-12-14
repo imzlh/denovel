@@ -89,7 +89,7 @@ export default {
     mainPageTitle: 'body > div.main_box > div.content_box > div.left_box > div.novel_box > div > h1',
     mainPageCover: 'body > div.main_box > div.content_box > div.left_box > div.novel_box > img',
     mainPageSummary: 'body > div.main_box > div.content_box > div.left_box > div.detail_box > div.brief_box > div.txt.ellipsis',
-    mainPageFirstChapter: 'body > div.main_box > div.content_box > div.left_box > div.detail_box > a',
+    mainPageFirstChapter: 'body > div.main_box > div.content_box > div.left_box > div.detail_box > div.read_box > a.read_btn',
     mainPageAuthor: 'body > div.main_box > div.content_box > div.left_box > div.novel_box > div > div:nth-child(4) > a',
 
     request(_url, options) {
