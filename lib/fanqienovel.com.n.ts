@@ -38,7 +38,7 @@ interface ISource{
 }
 
 const APIS: Array<{ download: (item_id: string, book_id: string) => Promise<string>, downloadAll?: (item_ids: string[], book_id: string) => Promise<Record<string, string>> }> = [
-    GYKS_API,
+    // GYKS_API,
     SHUSHAN_API,
     SHIAN_API,
     VV9V_API,

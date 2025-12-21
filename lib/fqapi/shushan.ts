@@ -6,7 +6,7 @@
 
 import { base64 } from "jsr:@hexagon/base64";
 import { inflate } from "https://deno.land/x/compress/zlib/mod.ts";
-import { getSiteCookie, setRawCookie, NoRetryError, fetch2 } from "../../main.ts";
+import { getSiteCookie, setRawCookie, NoRetryError, fetch2, removeIllegalPath } from "../../main.ts";
 
 const BASE_URL = "https://search.shusan.icu";
 const API = `${BASE_URL}/chapter?cid={{$.cid}}&source={{$.source}}&device={{$.device}}&book_id={{$.book_id}}&item_id={{$.item_id}}&key={{$.key}}&h=10`;
@@ -22,7 +22,8 @@ async function decryptContent(encryptedContent: string): Promise<string> {
     // 1. Base64解码
     const bytes = base64.toArrayBuffer(encryptedContent);
 
-    // 2. GZIP解压
+    // // 2. GZIP解压
+    Deno.writeFileSync("encrypted.bin", new Uint8Array(bytes));
     try {
         // 使用DecompressionStream API
         const data = inflate(new Uint8Array(bytes));
@@ -103,4 +104,32 @@ export async function download(item_id: string, book_id: string): Promise<string
         }
         throw new Error(`章节获取失败: ${error}`);
     }
+}
+
+if (import.meta.main) {
+    console.log('书山可以直接下书哦，超快！');
+
+    // 检查密钥
+    if (!getSiteCookie("shusan.icu", "key")) {
+        const key = prompt("请输入书山聚合的密钥（前往 search.shusan.icu/key 获取）:");
+        if (key) {
+            setRawCookie("shusan.icu", "key=" + key);
+        } else {
+            throw new Error("书山聚合密钥未设置");
+        }
+    }
+
+    const key = btoa(getSiteCookie("shusan.icu", "key")!);
+    const book_id = prompt("请输入书籍ID:")?.trim();
+    if (!book_id) throw new Error("书籍ID不能为空");
+    const url = BASE_URL + `/down?key=${key}&book_id=` + book_id;
+    console.log(`下载地址: ${url}`);
+    console.log('服务器正在下载，需要较长时间，请稍候...');
+
+    const res = await fetch2(url);
+    const bookname = res.headers.get('Content-Disposition')?.match(/filename="(.*?)"/)?.[1]
+        ?? prompt("请输入书籍名称（用于保存文件名）:") ?? removeIllegalPath(new Date().toLocaleString());
+    const f = await Deno.open('./downloads/' + bookname + '.txt', { create: true, write: true });
+    await res.body?.pipeTo(f.writable);
+    console.log('下载完成！');
 }

@@ -1228,11 +1228,15 @@ async function downloadNovel(
         // 恢复上下文
         return void await downloadFromTXT(fpath, {}, options);
     }catch(e){
-        options.reporter(Status.WARNING, '无法使用现有库存，可能不是由新版本denovel生成的或没有完全下载完');
-        options.reporter(Status.WARNING, fpath + ', e:' + (e instanceof Error ? e.message : e));
-        if(options.disable_overwrite){
-            options.reporter(Status.ERROR, '禁止覆盖已有文件');
-            return;
+        if ((await Deno.stat(fpath)).size > 16 * 1024){
+            options.reporter(Status.WARNING, '无法使用现有库存，可能不是由新版本denovel生成的或没有完全下载完');
+            options.reporter(Status.WARNING, fpath + ', e:' + (e instanceof Error ? e.message : e));
+            if(options.disable_overwrite){
+                options.reporter(Status.ERROR, '禁止覆盖已有文件');
+                return;
+            }
+        }else{
+            options.reporter(Status.WARNING, '忽略库存(文件过小，忽略)');
         }
     }
     const file = await Deno.open(fpath, {
