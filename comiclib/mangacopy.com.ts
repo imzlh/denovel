@@ -12,10 +12,10 @@ async function getEverything(page: URL | string) {
     const nextLink = document.querySelector('body > div.footer > div.comicContent-next > a')?.getAttribute('href');
     const encrypted = document.querySelector('.imageData[contentKey]');
     let encData = encrypted?.getAttribute('contentKey');
-    if(!encrypted){
+    if(!encData){
         // var contentKey = '
         const script = document.getElementsByTagName('script').filter(el => el.innerHTML.includes('contentKey'))[0];
-        encData = script.innerHTML.match(/var\s*contentKey\s*=\s*['"](.*?)['"]/)![1];
+        encData = script.innerHTML.match(/var\s*contentKey\s*=\s*['"](.*?)['"]/mi)![1];
     }
     assert(encData, "Failed to get encrypted data");
     const result = decryptChapterData(await getCCXY(new URL(page), document), encData);

@@ -230,7 +230,7 @@ async function downloadMedia(
 ): Promise<Uint8Array<ArrayBuffer> | null> {
     if (media.url.indexOf("file://") === 0) {
         try {
-            const auxpath = media.url.substring(7);
+            const auxpath = decodeURIComponent(media.url.substring(7));
             return await Deno.readFile(auxpath);
         } catch {
             logHandler('error', `无法处理文件(格式错误?) : ${media.url}`);

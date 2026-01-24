@@ -292,7 +292,7 @@ async function fetch2(
         measureIP?: boolean, specificIP?: string,
     } = {},
 ): Promise<Response> {
-    const targetUrl = typeof url === 'string' ? new URL(url) : url;
+    const targetUrl = new URL(url);
 
     // IP测速逻辑
     if (options.measureIP) {
