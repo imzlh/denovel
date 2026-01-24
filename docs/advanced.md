@@ -177,7 +177,11 @@ TODO
 TODO
 
 ## 网易云音乐下载
-TODO
+需要启动 `NeteaseCloudMusicApi` 服务器，然后打开`neast.ts`，修改
+```ts
+const API_BASE = 'http://192.168.1.2:3000';
+```
+为你的服务器地址即可
 
 ## txt分堆
 这个对于大量txt来说特别有用。
