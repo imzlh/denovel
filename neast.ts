@@ -1,13 +1,12 @@
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { removeIllegalPath } from './main.ts'
-import { fetch2 } from "./main.ts";
+import { fetch2, setRawCookie } from "./main.ts";
 import { readline } from "./exe.ts";
 
 const API_BASE = 'http://192.168.1.2:3000';
 const outDir = 'musicout/';
 await ensureDir(outDir);
 
-// 颜色输出
 const colors = {
     reset: '\x1b[0m', bright: '\x1b[1m', green: '\x1b[32m',
     red: '\x1b[31m', yellow: '\x1b[33m', blue: '\x1b[34m',
@@ -22,7 +21,6 @@ const log = {
     title: (msg: string) => console.log(`${colors.bright}${colors.blue}${msg}${colors.reset}`),
 };
 
-// 接口定义
 interface Song {
     name: string; id: number;
     ar: { id: number; name: string; }[];
@@ -44,7 +42,52 @@ interface DownloadStats {
     total: number; success: number; failed: number;
 }
 
-// API 调用
+interface AudioSource {
+    url: string;
+    type: string;
+    size: number;
+    level: string;
+    br: number;
+}
+
+let currentCookie = "";
+
+async function login() {
+    log.info("请输入网易云音乐 Cookie（包含 MUSIC_U）：");
+    const cookie = await readline("Cookie: ");
+    if (!cookie.trim()) {
+        log.warning("未输入Cookie，将以游客模式运行");
+        return;
+    }
+    
+    currentCookie = cookie.trim();
+    
+    if (!currentCookie.includes('os=')) {
+        currentCookie += '; os=pc';
+    } else if (!currentCookie.includes('os=pc')) {
+        currentCookie = currentCookie.replace(/os=[^;]+/, 'os=pc');
+    }
+    
+    await setRawCookie("192.168.1.2", currentCookie);
+    await setRawCookie("192.168.1.2:3000", currentCookie);
+}
+
+async function updateLoginStatus() {
+    try {
+        const res = await fetch2(`${API_BASE}/login/status`);
+        const data = await res.json();
+        if (data.data?.profile) {
+            log.success(`登录成功: ${data.data.profile.nickname}`);
+        } else {
+            log.warning("Cookie可能无效");
+            console.log(data)
+        }
+    } catch (e) {
+        log.warning("无法验证登录状态");
+        console.log(e);
+    }
+}
+
 const api = {
     getPlaylist: (id: string | number) =>
         fetch2(`${API_BASE}/playlist/detail?id=${id}`)
@@ -63,8 +106,35 @@ const api = {
             .then(data => mergeLrc(data.lrc?.lyric, data.tlyric?.lyric))
             .catch(() => undefined),
 
-    getSongData: (id: string | number) =>
-        fetch2(`https://music.163.com/song/media/outer/url?id=${id}`),
+    getAudioSource: async (id: number): Promise<AudioSource | null> => {
+        const levels = [
+            { level: "lossless", name: "无损" },
+            { level: "exhigh", name: "极高" },
+            { level: "higher", name: "较高" },
+            { level: "standard", name: "标准" }
+        ];
+        
+        for (const { level, name } of levels) {
+            try {
+                const res = await fetch2(`${API_BASE}/song/url/v1?id=${id}&level=${level}`);
+                const data = await res.json();
+                
+                if (data.data?.[0]?.url) {
+                    const item = data.data[0];
+                    return {
+                        url: item.url,
+                        type: item.type || level,
+                        size: item.size || 0,
+                        level: name,
+                        br: item.br || 0
+                    };
+                }
+            } catch {
+                continue;
+            }
+        }
+        return null;
+    },
 
     getSongsInfo: (ids: (string | number)[]) =>
         fetch2(`${API_BASE}/song/detail?ids=${ids.join(',')}`)
@@ -104,8 +174,7 @@ const api = {
             hasMore = data.more;
             offset += limit;
         }
-
-        return allAlbums as Album[];
+        return allAlbums;
     },
 
     getAlbumDetail: (id: string | number) =>
@@ -119,25 +188,22 @@ const api = {
 
 export function mergeLrc(lrcA: string, lrcB: string): string {
     type Line = { t: number; raw: string; text: string };
-
-    // 解析一行，返回 { t, raw, text }
+    
     const parse = (raw: string): Line | null => {
         const m = raw.trim().match(/^(\[\d{2}:\d{2}\.\d{2,3}\])(.*)$/);
-        if (!m) return null; // 非歌词行（如 [00:00.00] 作词：xxx）
+        if (!m) return null;
         const [, tag, text] = m;
         const min = +tag.slice(1, 3);
         const sec = +tag.slice(4, 6);
-        const ms = +tag.slice(7, -1).padEnd(3, '0'); // 兼容 2/3 位毫秒
+        const ms = +tag.slice(7, -1).padEnd(3, '0');
         const t = min * 60_000 + sec * 1000 + ms;
         return { t, raw, text };
     };
 
-    // 收集所有行
     const lines: Line[] = [...lrcA.split('\n'), ...lrcB.split('\n')]
         .map(parse)
         .filter((x): x is Line => x !== null);
 
-    // 按时间升序，同一时间只保留第一次出现
     const seen = new Set<number>();
     const sorted = lines
         .filter((l) => {
@@ -147,12 +213,9 @@ export function mergeLrc(lrcA: string, lrcB: string): string {
         })
         .sort((a, b) => a.t - b.t);
 
-    // 拼回字符串
     return sorted.map((l) => l.raw).join('\n');
 }
 
-
-// 工具函数
 function showProgress(current: number, total: number, songName: string) {
     const percentage = Math.floor((current / total) * 100);
     const bar = '█'.repeat(Math.floor(percentage / 5)) + '░'.repeat(20 - Math.floor(percentage / 5));
@@ -171,68 +234,130 @@ async function createInfoFile(folderPath: string, info: any) {
     if (info.downloaded !== undefined) content += `成功下载: ${info.downloaded}\n`;
     content += `下载日期: ${new Date().toLocaleString()}\n`;
     content += `\n==========================================\n`;
-
     await Deno.writeTextFile(`${folderPath}/info.txt`, content);
 }
 
-// 下载单曲
 async function downloadSong(song: Song, folder: string = outDir, showProgressBar = false): Promise<boolean> {
     const songName = removeIllegalPath(song.name + '-' + song.ar.map(a => a.name).join(','));
+    const outputPath = folder + songName + '.mka';  // 改为 .mka
+    let audioTempPath: string | null = null;
+    let coverPath: string | null = null;
 
     try {
         if (showProgressBar) showProgress(0, 4, song.name);
 
-        const lyric = await api.getLyric(song.id);
+        const [source, lyric] = await Promise.all([
+            api.getAudioSource(song.id),
+            api.getLyric(song.id)
+        ]);
+
+        if (!source) throw new Error("无音频链接");
         if (showProgressBar) showProgress(1, 4, song.name);
 
-        const songctx = await api.getSongData(song.id);
-        if (!songctx.body || !songctx.ok) throw new Error(`音频下载失败`);
-
-        const stream = await songctx.bytes();
-        if (stream.length < 300 * 1024) throw new Error(`文件过小`);
+        const audioRes = await fetch2(source.url);
+        if (!audioRes.ok) throw new Error(`HTTP ${audioRes.status}`);
+        
+        const audioData = await audioRes.bytes();
+        if (audioData.length < 1024) throw new Error("音频数据异常");
+        
+        audioTempPath = await Deno.makeTempFile({ suffix: '.tmp' });
+        await Deno.writeFile(audioTempPath, audioData);
+        
         if (showProgressBar) showProgress(2, 4, song.name);
 
-        await Deno.writeFile(folder + songName + '.mpeg', stream);
-
+        // 下载封面
         if (song.al.picUrl) {
-            const cover = await fetch2(song.al.picUrl);
-            if (cover.status != 200) throw new Error('封面下载失败');
-            await Deno.writeFile(folder + songName + '.jpg', await cover.bytes());
-            if (showProgressBar) showProgress(3, 4, song.name);
+            try {
+                const coverRes = await fetch2(song.al.picUrl);
+                if (coverRes.ok) {
+                    coverPath = await Deno.makeTempFile({ suffix: '.jpg' });
+                    await Deno.writeFile(coverPath, await coverRes.bytes());
+                }
+            } catch {}
         }
+
+        if (showProgressBar) showProgress(3, 4, song.name);
+
+        // 构建 ffmpeg 命令 (FFmpeg 7.x)
         const args = [
-            '-y', '-i', folder + songName + '.mpeg', '-map', '0:0'];
-        if (song.al.picUrl) args.push('-i', folder + songName + '.jpg', '-map', '1:0');
+            '-hide_banner',
+            '-loglevel', 'error',
+            '-i', audioTempPath,  // 第一个输入：音频
+        ];
+        
+        // 如果有封面，添加为附件
+        if (coverPath) {
+            args.push('-attach', coverPath);  // 使用 -attach 添加封面
+        }
+        
+        // 映射音频流
+        args.push('-map', '0:a:0');
+        
+        // 音频编码参数
         args.push(
-            '-c', 'copy', '-id3v2_version', '3',
-            '-metadata', 'title=' + song.name,
-            '-metadata', 'artist=' + song.ar.map(a => a.name).join(','),
-            '-metadata', 'album=' + song.al.name,
-            '-metadata', 'year=' + new Date(song.publishTime).getFullYear(),
-            folder + songName + '.mp3'
+            '-c:a', 'libopus',
+            '-b:a', '96k',
+        );
+        
+        // 如果有封面，添加附件元数据
+        if (coverPath) {
+            args.push(
+                '-metadata:s:1', 'mimetype=image/jpeg',
+                '-metadata:s:1', 'filename=cover.jpg',
+                '-metadata:s:1', 'title="Album cover"'
+            );
+        }
+        
+        // 添加全局元数据
+        args.push(
+            '-metadata', `title=${song.name}`,
+            '-metadata', `artist=${song.ar.map(a => a.name).join(',')}`,
+            '-metadata', `album=${song.al.name}`,
+            '-metadata', `date=${new Date(song.publishTime).getFullYear()}`,
+        );
+        
+        // 输出参数
+        args.push(
+            '-f', 'matroska',  // 指定容器格式
+            '-y',              // 覆盖已存在的文件
+            outputPath
         );
 
+        // 执行 ffmpeg
         const cmd = new Deno.Command('ffmpeg', {
             args,
-            stdout: 'piped', stderr: 'piped'
+            stdout: 'piped',
+            stderr: 'piped'
         });
 
-        await cmd.output();
-        await Deno.remove(folder + songName + '.mpeg');
-        if (song.al.picUrl) await Deno.remove(folder + songName + '.jpg');
+        const result = await cmd.output();
+        
+        if (!result.success) {
+            throw new Error(new TextDecoder().decode(result.stderr));
+        }
+
+        // 保存歌词
         if (lyric) await Deno.writeTextFile(folder + songName + '.lrc', lyric);
 
-        if (showProgressBar) { showProgress(4, 4, song.name); console.log(''); }
-        log.success(`${song.name} - ${song.ar.map(a => a.name).join(',')}`);
+        if (showProgressBar) {
+            showProgress(4, 4, song.name);
+            console.log('');
+        }
+        
+        log.success(`${song.name} [${source.level}]`);
         return true;
+        
     } catch (e) {
         if (showProgressBar) console.log('');
-        log.error(`${song.name} - ${(e as Error).message}`);
+        log.error(`${song.name}: ${(e as Error).message}`);
+        try { await Deno.remove(outputPath); } catch {}
         return false;
+    } finally {
+        // 清理临时文件
+        if (audioTempPath) try { await Deno.remove(audioTempPath); } catch {}
+        if (coverPath) try { await Deno.remove(coverPath); } catch {}
     }
 }
-
-// 批量下载歌曲
 async function downloadSongs(songs: Song[], folder: string, infoData?: any): Promise<DownloadStats> {
     const stats: DownloadStats = { total: songs.length, success: 0, failed: 0 };
 
@@ -252,7 +377,6 @@ async function downloadSongs(songs: Song[], folder: string, infoData?: any): Pro
     return stats;
 }
 
-// 显示统计信息
 function showStats(title: string, stats: DownloadStats, path?: string) {
     console.log('\n' + '='.repeat(50));
     log.title(title);
@@ -264,10 +388,8 @@ function showStats(title: string, stats: DownloadStats, path?: string) {
     console.log('='.repeat(50));
 }
 
-// 下载歌手所有专辑
 async function downloadArtistAllAlbums(artistId: number, artistName: string) {
     log.info(`正在获取 ${artistName} 的所有专辑...\n`);
-
     const albums = await api.getArtistAlbums(artistId);
     log.info(`共找到 ${albums.length} 张专辑\n`);
 
@@ -285,11 +407,9 @@ async function downloadArtistAllAlbums(artistId: number, artistName: string) {
         try {
             const { songs } = await api.getAlbumDetail(album.id);
             const stats = await downloadSongs(songs, folderPath);
-
             totalStats.total += stats.total;
             totalStats.success += stats.success;
             totalStats.failed += stats.failed;
-
             albumList.push(`${i + 1}. ${album.name} (${stats.success}/${stats.total})`);
             log.success(`完成 (${stats.success}/${stats.total})`);
         } catch (e) {
@@ -297,7 +417,6 @@ async function downloadArtistAllAlbums(artistId: number, artistName: string) {
         }
     }
 
-    // 创建汇总文件
     await createInfoFile(folderPath, {
         type: 'artist',
         name: artistName,
@@ -309,28 +428,30 @@ async function downloadArtistAllAlbums(artistId: number, artistName: string) {
     showStats(`${artistName} - 全部专辑下载完成`, totalStats, folderPath);
 }
 
-// 主菜单
 function showMenu() {
     console.log('\n' + '='.repeat(60));
-    log.title('🎵 网易云音乐下载器');
+    log.title('🎵 网易云音乐下载器 (Opus 96k)');
     console.log('='.repeat(60));
+    console.log(`${colors.bright}0.${colors.reset} 登录/设置Cookie ${currentCookie ? colors.green+'[已登录]'+colors.reset : colors.yellow+'[未登录]'+colors.reset}`);
     console.log(`${colors.bright}1.${colors.reset} 搜索歌曲`);
     console.log(`${colors.bright}2.${colors.reset} 搜索歌手`);
-    console.log(`${colors.bright}3.${colors.reset} 下载单曲 ${colors.magenta}(连续模式)${colors.reset}`);
+    console.log(`${colors.bright}3.${colors.reset} 下载单曲 (连续模式)`);
     console.log(`${colors.bright}4.${colors.reset} 下载歌单`);
     console.log(`${colors.bright}5.${colors.reset} 下载专辑`);
     console.log(`${colors.bright}q.${colors.reset} 退出`);
     console.log('='.repeat(60) + '\n');
 }
 
-// 主程序
 export default async function main() {
     log.info(`输出目录: ${outDir}`);
-    log.info(`API 服务器: ${API_BASE}\n`);
+    log.info(`格式: Opus 96kbps`);
+    log.info(`音质: 超清母带/杜比/Hi-Res/无损... (依次尝试)\n`);
+
+    await updateLoginStatus();
 
     while (true) {
         showMenu();
-        const choice = await readline("请选择 (1-5 或 q): ");
+        const choice = await readline("请选择 (0-5 或 q): ");
 
         if (choice === 'q' || choice === 'Q') {
             log.info('再见！');
@@ -339,7 +460,12 @@ export default async function main() {
 
         try {
             switch (choice) {
-                case '1': while (true) { // 搜索歌曲
+                case '0': 
+                    await login();
+                    await updateLoginStatus();
+                    break;
+                    
+                case '1': while (true) {
                     const keyword = await readline("歌曲名称: ");
                     if (!keyword) break;
                     log.info(`搜索中...\n`);
@@ -353,13 +479,10 @@ export default async function main() {
                     console.log(`${colors.bright}搜索结果:${colors.reset}`);
                     results.forEach((song: any, idx: number) => {
                         const artists = song.artists.map((a: any) => a.name).join(', ');
-                        const duration = Math.floor(song.duration / 60000) + ':' +
-                            String(Math.floor(song.duration / 1000 % 60)).padStart(2, '0');
-                        console.log(`  ${idx + 1}. ${song.name} - ${artists} [${duration}]`);
+                        console.log(`  ${idx + 1}. ${song.name} - ${artists}`);
                     });
 
                     const selection = await readline("\n选择序号 (多个用逗号分隔, all=全部): ");
-
                     let selectedIds: number[] = [];
                     if (selection.toLowerCase() === 'all') {
                         selectedIds = results.map((s: any) => s.id);
@@ -380,7 +503,7 @@ export default async function main() {
                     showStats('下载完成', stats);
                 }; break;
 
-                case '2': while (true) { // 搜索歌手
+                case '2': while (true) {
                     const keyword = await readline("歌手名称: ");
                     if (!keyword) break;
 
@@ -417,13 +540,11 @@ export default async function main() {
                             name: artist.name,
                             description: '热门50首歌曲'
                         });
-
                         showStats(`${artist.name} - 热门50首`, stats, folderPath);
                     } else if (action === '2') {
                         await downloadArtistAllAlbums(artist.id, artist.name);
                     } else if (action === '3') {
                         const albums = await api.getArtistAlbums(artist.id);
-
                         console.log(`\n${colors.bright}专辑列表:${colors.reset}`);
                         albums.forEach((album, idx) => {
                             console.log(`  ${idx + 1}. ${album.name} (${album.size}首)`);
@@ -446,34 +567,28 @@ export default async function main() {
                             name: album.name,
                             creator: artist.name
                         });
-
                         showStats(album.name, stats, folderPath);
                     }
                 }; break;
 
-                case '3': while (true) { // 下载单曲
+                case '3': while (true) {
                     const input = await readline("歌曲ID (0=退出): ");
                     if (input === '0') break;
 
-                    while (true) {
-                        const input = await readline("歌曲ID (0=退出): ");
-                        if (input === '0') break;
-
-                        const id = input.match(/\d+/)?.[0];
-                        if (!id) {
-                            log.error("无效ID");
-                            continue;
-                        }
-
-                        const songs = await api.getSongsInfo([id]);
-                        if (songs.length > 0) {
-                            await downloadSong(songs[0], outDir, true);
-                        }
-                        console.log('');
+                    const id = input.match(/\d+/)?.[0];
+                    if (!id) {
+                        log.error("无效ID");
+                        continue;
                     }
+
+                    const songs = await api.getSongsInfo([id]);
+                    if (songs.length > 0) {
+                        await downloadSong(songs[0], outDir, true);
+                    }
+                    console.log('');
                 }; break;
 
-                case '4': while (true) { // 下载歌单
+                case '4': while (true) {
                     const input = await readline("歌单ID: ");
                     const id = input.match(/\d+/)?.[0];
                     if (!id) {
@@ -483,7 +598,6 @@ export default async function main() {
 
                     log.info(`获取歌单信息...\n`);
                     const playlist = await api.getPlaylist(id);
-
                     const folderName = removeIllegalPath(`歌单_${playlist.name}`);
                     const folderPath = `${outDir}${folderName}/`;
                     await ensureDir(folderPath);
@@ -505,11 +619,10 @@ export default async function main() {
                         description: playlist.description,
                         tags: playlist.tags
                     });
-
                     showStats(playlist.name, stats, folderPath);
                 }; break;
 
-                case '5': while (true) { // 下载专辑
+                case '5': while (true) {
                     const input = await readline("专辑ID: ");
                     const id = input.match(/\d+/)?.[0];
                     if (!id) {
@@ -519,7 +632,6 @@ export default async function main() {
 
                     log.info(`获取专辑信息...\n`);
                     const { album, songs } = await api.getAlbumDetail(id);
-
                     const folderName = removeIllegalPath(`专辑_${album.name}`);
                     const folderPath = `${outDir}${folderName}/`;
                     await ensureDir(folderPath);
@@ -532,7 +644,6 @@ export default async function main() {
                         name: album.name,
                         creator: album.artist?.name
                     });
-
                     showStats(album.name, stats, folderPath);
                 }; break;
 

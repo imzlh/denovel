@@ -191,11 +191,12 @@ function setCookieEval(jscode: string, site: string) {
 }
 
 const getFiles = async function (page: string, parentPath = '', files: LanZouFile[]) {
-    const doc = await getDocument(page);
+    const doc = await fetch3(page, {}, 'document') as Document;
     const script = doc.getElementsByTagName('script').find(s =>
         s.innerHTML.includes('$.ajax')
     );
     if (!script) {
+        console.warn(doc.body.innerHTML);
         throw new Error('找不到script部分，确保这是蓝奏云分享链接！');
     }
 
@@ -210,10 +211,10 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
     let lastNum = 50;   // 每页显示50个文件
     while (lastNum == 50) {
         formData.set('pg', pgnum.toString());
-        const list = await fetch2(new URL(url, page), {
+        const list = await fetch3(new URL(url, page), {
             method: 'POST',
             body: formData
-        }).then(r => r.json());
+        }, 'json')
         if (list.info != 'sucess') {
             if (typeof list.info === 'string' && list.info.includes('重试')) {
                 console.warn(`获取第 ${pgnum} 页文件列表出现问题：蓝奏云限制！`);
@@ -250,6 +251,54 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
     return files;
 }
 
+async function fetch3(urlRaw: URL | string, fetchOps?: any, expect: 'document' | 'binary' | 'json' = 'json') {
+    let textpath = new URL(urlRaw);
+    let text2 = await fetch2(urlRaw, fetchOps);
+    while (true) {
+        let document: Document;
+        if (expect == 'binary') {
+            if (text2.headers.get('Content-Type')?.startsWith('text/html'))
+                document = new DOMParser().parseFromString(await text2.text(), 'text/html');
+            else return text2;
+        } else {
+            const text = await text2.text();
+            document = new DOMParser().parseFromString(text, 'text/html');
+            if (document.body.innerText.trim()) 
+                if (expect == 'json') return JSON.parse(text);
+                else return document;
+        }
+        const script = document.getElementsByTagName('script').at(-1)!;
+
+        // 处理acw_sc__v2
+        if (script.innerHTML.includes('acw_sc')) {
+            setCookieEval(script.innerHTML, textpath.href);
+            text2 = await fetch2(textpath);
+            continue;   // retry
+        }
+
+        const func = extractFunctionByName(script.innerHTML, 'down_r')!;
+        const { url, data } = sandboxEval(func, 'var el = 2;' + script.innerHTML);
+        const formData = new FormData();
+        for (const [key, value] of Object.entries(data)) {
+            formData.append(key, String(value));
+        }
+        await delay(2241 + 1000 * Math.random());
+        const file2 = await fetch2(new URL(url, textpath), {
+            body: formData,
+            method: 'POST',
+            referrer: textpath.href,
+            headers: {
+                Origin: textpath.origin,
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        }).then(r => r.json());
+        if (file2.zt != 1) throw new Error('验证网络：链接超时');
+        const urlreal = new URL(file2.url, textpath);
+        await delay(1000 * Math.random() + 621);
+        return await fetch2(urlreal);
+    }
+}
+
 async function downloadFile(docurl: string) {
     const document1 = await getDocument(docurl);
     for (const iframe of document1.getElementsByTagName('iframe')) {
@@ -264,7 +313,7 @@ async function downloadFile(docurl: string) {
             formData.append(key, String(value));
         }
         await delay(143 + 1000 * Math.random());
-        const file = await fetch2(new URL(url, docurl), {
+        const file = await fetch3(new URL(url, docurl), {
             body: formData,
             method: 'POST',
             referrer: docurl2.href,
@@ -272,48 +321,14 @@ async function downloadFile(docurl: string) {
                 Origin: docurl2.origin,
                 "X-Requested-With": "XMLHttpRequest"
             }
-        }).then(r => r.json());
+        }, 'json')
         if (file.zt != 1) throw new Error('下载 ' + file.name + ' 失败: 链接超时');
         const realpath = file.dom + '/file/' + file.url;
 
         await delay(324 + 1000 * Math.random());
         const textpath = new URL(realpath, docurl);
-        let text2 = await fetch2(textpath);
-        // 网络验证
-        if (text2.headers.get('Content-Type')?.includes('text/html')) while (true) {
-            const document = new DOMParser().parseFromString(await text2.text(), 'text/html');
-            const script = document.getElementsByTagName('script').at(-1)!;
-
-            // 处理acw_sc__v2
-            if (script.innerHTML.includes('acw_sc')) {
-                setCookieEval(script.innerHTML, textpath.href);
-                text2 = await fetch2(textpath);
-                continue;   // retry
-            }
-
-            const func = extractFunctionByName(script.innerHTML, 'down_r')!;
-            const { url, data } = sandboxEval(func, 'var el = 2;' + script.innerHTML);
-            const formData = new FormData();
-            for (const [key, value] of Object.entries(data)) {
-                formData.append(key, String(value));
-            }
-            await delay(2241 + 1000 * Math.random());
-            const file2 = await fetch2(new URL(url, textpath), {
-                body: formData,
-                method: 'POST',
-                referrer: textpath.href,
-                headers: {
-                    Origin: textpath.origin,
-                    "X-Requested-With": "XMLHttpRequest"
-                }
-            }).then(r => r.json());
-            if (file2.zt != 1) throw new Error('下载 ' + file.name + ' 失败: 验证网络：链接超时');
-            const urlreal = new URL(file2.url, textpath);
-            await delay(1000 * Math.random() + 621);
-            return await fetch2(urlreal);
-        } else {
-            return text2;
-        }
+        let text2 = await fetch3(textpath, {}, 'binary');
+        return text2;
     }
     throw new Error('下载 ' + docurl + ' 失败: 找不到文件下载链接！');
 }

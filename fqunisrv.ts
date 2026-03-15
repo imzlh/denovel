@@ -1,5 +1,8 @@
 #!/usr/bin/env -S deno run --allow-read --allow-write --allow-net
 
+import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
+import { escape } from "npm:entities";
+
 interface ChapterInfo {
     itemId: string;
     title: string;
@@ -66,22 +69,27 @@ async function fetchBatchChapters(
 
     console.log(`获取 ${chapterIds.length} 章内容...`);
 
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            bookId,
-            chapterIds,
-        }),
-    });
+    let response
+    while (true){
+        response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                bookId,
+                chapterIds,
+            }),
+        });
 
-    if (!response.ok) {
-        throw new Error(`获取章节失败: ${response.statusText}`);
+        if (!response.ok) {
+            console.error(`获取章节失败: ${response.statusText}`);
+            await delay(10000 + 1000 * Math.random());
+            continue;
+        }
+
+        return await response.json();
     }
-
-    return await response.json();
 }
 
 function extractCategories(categorySchema: string): string[] {
@@ -109,7 +117,9 @@ async function mergeToTxt(
 
     // 从番茄 API 获取章节目录
     const detailData = await fetchDetailJson(bookId);
-    const chapterList: ChapterInfo[] = detailData.data.chapterListWithVolume[0] || [];
+    const volumeNameList: string[] = detailData.data.volumeNameList || [];
+    const volumeChapterLists: ChapterInfo[][] = detailData.data.chapterListWithVolume || [];
+    const chapterList: ChapterInfo[] = volumeChapterLists.flat();
     const totalChapters = chapterList.length;
 
     console.log(`  ✓ 书名: ${bookData.bookName}`);
@@ -123,8 +133,9 @@ async function mergeToTxt(
 
     const batchSize = 30;
     const batches = Math.ceil(totalChapters / batchSize);
+    const max_retries = 3;
 
-    for (let i = 0; i < batches; i++) {
+    for (let i = 0; i < batches; i++) for(let j = 0; j < max_retries; j++){
         const startIdx = i * batchSize;
         const endIdx = Math.min((i + 1) * batchSize, totalChapters);
         const batchChapterIds = chapterList.slice(startIdx, endIdx).map(ch => ch.itemId);
@@ -132,7 +143,7 @@ async function mergeToTxt(
         const batchData = await fetchBatchChapters(bookId, batchChapterIds, baseUrl);
 
         if (batchData.code !== 0) {
-            console.warn(`  ⚠ 批次 ${i + 1}/${batches} 获取失败: ${batchData.message}`);
+            console.warn(`  ⚠ 批次 ${i + 1}/${batches} 获取失败: ${batchData.message}，重试 ${j + 1}/${max_retries}...`);
             continue;
         }
 
@@ -151,8 +162,10 @@ async function mergeToTxt(
 
         // 避免请求过快
         if (i < batches - 1) {
-            await new Promise(resolve => setTimeout(resolve, 4000 + Math.random() * 2000));
+            await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
         }
+
+        break;
     }
 
     console.log(`  ✓ 共获取 ${Object.keys(allChapters).length} 章内容\n`);
@@ -214,24 +227,30 @@ async function mergeToTxt(
 
     txtContent += `\n${"=".repeat(60)}\n\n`;
 
-    // 按章节顺序添加内容
+    // 按卷、章节顺序添加内容
     let successCount = 0;
     let missingCount = 0;
 
-    for (const chapterInfo of chapterList) {
-        const chapter = allChapters[chapterInfo.itemId];
+    for (let vi = 0; vi < volumeChapterLists.length; vi++) {
+        const volName = volumeNameList[vi] || `第${vi + 1}卷`;
+        txtContent += `第${vi + 1}卷 ${volName}\n\n`;
 
-        if (chapter && chapter.txtContent) {
-            txtContent += `${chapter.chapterName || chapterInfo.title}\n\n`;
-            txtContent += `${chapter.txtContent}\n\n`;
-            txtContent += `${"=".repeat(60)}\n\n`;
-            successCount++;
-        } else {
-            txtContent += `${chapterInfo.title}\n\n`;
-            txtContent += `[章节内容缺失]\n\n`;
-            txtContent += `${"=".repeat(60)}\n\n`;
-            missingCount++;
-            console.warn(`  ⚠ 章节内容缺失: ${chapterInfo.title} (ID: ${chapterInfo.itemId})`);
+        const chapters = volumeChapterLists[vi] || [];
+        for (const chapterInfo of chapters) {
+            const chapter = allChapters[chapterInfo.itemId];
+
+            if (chapter && chapter.txtContent) {
+                txtContent += `${chapter.chapterName || chapterInfo.title}\n\n`;
+                txtContent += `${escape(chapter.txtContent)}\n\n`;
+                txtContent += `${"=".repeat(60)}\n\n`;
+                successCount++;
+            } else {
+                txtContent += `${chapterInfo.title}\n\n`;
+                txtContent += `[章节内容缺失]\n\n`;
+                txtContent += `${"=".repeat(60)}\n\n`;
+                missingCount++;
+                console.warn(`  ⚠ 章节内容缺失: ${chapterInfo.title} (ID: ${chapterInfo.itemId})`);
+            }
         }
     }
 
@@ -273,19 +292,29 @@ if (import.meta.main) {
         console.log("");
     }
 
-    const bookId = args[0] ?? prompt("请输入书籍ID:");
+    const bookIds = args.slice(0);
     const outputPath = args[1];
     const baseUrl = args[2] || "http://127.0.0.1:9999";
 
-    if (!bookId) {
+    if (!bookIds.length) {
         console.error("\n✗ 错误: 缺少书籍ID");
-        Deno.exit(1);
+        console.log('接下来输入小说ID，每行一个，空行结束！');
+        while (true) {
+            const line = prompt("小说ID: ")?.trim();
+            if (!line) {
+                break;
+            }
+            bookIds.push(line);
+        }
+        if (!bookIds.length) Deno.exit(1)
     }
 
-    try {
-        await mergeToTxt(bookId, outputPath, baseUrl);
-    } catch (error) {
-        console.error(`\n✗ 错误: ${error}`);
-        Deno.exit(1);
+    for (const bookId of bookIds) {
+        try {
+            console.log(`\n正在处理书籍ID: ${bookId}`);
+            await mergeToTxt(bookId, outputPath, baseUrl);
+        } catch (error) {
+            console.error(`\n✗ 错误: ${error}`);
+        }
     }
 }

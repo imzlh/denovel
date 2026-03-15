@@ -4,12 +4,11 @@ import { toEpub } from "./2epub.ts";
 import { Converter } from './t2cn.js';
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { readline } from "./exe.ts";
-import { connect, ConnectResult } from "npm:puppeteer-real-browser";
 import { Buffer } from "node:buffer";
 // import fetchN, { Response as ResponseN, RequestInit as RequestInitN } from "npm:node-fetch";
 
 import BlankPage from './static/blank.html' with { type: "text" };
-import { Cookie } from "npm:puppeteer@22.7.1";
+// import { Cookie } from "npm:puppeteer@22.7.1";
 import { join } from "node:path";
 import assert from "node:assert";
 
@@ -452,171 +451,6 @@ async function fetch2(
     }
 
     return response as Response;
-}
-
-class SimpleBrowser {
-    // private server;
-    private browser: undefined | ConnectResult;
-
-    // constructor(
-    //     private port: number = 8123,
-    // ) {
-    //     const serv = new HTTPProxyServer();
-    //     serv.start(port, '127.0.0.1');
-    //     this.server = serv;
-    // }
-
-    async init() {
-        if (this.browser) return;
-        this.browser = await connect({
-            args: [
-                // '--proxy-server=http://localhost:' + this.port,
-                // '--ignore-certificate-errors',
-                // '--start-maximized'
-            ],
-            connectOption: {
-                acceptInsecureCerts: true
-            },
-            customConfig: {
-                chromePath: Deno.build.os == 'windows'
-                    ? "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-                    : '/usr/bin/env chrome',
-                handleSIGINT: true,
-                startingUrl: 'data:text/html,' + encodeURIComponent(BlankPage.replaceAll(/\s+/g, ' '))
-            },
-            headless: false,
-            turnstile: true,
-        });
-    }
-
-    async launch(url: URL, waitFor: boolean = true) {
-        const page = await this.browser?.browser.newPage();
-        if (!page) throw new Error('Browser not initialized');
-        page.setViewport(null);
-
-        // handle request
-        page.setRequestInterception(true);
-        page.on('request', async req => {
-            const url = new URL(req.url());
-            if(url.host.includes('google')){
-                req.abort('blockedbyclient');
-                return;
-            }
-            if(!url.protocol.startsWith('http')){
-                req.continue();
-                return;
-            }
-            // if(url.hostname == 'internal.local'){
-            //     console.log('BROADCAST', url.pathname);
-            //     switch(url.pathname){
-            //         case '/set-cookie': {
-            //             const cookies = req.postData()!;
-            //             const site = url.searchParams.get('site')!.split('.').slice(-2).join('.');
-            //             setRawSetCookie(site, cookies.split('\n'));
-            //             req.abort('aborted');
-            //             return;
-            //         }
-
-            //         default: {
-            //             req.abort('blockedbyclient');
-            //             return;
-            //         }
-            //     }
-            // }
-
-            try{
-                console.log('PROXY', req.method(), url.href);
-                const res = await fetch2(url.href, {
-                    method: req.method(),
-                    headers: req.headers(),
-                    body: req.postData(),
-                    signal: timeout(10),
-                    redirect: 'manual',
-                    maxRetries: 1,
-                    ignoreStatus: true
-                });
-                req.respond({
-                    status: res.status,
-                    headers: Object.fromEntries(res.headers.entries()),
-                    body: await res.arrayBuffer().then(r => Buffer.from(r)).catch(_ => undefined),
-                    contentType: res.headers.get('Content-Type') ?? 'text/plain'
-                });
-            }catch(e){
-                req.abort('failed');
-            }
-        });
-        // init DOMCookies
-        const site = url.hostname.split('.').slice(-2).join('.');
-        this.browser?.browser.setCookie(...Object.entries(cookieStore[site] ?? {}).map(([k, v]) => ({
-            name: k,
-            value: v,
-            domain: site,
-            path: '/',
-            expires: -1,
-            size: 0,
-            httpOnly: false,
-            secure: url.protocol == 'https:'
-        })) as Cookie[]);
-
-        try {
-            await page.goto(url.href);
-            // await page.goto('https://bot-detector.rebrowser.net/')
-            await page.evaluateOnNewDocument(() => {
-                Object.defineProperty(navigator, 'webdriver', { value: false })
-                Object.defineProperty(navigator, 'languages', {
-                    get: function () {
-                        return ['zh-CN', 'zh-TW', 'en-US'];
-                    },
-                });
-                // let __cookie_store = document.cookie;
-                // Object.defineProperty(document, 'cookie', {
-                //     get: function () {
-                //         return __cookie_store;
-                //     },
-                //     set: function (value) {
-                //         __cookie_store = value;
-                //         // will be blocked
-                //         fetch('https://internal.local/set-cookie?site=' + encodeURIComponent(location.hostname), {
-                //             method: 'POST',
-                //             body: __cookie_store,
-                //             mode: 'cors'
-                //         });
-                //     }
-                // });
-            });
-            if(waitFor){
-                await page.waitForNavigation({
-                    waitUntil: 'load'
-                });
-                console.log('完成值守，似乎通过验证？');
-
-                // 同步cookie
-                const cookies = await this.browser?.browser.cookies();
-                let cookieCount = 0;
-                if (cookies) {
-                    const domain = url.hostname.split('.').slice(-2).join('.');
-                    const cookieLocal = cookieStore[domain] ?? {};
-                    for (const cookie of cookies){
-                        cookieLocal[cookie.name] = cookie.value;
-                        cookieCount ++;
-                    }
-                    cookieStore[domain] = cookieLocal;
-                }
-                console.log('同步了', cookieCount, '个cookie');
-            }else{
-                await new Promise(rs => page.on('close',rs));
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            await sleep(1).then(() => page.close({ runBeforeUnload: false }));
-        }
-    }
-
-    async destroy() {
-        // this.server.stop();
-        await this.browser?.browser.close();
-    }
 }
 
 const fromHTML = (str: string) => str
@@ -1399,9 +1233,10 @@ function existsSync(file: string): boolean {
 }
 
 async function launchBrowser(url: URL, waitForFirstNavigation = true) {
-    if(!browser) browser = new SimpleBrowser();
-    await browser.init();
-    return browser.launch(url, waitForFirstNavigation);
+    // if(!browser) browser = new SimpleBrowser();
+    // await browser.init();
+    // return browser.launch(url, waitForFirstNavigation);
+    throw new Error('Browser was removed');
 }
 
 function openFile(file: string) {
