@@ -240,6 +240,7 @@ async function downloadMedia(
 
     if (media.url.indexOf("http") === 0 || media.url.indexOf("//") === 0) {
         try {
+            if (media.url.startsWith('//')) media.url = 'https:' + media.url;
             const response = await networkHandler(new URL(media.url), {
                 headers: { "User-Agent": userAgent },
             });

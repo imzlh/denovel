@@ -1,7 +1,4 @@
 import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
-import { removeIllegalPath } from './main.ts'
-import { fetch2, setRawCookie } from "./main.ts";
-import { readline } from "./exe.ts";
 
 const API_BASE = 'http://192.168.1.2:3000';
 const outDir = 'musicout/';
@@ -54,27 +51,23 @@ let currentCookie = "";
 
 async function login() {
     log.info("请输入网易云音乐 Cookie（包含 MUSIC_U）：");
-    const cookie = await readline("Cookie: ");
+    const cookie = prompt("Cookie: ");
     if (!cookie.trim()) {
         log.warning("未输入Cookie，将以游客模式运行");
         return;
     }
-    
+
     currentCookie = cookie.trim();
-    
-    if (!currentCookie.includes('os=')) {
-        currentCookie += '; os=pc';
-    } else if (!currentCookie.includes('os=pc')) {
-        currentCookie = currentCookie.replace(/os=[^;]+/, 'os=pc');
-    }
-    
-    await setRawCookie("192.168.1.2", currentCookie);
-    await setRawCookie("192.168.1.2:3000", currentCookie);
+    await Deno.writeTextFile('netease.cookie', cookie);
 }
 
 async function updateLoginStatus() {
     try {
-        const res = await fetch2(`${API_BASE}/login/status`);
+        const res = await fetch(`${API_BASE}/login/status`, {
+            headers: {
+                Cookie: currentCookie
+            }
+        });
         const data = await res.json();
         if (data.data?.profile) {
             log.success(`登录成功: ${data.data.profile.nickname}`);
@@ -90,7 +83,11 @@ async function updateLoginStatus() {
 
 const api = {
     getPlaylist: (id: string | number) =>
-        fetch2(`${API_BASE}/playlist/detail?id=${id}`)
+        fetch(`${API_BASE}/playlist/detail?id=${id}`, {
+            headers: {
+                Cookie: currentCookie
+            }
+        })
             .then(res => res.json())
             .then(data => ({
                 name: data.playlist.name,
@@ -101,24 +98,28 @@ const api = {
             })),
 
     getLyric: (id: string | number) =>
-        fetch2(`${API_BASE}/lyric?id=${id}`)
+        fetch(`${API_BASE}/lyric?id=${id}`)
             .then(res => res.json())
             .then(data => mergeLrc(data.lrc?.lyric, data.tlyric?.lyric))
             .catch(() => undefined),
 
     getAudioSource: async (id: number): Promise<AudioSource | null> => {
         const levels = [
-            { level: "lossless", name: "无损" },
-            { level: "exhigh", name: "极高" },
-            { level: "higher", name: "较高" },
+            // { level: "lossless", name: "无损" },
+            // { level: "exhigh", name: "极高" },
+            // { level: "higher", name: "较高" },
             { level: "standard", name: "标准" }
         ];
-        
+
         for (const { level, name } of levels) {
             try {
-                const res = await fetch2(`${API_BASE}/song/url/v1?id=${id}&level=${level}`);
+                const res = await fetch(`${API_BASE}/song/url/v1?id=${id}&level=${level}`, {
+                    headers: {
+                        Cookie: currentCookie
+                    }
+                });
                 const data = await res.json();
-                
+
                 if (data.data?.[0]?.url) {
                     const item = data.data[0];
                     return {
@@ -137,27 +138,31 @@ const api = {
     },
 
     getSongsInfo: (ids: (string | number)[]) =>
-        fetch2(`${API_BASE}/song/detail?ids=${ids.join(',')}`)
+        fetch(`${API_BASE}/song/detail?ids=${ids.join(',')}`, {
+            headers: {
+                Cookie: currentCookie
+            }
+        })
             .then(res => res.json())
             .then(data => data.songs as Song[]),
 
     getArtistTopSongs: (id: string | number) =>
-        fetch2(`${API_BASE}/artist/top/song?id=${id}`)
+        fetch(`${API_BASE}/artist/top/song?id=${id}`)
             .then(res => res.json())
             .then(data => data.songs as Song[]),
 
     getArtistInfo: (id: string | number) =>
-        fetch2(`${API_BASE}/artists?id=${id}`)
+        fetch(`${API_BASE}/artists?id=${id}`)
             .then(res => res.json())
             .then(data => data.artist as Artist),
 
     searchArtist: (keywords: string, limit = 10) =>
-        fetch2(`${API_BASE}/search?keywords=${encodeURIComponent(keywords)}&type=100&limit=${limit}`)
+        fetch(`${API_BASE}/search?keywords=${encodeURIComponent(keywords)}&type=100&limit=${limit}`)
             .then(res => res.json())
             .then(data => data.result?.artists || []),
 
     searchSong: (keywords: string) =>
-        fetch2(`${API_BASE}/search?keywords=${encodeURIComponent(keywords)}&type=1`)
+        fetch(`${API_BASE}/search?keywords=${encodeURIComponent(keywords)}&type=1`)
             .then(res => res.json())
             .then(data => data.result?.songs || []),
 
@@ -168,7 +173,7 @@ const api = {
         let hasMore = true;
 
         while (hasMore) {
-            const res = await fetch2(`${API_BASE}/artist/album?id=${id}&limit=${limit}&offset=${offset}`);
+            const res = await fetch(`${API_BASE}/artist/album?id=${id}&limit=${limit}&offset=${offset}`);
             const data = await res.json();
             allAlbums = allAlbums.concat(data.hotAlbums);
             hasMore = data.more;
@@ -178,7 +183,7 @@ const api = {
     },
 
     getAlbumDetail: (id: string | number) =>
-        fetch2(`${API_BASE}/album?id=${id}`)
+        fetch(`${API_BASE}/album?id=${id}`)
             .then(res => res.json())
             .then(data => ({
                 album: data.album,
@@ -188,7 +193,7 @@ const api = {
 
 export function mergeLrc(lrcA: string, lrcB: string): string {
     type Line = { t: number; raw: string; text: string };
-    
+
     const parse = (raw: string): Line | null => {
         const m = raw.trim().match(/^(\[\d{2}:\d{2}\.\d{2,3}\])(.*)$/);
         if (!m) return null;
@@ -237,9 +242,12 @@ async function createInfoFile(folderPath: string, info: any) {
     await Deno.writeTextFile(`${folderPath}/info.txt`, content);
 }
 
+
+const removeIllegalPath = (path: string) => path?.replaceAll(/[\/:*?"<>|]/ig, '_');
+
 async function downloadSong(song: Song, folder: string = outDir, showProgressBar = false): Promise<boolean> {
     const songName = removeIllegalPath(song.name + '-' + song.ar.map(a => a.name).join(','));
-    const outputPath = folder + songName + '.mka';  // 改为 .mka
+    const outputPath = folder + songName + '.mp3';
     let audioTempPath: string | null = null;
     let coverPath: string | null = null;
 
@@ -254,74 +262,66 @@ async function downloadSong(song: Song, folder: string = outDir, showProgressBar
         if (!source) throw new Error("无音频链接");
         if (showProgressBar) showProgress(1, 4, song.name);
 
-        const audioRes = await fetch2(source.url);
+        const audioRes = await fetch(source.url);
         if (!audioRes.ok) throw new Error(`HTTP ${audioRes.status}`);
-        
+
         const audioData = await audioRes.bytes();
         if (audioData.length < 1024) throw new Error("音频数据异常");
-        
+
         audioTempPath = await Deno.makeTempFile({ suffix: '.tmp' });
         await Deno.writeFile(audioTempPath, audioData);
-        
+
         if (showProgressBar) showProgress(2, 4, song.name);
 
         // 下载封面
         if (song.al.picUrl) {
             try {
-                const coverRes = await fetch2(song.al.picUrl);
+                const coverRes = await fetch(song.al.picUrl);
                 if (coverRes.ok) {
                     coverPath = await Deno.makeTempFile({ suffix: '.jpg' });
                     await Deno.writeFile(coverPath, await coverRes.bytes());
                 }
-            } catch {}
+            } catch { }
         }
 
         if (showProgressBar) showProgress(3, 4, song.name);
 
-        // 构建 ffmpeg 命令 (FFmpeg 7.x)
-        const args = [
-            '-hide_banner',
-            '-loglevel', 'error',
-            '-i', audioTempPath,  // 第一个输入：音频
-        ];
-        
-        // 如果有封面，添加为附件
+        // 构建 ffmpeg 命令：回到 MP3，纯复制音频流并在存在封面时添加图片流（ID3v2）
+        let args: string[];
         if (coverPath) {
-            args.push('-attach', coverPath);  // 使用 -attach 添加封面
+            args = [
+                '-hide_banner',
+                '-loglevel', 'error',
+                '-i', audioTempPath,
+                '-i', coverPath,
+                '-map', '0:a',
+                '-map', '1',
+                '-c', 'copy',
+                '-id3v2_version', '3',
+                '-metadata', `title=${song.name}`,
+                '-metadata', `artist=${song.ar.map(a => a.name).join(',')}`,
+                '-metadata', `album=${song.al.name}`,
+                '-metadata', `date=${new Date(song.publishTime).getFullYear()}`,
+                '-disposition:v:0', 'attached_pic',
+                '-y',
+                outputPath
+            ];
+        } else {
+            args = [
+                '-hide_banner',
+                '-loglevel', 'error',
+                '-i', audioTempPath,
+                '-map', '0:a:0',
+                '-c', 'copy',
+                '-id3v2_version', '3',
+                '-metadata', `title=${song.name}`,
+                '-metadata', `artist=${song.ar.map(a => a.name).join(',')}`,
+                '-metadata', `album=${song.al.name}`,
+                '-metadata', `date=${new Date(song.publishTime).getFullYear()}`,
+                '-y',
+                outputPath
+            ];
         }
-        
-        // 映射音频流
-        args.push('-map', '0:a:0');
-        
-        // 音频编码参数
-        args.push(
-            '-c:a', 'libopus',
-            '-b:a', '96k',
-        );
-        
-        // 如果有封面，添加附件元数据
-        if (coverPath) {
-            args.push(
-                '-metadata:s:1', 'mimetype=image/jpeg',
-                '-metadata:s:1', 'filename=cover.jpg',
-                '-metadata:s:1', 'title="Album cover"'
-            );
-        }
-        
-        // 添加全局元数据
-        args.push(
-            '-metadata', `title=${song.name}`,
-            '-metadata', `artist=${song.ar.map(a => a.name).join(',')}`,
-            '-metadata', `album=${song.al.name}`,
-            '-metadata', `date=${new Date(song.publishTime).getFullYear()}`,
-        );
-        
-        // 输出参数
-        args.push(
-            '-f', 'matroska',  // 指定容器格式
-            '-y',              // 覆盖已存在的文件
-            outputPath
-        );
 
         // 执行 ffmpeg
         const cmd = new Deno.Command('ffmpeg', {
@@ -331,7 +331,7 @@ async function downloadSong(song: Song, folder: string = outDir, showProgressBar
         });
 
         const result = await cmd.output();
-        
+
         if (!result.success) {
             throw new Error(new TextDecoder().decode(result.stderr));
         }
@@ -343,19 +343,19 @@ async function downloadSong(song: Song, folder: string = outDir, showProgressBar
             showProgress(4, 4, song.name);
             console.log('');
         }
-        
+
         log.success(`${song.name} [${source.level}]`);
         return true;
-        
+
     } catch (e) {
         if (showProgressBar) console.log('');
         log.error(`${song.name}: ${(e as Error).message}`);
-        try { await Deno.remove(outputPath); } catch {}
+        try { await Deno.remove(outputPath); } catch { }
         return false;
     } finally {
         // 清理临时文件
-        if (audioTempPath) try { await Deno.remove(audioTempPath); } catch {}
-        if (coverPath) try { await Deno.remove(coverPath); } catch {}
+        if (audioTempPath) try { await Deno.remove(audioTempPath); } catch { }
+        if (coverPath) try { await Deno.remove(coverPath); } catch { }
     }
 }
 async function downloadSongs(songs: Song[], folder: string, infoData?: any): Promise<DownloadStats> {
@@ -432,7 +432,7 @@ function showMenu() {
     console.log('\n' + '='.repeat(60));
     log.title('🎵 网易云音乐下载器 (Opus 96k)');
     console.log('='.repeat(60));
-    console.log(`${colors.bright}0.${colors.reset} 登录/设置Cookie ${currentCookie ? colors.green+'[已登录]'+colors.reset : colors.yellow+'[未登录]'+colors.reset}`);
+    console.log(`${colors.bright}0.${colors.reset} 登录/设置Cookie ${currentCookie ? colors.green + '[已登录]' + colors.reset : colors.yellow + '[未登录]' + colors.reset}`);
     console.log(`${colors.bright}1.${colors.reset} 搜索歌曲`);
     console.log(`${colors.bright}2.${colors.reset} 搜索歌手`);
     console.log(`${colors.bright}3.${colors.reset} 下载单曲 (连续模式)`);
@@ -447,11 +447,14 @@ export default async function main() {
     log.info(`格式: Opus 96kbps`);
     log.info(`音质: 超清母带/杜比/Hi-Res/无损... (依次尝试)\n`);
 
-    await updateLoginStatus();
+    try {
+        currentCookie = await Deno.readTextFile('netease.cookie');
+        await updateLoginStatus();
+    } catch {};
 
     while (true) {
         showMenu();
-        const choice = await readline("请选择 (0-5 或 q): ");
+        const choice = prompt("请选择 (0-5 或 q): ");
 
         if (choice === 'q' || choice === 'Q') {
             log.info('再见！');
@@ -460,13 +463,13 @@ export default async function main() {
 
         try {
             switch (choice) {
-                case '0': 
+                case '0':
                     await login();
                     await updateLoginStatus();
                     break;
-                    
+
                 case '1': while (true) {
-                    const keyword = await readline("歌曲名称: ");
+                    const keyword = prompt("歌曲名称: ");
                     if (!keyword) break;
                     log.info(`搜索中...\n`);
                     const results = await api.searchSong(keyword);
@@ -482,7 +485,7 @@ export default async function main() {
                         console.log(`  ${idx + 1}. ${song.name} - ${artists}`);
                     });
 
-                    const selection = await readline("\n选择序号 (多个用逗号分隔, all=全部): ");
+                    const selection = prompt("\n选择序号 (多个用逗号分隔, all=全部): ");
                     let selectedIds: number[] = [];
                     if (selection.toLowerCase() === 'all') {
                         selectedIds = results.map((s: any) => s.id);
@@ -504,7 +507,7 @@ export default async function main() {
                 }; break;
 
                 case '2': while (true) {
-                    const keyword = await readline("歌手名称: ");
+                    const keyword = prompt("歌手名称: ");
                     if (!keyword) break;
 
                     log.info(`搜索中...\n`);
@@ -520,14 +523,14 @@ export default async function main() {
                         console.log(`  ${idx + 1}. ${artist.name} (专辑: ${artist.albumSize})`);
                     });
 
-                    const idx = parseInt(await readline("\n选择序号: ")) - 1;
+                    const idx = parseInt(prompt("\n选择序号: ")) - 1;
                     if (idx < 0 || idx >= results.length) {
                         log.error("无效序号");
                         break;
                     }
 
                     const artist = results[idx];
-                    const action = await readline("\n[1] 热门50首  [2] 全部专辑  [3] 选择专辑: ");
+                    const action = prompt("\n[1] 热门50首  [2] 全部专辑  [3] 选择专辑: ");
 
                     if (action === '1') {
                         const songs = await api.getArtistTopSongs(artist.id);
@@ -550,7 +553,7 @@ export default async function main() {
                             console.log(`  ${idx + 1}. ${album.name} (${album.size}首)`);
                         });
 
-                        const albumIdx = parseInt(await readline("\n选择专辑: ")) - 1;
+                        const albumIdx = parseInt(prompt("\n选择专辑: ")) - 1;
                         if (albumIdx < 0 || albumIdx >= albums.length) {
                             log.error("无效序号");
                             break;
@@ -572,7 +575,7 @@ export default async function main() {
                 }; break;
 
                 case '3': while (true) {
-                    const input = await readline("歌曲ID (0=退出): ");
+                    const input = prompt("歌曲ID (0=退出): ");
                     if (input === '0') break;
 
                     const id = input.match(/\d+/)?.[0];
@@ -589,7 +592,7 @@ export default async function main() {
                 }; break;
 
                 case '4': while (true) {
-                    const input = await readline("歌单ID: ");
+                    const input = prompt("歌单ID: ");
                     const id = input.match(/\d+/)?.[0];
                     if (!id) {
                         log.error("无效ID");
@@ -623,7 +626,7 @@ export default async function main() {
                 }; break;
 
                 case '5': while (true) {
-                    const input = await readline("专辑ID: ");
+                    const input = prompt("专辑ID: ");
                     const id = input.match(/\d+/)?.[0];
                     if (!id) {
                         log.error("无效ID");
@@ -648,13 +651,13 @@ export default async function main() {
                 }; break;
 
                 default:
-                    log.warning("无效选项");
+                    log.warning("无效选项: " + choice);
             }
         } catch (e) {
             log.error(`操作失败: ${(e as Error).message}`);
         }
 
-        await readline("\n按回车继续...");
+        prompt("\n按回车继续...");
     }
 }
 

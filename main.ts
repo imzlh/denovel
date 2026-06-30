@@ -1213,10 +1213,10 @@ async function exists(file: string): Promise<boolean> {
         await Deno.stat(file);
         return true;
     } catch (e) {
-        // if (e instanceof Deno.errors.NotFound) {
+        if (e instanceof Deno.errors.NotFound) {
             return false;
-        // }
-        // throw e;
+        }
+        throw e;
     }
 }
 

@@ -101,6 +101,7 @@ async function main() {
         // 处理每个文件
         for (const file of files) {
             try {
+                console.time('process');
                 console.log(`处理文件: ${file}`);
 
                 // 读取文件内容
@@ -118,6 +119,7 @@ async function main() {
                 // }
                 // console.log(content);
                 const content = Deno.readTextFileSync(file);
+                console.timeLog('process', 'read file', file);
 
                 // 提取标题
                 const extractedTitle = extractTitle(content, basename(file, '.txt'));
@@ -134,41 +136,45 @@ async function main() {
                 console.log(`  当前文件名: ${currentName}`);
                 console.log(`  提取的标题: ${extractedTitle}`);
                 console.log(`  相似度: ${(sim * 100).toFixed(2)}%`);
+                console.timeLog('process', 'extract title');
 
                 if (sim == 1){
                     console.log(`  相似度为100%，跳过: ${file}\n`);
+                    console.timeEnd('process');
                     continue;
                 }
 
                 // 相似度阈值设定为0.3，可根据实际情况调整
                 if (sim < 0.6) {
                     console.log(`  相似度过低，可能误识别，跳过: ${file}\n`);
+                    console.timeEnd('process');
                     continue;
                 }
 
                 // 构建新文件名
                 const newFilename = `${extractedTitle}.txt`;
 
-                // 避免重名冲突
-                let finalNewFilename = newFilename;
-                let counter = 1;
-
-                while (await fileExists(finalNewFilename)) {
-                    finalNewFilename = `${extractedTitle}⊙${counter}.txt`;
-                    counter++;
+                if (await fileExists(newFilename)) {
+                    // 比较大小
+                    const newFileSize = (await Deno.stat(newFilename)).size;
+                    if (newFileSize < content.length) {
+                        console.log(`  新文件大小 (${newFileSize}) 小于旧文件大小 (${content.length})，不替换\n`);
+                        console.timeEnd('process');
+                        continue;
+                    }
                 }
 
                 // 重命名文件
-                if (file !== finalNewFilename) {
-                    await Deno.rename(file, finalNewFilename);
-                    console.log(`  重命名为: ${finalNewFilename}\n`);
+                if (file !== newFilename) {
+                    await Deno.rename(file, newFilename);
+                    console.log(`  重命名为: ${newFilename}\n`);
                     renamedCount++;
                 } else {
                     console.log(`  文件名已正确，无需修改\n`);
                 }
-
+                console.timeEnd('process');
             } catch (error) {
-                console.error(`  处理文件时出错 ${file}:`, error);
+                console.error(`  处理文件时出错 ${file}:`, error, error.stack);
             }
         }
 

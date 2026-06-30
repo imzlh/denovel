@@ -135,7 +135,7 @@ export async function readline(prompt: string) {
                         fatal: true,
                         ignoreBOM: false
                     }).decode(buf.subarray(0, i));
-                    return line;
+                    return line.trim();
             }catch{}
         }
         offset += data;

@@ -7,7 +7,6 @@ import { ensureDir } from "jsr:@std/fs@^1.0.10/ensure-dir";
 import { basename, dirname, join } from "jsr:@std/path@^1.0";
 import { delay } from "https://deno.land/std@0.224.0/async/delay.ts";
 import { Document, DOMParser } from "jsr:@b-fuze/deno-dom";
-import { readline } from "./exe.ts";
 import ProgressBar from "https://deno.land/x/progressbar@v0.2.0/progressbar.ts";
 import { amountWidget, percentageWidget } from "https://deno.land/x/progressbar@v0.2.0/widgets.ts";
 
@@ -254,6 +253,7 @@ const getFiles = async function (page: string, parentPath = '', files: LanZouFil
 async function fetch3(urlRaw: URL | string, fetchOps?: any, expect: 'document' | 'binary' | 'json' = 'json') {
     let textpath = new URL(urlRaw);
     let text2 = await fetch2(urlRaw, fetchOps);
+    console.log(`GET ${textpath.href}`);
     while (true) {
         let document: Document;
         if (expect == 'binary') {
@@ -391,7 +391,7 @@ export default async function main() {
     let files: LanZouFile[] = [];
 
     if (!Deno.args.length) {
-        const link = await readline('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
+        const link = prompt('请输入蓝奏云分享链接：') ?? 'https://wwt.lanzov.com/b041zh0qj';
         if (!link) return;
 
         const intv = setInterval(() => Deno.writeTextFileSync('files.json', JSON.stringify(files, null, 4)), 10000);
@@ -424,3 +424,12 @@ export default async function main() {
     await prog.finish();
 }
 if (import.meta.main) main();
+else console.log('请使用 deno run -A index.ts 运行本程序！');
+
+addEventListener("error", (e: any) => {
+  console.error("error event:", e.error ?? e);
+});
+
+addEventListener("unhandledrejection", (e: any) => {
+  console.error("unhandledrejection:", e.reason);
+});
