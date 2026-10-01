@@ -1,15 +1,11 @@
-# denovel 超级下载器V2
+# denovel 超级下载器V1
 
-![ico](src/static/denovel.webp)
+![ico](static/denovel.webp)
 
 下载各个盗版网站/正版网站web版的小说/漫画程序<br>
 同时也有各种周边工具，如转epub、格式化、查找等<br>
-写了主要是给自己用的，欢迎大家补充
-
-> [!TIP]
-> denovel V2正在开发中！<br>
-> 这个分支将尝试重构项目混乱的结构，添加更多功能！<br>
-> 不过由于精力有限，可能进度缓慢，欢迎PR!
+写了主要是给自己用的，欢迎大家补充<br>
+进阶玩法（自己添加网页，很简单的教程）: [教程](docs/advanced.md)
 
 # 特色
  - 强大的爬取功能，伪造标头/类浏览器Cookie持久化/原生JS eval
@@ -23,7 +19,9 @@
 
 # 目前已经支持？
 看`lib/`文件夹都是已经支持的
- - 番茄：目前有3个可用源(1个需要登陆)，1个未知源。**且用且珍惜！**
+ - 番茄：<del>目前有3个可用源(1个需要登陆)，1个未知源。**且用且珍惜！**<del>
+    番茄应该不再更新，推荐使用 `fqnovel-unidbg` 这个项目自行部署
+    再搭配 `fqunisrv.ts`下载小说，更快更稳定
  - sfacg：web
  - 刺猬猫：WebAPI
  - 起点(实验性)：web + 浏览器辅助验证
@@ -36,6 +34,12 @@
  - dm5漫画人 (tel.dm5.com)
  - sfacg漫画(manhua.sfacg.com)
  - 拷贝漫画(www.mangacopy.com)
+
+# 预览
+![首页](docs/image.png)
+![content API](docs/image-2.png)
+![终端漫画下载](docs/image-3.png)
+![densh 二进制](docs/image-4.png)
 
 # 怎么用？
 文档搬迁到[Github Pages](https://imzlh.github.io/denovel/)

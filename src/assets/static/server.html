@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小说下载管理器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-check {
+            margin: 0 8px;
+            transform-origin: center;
+            transform: scale(1.25);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .checkbox-item:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            accent-color: #667eea;
+        }
+
+        .checkbox-item label {
+            margin: 0;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .sub-options {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(102, 126, 234, 0.05);
+            border-radius: 8px;
+        }
+
+        .sub-options.show {
+            display: block;
+        }
+
+        .sub-options .checkbox-group {
+            margin-top: 0;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            margin-top: 10px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .queue-section {
+            grid-column: 1 / -1;
+        }
+
+        .queue-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 12px;
+            background: #f8f9fa;
+        }
+
+        .queue-item {
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .queue-item:hover {
+            background: #e9ecef;
+        }
+
+        .queue-item:last-child {
+            border-bottom: none;
+        }
+
+        .queue-info h4 {
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .queue-info p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .queue-status {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-waiting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-downloading {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .log-output {
+            background: #1a1a1a;
+            color: #00ff00;
+            font-family: Consolas, 'Courier New', monospace;
+            padding: 20px;
+            border-radius: 12px;
+            height: 300px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .settings-buttons {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .novel-info {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+        }
+
+        .novel-info.show {
+            display: block;
+        }
+
+        .novel-info h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .queue-info {
+            max-width: 22em;
+        }
+
+        @media (max-width: 768px) {
+            .checkbox-group {
+                flex-direction: column;
+            }
+            
+            .settings-buttons {
+                flex-direction: column;
+            }
+
+            .dialog {
+                margin: 20px;
+                max-width: calc(100vw - 40px);
+            }
+
+            .settings-dialog {
+                width: auto;
+            }
+
+            .log-dialog {
+                width: auto;
+            }
+
+            .queue-info {
+                max-width: unset;
+            }
+        }
+
+        @media (max-width: 1000px) {
+            .main-content{
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 30px;
+                margin-bottom: 30px;
+            }
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Dialog 样式 */
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .dialog-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .dialog {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            transform: scale(0.8);
+            transition: all 0.3s ease;
+        }
+
+        .dialog-overlay.show .dialog {
+            transform: scale(1);
+        }
+
+        .dialog-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .dialog-header h2 {
+            margin: 0;
+            color: #333;
+            font-size: 1.5rem;
+        }
+
+        .dialog-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+            padding: 5px;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            width: 42px;
+            height: 42px;
+        }
+
+        .dialog-close:hover {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .settings-dialog {
+            width: 500px;
+        }
+
+        .log-dialog {
+            width: 800px;
+        }
+
+        .log-dialog .dialog {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-dialog .dialog-content {
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .settings-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: none;
+            padding: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            font-size: 20px;
+            z-index: 100;
+        }
+
+        .settings-btn:hover {
+            background: white;
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 小说下载管理器</h1>
+            <p>智能下载，多格式支持，队列管理</p>
+        </div>
+
+        <!-- 设置按钮 -->
+        <button class="settings-btn" onclick="openSettingsDialog()">
+            ⚙️
+        </button>
+
+        <div class="main-content">
+            <!-- 小说下载 -->
+            <div class="card">
+                <h2>📖 添加下载任务</h2>
+                <div class="form-group">
+                    <label for="novelUrl">小说URL</label>
+                    <input type="url" id="novelUrl" class="form-control" placeholder="请输入小说链接">
+                </div>
+                
+                <div class="novel-info" id="novelInfo">
+                    <h3>📋 小说信息</h3>
+                    <div class="form-group">
+                        <label for="novelName">小说名称</label>
+                        <input type="text" id="novelName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="coverUrl">封面URL</label>
+                        <input type="url" id="coverUrl" class="form-control">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>📋 下载选项</label>
+                    <div class="checkbox-group">
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="toEpub" checked>
+                            <label for="toEpub">转换为 EPUB</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="translate">
+                            <label for="translate">繁体翻译</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="autoPart" checked>
+                            <label for="autoPart">自动分章</label>
+                        </div>
+                    </div>
+                    
+                    <div class="sub-options" id="epubOptions">
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="jpFormat">
+                                <label for="jpFormat">日式格式</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="mergeShort">
+                                <label for="mergeShort">合并短章节</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn" onclick="checkUrl()" id="checkBtn">
+                    🔍 检查URL
+                </button>
+                <button class="btn" onclick="pollQueue()" id="pollBtn" data-state="free">
+                    🔁 刷新队列
+                </button>
+                <button class="btn" onclick="addToQueue()" id="downloadBtn" style="display:none;">
+                    ⬇️ 添加到队列
+                </button>
+                
+                <br>
+                <button class="btn" id="showBookShelf" onclick="document.location.href = 'api/bookshelf';">
+                    📚 你的书架
+                </button>
+                <button class="btn" id="previewBook" onclick="previewBook()">
+                    🔗 预览书籍
+                </button>
+            </div>
+
+            <!-- 下载队列 -->
+            <div class="card">
+                <h2>📋 下载队列 <small style="color: #666; font-size: 0.8em;">(点击任务查看日志)</small></h2>
+                <div class="queue-list" id="queueList">
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        暂无下载任务
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 全局设置对话框 -->
+        <div class="dialog-overlay" id="settingsDialog">
+            <div class="dialog settings-dialog">
+                <div class="dialog-header">
+                    <h2>⚙️ 全局设置</h2>
+                    <button class="dialog-close" onclick="closeSettingsDialog()">×</button>
+                </div>
+                <div class="dialog-content">
+                    <div class="form-group">
+                        <label for="delay">请求间隔时间 (毫秒)</label>
+                        <input type="number" id="delay" class="form-control" value="1000" min="100" max="10000">
+                    </div>
+                    <div class="form-group">
+                        <label for="outputDir">输出目录</label>
+                        <input type="text" id="outputDir" class="form-control" value="./downloads" placeholder="例: ./downloads">
+                    </div>
+                    <div class="form-group">
+                        <label for="overwritePrefer"><input type="checkbox" id="overwritePrefer" class="form-check" />允许覆盖</label>
+                        
+                    </div>
+                    <div class="settings-buttons">
+                        <button class="btn" onclick="saveSettings()">
+                            💾 保存设置
+                        </button>
+                        <button class="btn" onclick="loadSettings()">
+                            📥 加载设置
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 任务日志对话框 -->
+        <div class="dialog-overlay" id="logDialog">
+            <div class="dialog log-dialog">
+                <div class="dialog-header">
+                    <h2 id="logDialogTitle">📊 任务日志</h2>
+                    <button class="dialog-close" onclick="closeLogDialog()">×</button>
+                </div>
+                <div class="dialog-content">
+                    <div class="log-output" id="taskLogOutput">等待选择任务...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let downloadQueue = [];
+        let currentDownload = null;
+        let taskLogs = {}; // 存储每个任务的日志
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSettings();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // EPUB选项显示/隐藏
+            document.getElementById('toEpub').addEventListener('change', function() {
+                const epubOptions = document.getElementById('epubOptions');
+                epubOptions.classList.toggle('show', this.checked);
+            });
+
+            // URL输入实时检查
+            document.getElementById('novelUrl').addEventListener('input', function() {
+                const novelInfo = document.getElementById('novelInfo');
+                const checkBtn = document.getElementById('checkBtn');
+                const downloadBtn = document.getElementById('downloadBtn');
+                
+                if (this.value.trim()) {
+                    checkBtn.style.display = 'inline-block';
+                    downloadBtn.style.display = 'none';
+                    novelInfo.classList.remove('show');
+                } else {
+                    checkBtn.style.display = 'none';
+                    downloadBtn.style.display = 'none';
+                    novelInfo.classList.remove('show');
+                }
+            });
+
+            // 点击对话框外部关闭
+            document.addEventListener('click', function(e) {
+                if (e.target.classList.contains('dialog-overlay')) {
+                    if (e.target.id === 'settingsDialog') {
+                        closeSettingsDialog();
+                    } else if (e.target.id === 'logDialog') {
+                        closeLogDialog();
+                    }
+                }
+            });
+        }
+
+        // 对话框管理函数
+        function openSettingsDialog() {
+            document.getElementById('settingsDialog').classList.add('show');
+        }
+
+        function closeSettingsDialog() {
+            document.getElementById('settingsDialog').classList.remove('show');
+        }
+
+        function openLogDialog(taskId) {
+            const task = downloadQueue.find(t => t.id === taskId);
+            if (!task) return;
+
+            document.getElementById('logDialogTitle').textContent = `📊 ${task.novelName || '未知小说'} - 任务日志`;
+            
+            // 显示该任务的日志
+            const taskLogOutput = document.getElementById('taskLogOutput');
+            const logs = taskLogs[taskId] || [];
+            taskLogOutput.innerHTML = logs.length > 0 ? logs.join('\n') : '暂无日志记录...';
+            taskLogOutput.scrollTop = taskLogOutput.scrollHeight;
+
+            document.getElementById('logDialog').classList.add('show');
+        }
+
+        function closeLogDialog() {
+            document.getElementById('logDialog').classList.remove('show');
+        }
+
+        // 保存全局设置
+        async function saveSettings() {
+            const settings = {
+                delay: parseInt(document.getElementById('delay').value),
+                outputDir: document.getElementById('outputDir').value,
+                overwrite: document.getElementById('overwritePrefer').checked
+            };
+
+            try {
+                const response = await fetch('api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+
+                if (response.ok) {
+                    showToast('设置保存成功！', 'success');
+                    closeSettingsDialog();
+                } else {
+                    throw new Error('保存失败');
+                }
+            } catch (error) {
+                showToast('设置保存失败：' + error.message, 'error');
+            }
+        }
+
+        // 加载全局设置
+        async function loadSettings() {
+            try {
+                const response = await fetch('api/settings');
+                if (response.ok) {
+                    const settings = await response.json();
+                    document.getElementById('delay').value = settings.delay || 1000;
+                    document.getElementById('outputDir').value = settings.outputDir || './downloads';
+                    document.getElementById('overwritePrefer').checked = !!settings.overwrite;
+                    showToast('设置加载成功！', 'success');
+                }
+            } catch (error) {
+                console.warn('加载设置失败，使用默认值');
+            }
+        }
+
+        // 检查URL
+        async function checkUrl() {
+            const url = document.getElementById('novelUrl').value.trim();
+            if (!url) {
+                showToast('请输入小说URL', 'error');
+                return;
+            }
+            try{
+                new URL(url)
+            }catch{
+                showToast('请输入正确的URL', 'error');
+                return;
+            }
+
+            const checkBtn = document.getElementById('checkBtn');
+            const originalText = checkBtn.innerHTML;
+            checkBtn.innerHTML = '🔍 检查中...<span class="loading"></span>';
+            checkBtn.disabled = true;
+            let res = 0;
+
+            try {
+                const response = await fetch('api/check-url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url })
+                });
+
+                if (!response.ok){
+                    showToast(await response.text(), 'error');
+                    return -1;
+                }
+
+                const result = await response.json();
+
+                if (result.needsInfo) {
+                    // 需要用户输入更多信息
+                    const novelInfo = document.getElementById('novelInfo');
+                    novelInfo.classList.add('show');
+                    document.getElementById('novelName').value = result.suggestedName || '';
+                    document.getElementById('coverUrl').value = result.suggestedCover || '';
+                    document.getElementById('downloadBtn').style.display = 'inline-block';
+                    showToast('请完善小说信息', 'info');
+                    res = 0;
+                } else {
+                    // 可以直接下载
+                    document.getElementById('downloadBtn').style.display = 'inline-block';
+                    showToast('URL检查完成，可以下载', 'success');
+                    res = 1;
+                }
+            } catch (error) {
+                showToast('URL检查失败：' + error.message, 'error');
+                res = -1;
+            } finally {
+                checkBtn.innerHTML = originalText;
+                checkBtn.disabled = false;
+            }
+
+            return res;
+        }
+
+        async function previewBook() {
+            // 确保URL正确
+            const novelInfo = document.getElementById('novelInfo');
+            if(-1 != await checkUrl()){
+                const url = document.getElementById('novelUrl').value.trim();
+                document.location.href = `content?url=${encodeURIComponent(url)}`;
+            }
+        }
+
+        // 添加到下载队列
+        function addToQueue() {
+            const url = document.getElementById('novelUrl').value.trim();
+            const novelName = document.getElementById('novelName').value.trim();
+            const coverUrl = document.getElementById('coverUrl').value.trim();
+
+            if (!url) {
+                showToast('请输入小说URL', 'error');
+                return;
+            }
+
+            const options = {
+                toEpub: document.getElementById('toEpub').checked,
+                translate: document.getElementById('translate').checked,
+                autoPart: document.getElementById('autoPart').checked,
+                jpFormat: document.getElementById('jpFormat').checked,
+                mergeShort: document.getElementById('mergeShort').checked
+            };
+
+            const task = {
+                id: Date.now() + Math.random(),
+                url,
+                novelName,
+                coverUrl,
+                options,
+                status: 'waiting',
+                addTime: new Date().toLocaleString()
+            };
+
+            downloadQueue.push(task);
+            taskLogs[task.id] = []; // 初始化该任务的日志
+            updateQueueDisplay();
+            
+            // 清空表单
+            document.getElementById('novelUrl').value = '';
+            document.getElementById('novelName').value = '';
+            document.getElementById('coverUrl').value = '';
+            document.getElementById('novelInfo').classList.remove('show');
+            document.getElementById('downloadBtn').style.display = 'none';
+            document.getElementById('checkBtn').style.display = 'none';
+
+            showToast('任务已添加到队列', 'success');
+
+            // 如果没有正在下载的任务，开始下载
+            if (!currentDownload) {
+                processQueue();
+            }
+        }
+
+        async function pollQueue() {
+            const btnEl = document.getElementById('pollBtn');
+
+            let tasks;
+            try{
+                const response = await fetch('api/poll-queue');
+                if(!response.ok) throw new Error('刷新失败: ' + (await response.text()));
+                tasks = await response.json();
+                if(tasks.length == 0){
+                    showToast('服务器内没有任务', 'info');
+                    return;
+                }
+            }catch(e){
+                showToast('刷新失败：' + e.message, 'error');
+            }
+
+            if(btnEl.dataset.state == 'free'){
+                // 显示高级选项
+                const novelInfo = document.getElementById('novelInfo');
+                novelInfo.classList.add('show');
+                showToast('请选择下载选项，点击开始后将自动开始下载服务器内队列任务', 'info');
+                btnEl.innerHTML = '完成！开始刷新';
+                btnEl.dataset.state = 'wait';
+                return;
+            }
+
+            btnEl.innerHTML = '刷新中';
+            btnEl.disabled = true;
+            btnEl.dataset.state = 'busy';
+
+            const options = {
+                toEpub: document.getElementById('toEpub').checked,
+                translate: document.getElementById('translate').checked,
+                autoPart: document.getElementById('autoPart').checked,
+                jpFormat: document.getElementById('jpFormat').checked,
+                mergeShort: document.getElementById('mergeShort').checked
+            };
+
+            // task: string -> url
+            for(const task of new Set(tasks)){
+                if(downloadQueue.some(t => t.url === task)) continue;
+                downloadQueue.push({
+                    id: Date.now() + Math.random(),
+                    url: task,
+                    status: 'waiting',
+                    addTime: new Date().toLocaleString(),
+                    options
+                });
+            }
+            btnEl.innerHTML = ' 🔁 刷新队列 ';
+            btnEl.disabled = false;
+            btnEl.dataset.state = 'free';
+            updateQueueDisplay();
+
+            try{
+                await fetch('api/clear-queue');
+            }catch{}
+
+            if (!currentDownload) {
+                processQueue();
+            }
+        }
+
+        // 按域名分组任务
+        function groupByDomain(tasks) {
+            const groups = {};
+            tasks.forEach(task => {
+                try {
+                    const domain = new URL(task.url).hostname;
+                    if (!groups[domain]) {
+                        groups[domain] = [];
+                    }
+                    groups[domain].push(task);
+                } catch {
+                    // 无效URL放入默认组
+                    if (!groups['default']) {
+                        groups['default'] = [];
+                    }
+                    groups['default'].push(task);
+                }
+            });
+            return groups;
+        }
+
+        // 当前各域名组的下载状态
+        const domainDownloads = {};
+
+        // 处理下载队列
+        async function processQueue() {
+            // 按域名分组
+            const groups = groupByDomain(downloadQueue.filter(t => t.status === 'waiting'));
+            
+            // 并行处理不同域名组的任务
+            await Promise.all(Object.entries(groups).map(async ([domain, tasks]) => {
+                // 如果该域名组已经在下载中，跳过
+                if (domainDownloads[domain]) return;
+                
+                // 标记该域名组为下载中
+                domainDownloads[domain] = true;
+                
+                try {
+                    // 串行处理该域名组的任务
+                    for (const task of tasks) {
+                        task.status = 'downloading';
+                        updateQueueDisplay();
+
+                        try {
+                            await startDownload(task);
+                        } catch (error) {
+                            task.status = 'error';
+                            logTaskMessage(task.id, `下载失败: ${error.message}`, 'error');
+                        } finally {
+                            updateQueueDisplay();
+                        }
+                    }
+                } finally {
+                    // 下载完成，释放该域名组
+                    delete domainDownloads[domain];
+                }
+            }));
+
+            // 检查是否有新任务需要处理
+            setTimeout(processQueue, 1000);
+        }
+
+        // 开始下载
+        async function startDownload(task) {
+            return new Promise((resolve, reject) => {
+                const wsUrl = new URL(`./api/download?url=${encodeURIComponent(task.url)}`, location.href);
+                wsUrl.protocol = wsUrl.protocol.replace('http', 'ws');
+                const ws = new WebSocket(wsUrl);
+                let isCompleted = false;
+
+                ws.onopen = () => {
+                    logTaskMessage(task.id, `开始下载: ${task.novelName || task.url}`, 'info');
+                    ws.send(JSON.stringify({
+                        novelName: task.novelName,
+                        coverUrl: task.coverUrl,
+                        options: task.options
+                    }));
+                };
+
+                ws.onmessage = (event) => {
+                    if(typeof event.data != 'string') return;
+                    const data = JSON.parse(event.data);
+                    if(data.status == 'sync'){
+                        task.novelName = data.info.book_name || '未知';
+                        task.coverUrl = data.info.cover || '';
+                        updateQueueDisplay();
+                    }else if(data.finalChunk){
+                        isCompleted = true;
+                        task.status = 'completed';
+                        logTaskMessage(task.id, `下载完成: ${task.novelName || task.url}`, 'success');
+                        ws.close();
+                        resolve();
+                    }else{
+                        logTaskMessage(task.id, data.log, data.status.toLowerCase());
+                    }
+                };
+
+                ws.onclose = (event) => {
+                    if (isCompleted) return;
+                    if (event.code === 1000) {
+                        task.status = 'completed';
+                        logTaskMessage(task.id, `下载完成: ${task.novelName || task.url}`, 'success');
+                        resolve();
+                    } else {
+                        task.status = 'error';
+                        reject(new Error(`WebSocket连接异常关闭: ${event.code}`));
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    task.status = 'error';
+                    reject(new Error('WebSocket连接错误'));
+                };
+            });
+        }
+
+        // 更新队列显示
+        function updateQueueDisplay() {
+            const queueList = document.getElementById('queueList');
+            
+            if (downloadQueue.length === 0) {
+                queueList.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">暂无下载任务</div>';
+                return;
+            }
+
+            queueList.innerHTML = downloadQueue.map(task => `
+                <div class="queue-item" onclick="openLogDialog(${task.id})">
+                    <div class="queue-info">
+                        <h4>${task.novelName || '未知小说'}</h4>
+                        <p>URL: ${task.url}</p>
+                        <p>添加时间: ${task.addTime}</p>
+                        <p>选项: ${Object.entries(task.options).filter(([k,v]) => v).map(([k]) => k).join(', ') || '无'}</p>
+                    </div>
+                    <div class="queue-status status-${task.status}">
+                        ${getStatusText(task.status)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 获取状态文本
+        function getStatusText(status) {
+            const statusMap = {
+                'waiting': '等待中',
+                'downloading': '下载中',
+                'completed': '已完成',
+                'error': '失败'
+            };
+            return statusMap[status] || status;
+        }
+
+        // 任务日志输出
+        function logTaskMessage(taskId, message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const colorMap = {
+                'info': '#00bfff',
+                'success': '#00ff00',
+                'error': '#ff4444',
+                'log': '#00ff00'
+            };
+            
+            const color = colorMap[type] || '#00ff00';
+            const logLine = `<span style="color: ${color}">[${timestamp}] ${message}</span>`;
+            
+            // 存储到对应任务的日志中
+            if (!taskLogs[taskId]) {
+                taskLogs[taskId] = [];
+            }
+            taskLogs[taskId].push(logLine);
+
+            // 如果当前打开的日志对话框是这个任务，更新显示
+            const logDialog = document.getElementById('logDialog');
+            if (logDialog.classList.contains('show')) {
+                const currentTaskTitle = document.getElementById('logDialogTitle').textContent;
+                const task = downloadQueue.find(t => t.id === taskId);
+                if (task && currentTaskTitle.includes(task.novelName || '未知小说')) {
+                    const taskLogOutput = document.getElementById('taskLogOutput');
+                    taskLogOutput.innerHTML = taskLogs[taskId].join('\n');
+                    taskLogOutput.scrollTop = taskLogOutput.scrollHeight;
+                }
+            }
+        }
+
+        // 显示提示消息
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            
+            const colorMap = {
+                'success': '#28a745',
+                'error': '#dc3545',
+                'info': '#17a2b8'
+            };
+            
+            toast.style.background = colorMap[type] || '#333';
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.classList.add('show'), 100);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => document.body.removeChild(toast), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

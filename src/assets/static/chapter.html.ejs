@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title><%= title %></title>
+        <style>
+            :root {
+                --primary-color: #4a6fa5;
+                --secondary-color: #166088;
+                --text-color: #333;
+                --light-gray: #f5f5f5;
+                --white: #ffffff;
+                --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                --transition: all 0.3s ease;
+            }
+            
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            
+            body {
+                background-color: var(--light-gray);
+                font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+                color: var(--text-color);
+                line-height: 1.6;
+            }
+            
+            .container {
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                padding: 2rem;
+            }
+            
+            /* 通用样式 */
+            .main {
+                background-color: var(--white);
+                border-radius: 12px;
+                box-shadow: var(--shadow);
+                padding: 2.5rem;
+                margin: 0 auto;
+                max-width: 800px;
+                width: 100%;
+            }
+            
+            h1 {
+                color: var(--primary-color);
+                margin-bottom: 1.5rem;
+                font-size: 2rem;
+                padding-bottom: 0.5rem;
+            }
+            
+            h1 span {
+                color: var(--secondary-color);
+                font-size: 1.2rem;
+                font-weight: normal;
+            }
+            
+            p {
+                margin-bottom: 1.2rem;
+            }
+            
+            button {
+                background-color: var(--primary-color);
+                color: white;
+                border: none;
+                padding: 0.8rem 1.5rem;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: var(--transition);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            
+            button:hover {
+                background-color: var(--secondary-color);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            }
+
+            .navigation {
+                display: flex;
+                justify-content: end;
+                margin-top: 3rem;
+                gap: 2rem;
+            }
+                
+            .navigation button {
+                min-width: 120px;
+            }
+            
+            /* 章节页特定样式 */
+            /* <% if(isChapterPage){ %> */
+                .main {
+                    margin: 2rem auto;
+                }
+                
+                .progress-bar {
+                    height: 4px;
+                    background-color: var(--light-gray);
+                    margin: 1.5rem 0;
+                    border-radius: 2px;
+                    position: sticky;
+                    top: 0;
+                }
+                
+                .progress {
+                    height: 100%;
+                    background-color: var(--primary-color);
+                    border-radius: 2px;
+                    width: 0;
+                    transition: width 0.5s ease;
+                }
+            /* <% }else{ %> */
+                /* 主页特定样式 */
+                .main {
+                    text-align: center;
+                    margin: auto;
+                    overflow: hidden;
+                }
+
+                .info {
+                    word-break: break-all;
+                    word-break: break-word;
+                }
+
+                @media screen and (min-width: 512px) {
+                    .main {
+                        display: flex;
+                        align-items: center;
+                        gap: 3rem;
+                    }
+                }
+                
+                .cover-image {
+                    max-width: 300px;
+                    margin: 0 auto 2rem;
+                    border-radius: 8px;
+                    box-shadow: var(--shadow);
+                }
+                
+                .summary {
+                    font-size: 1.1rem;
+                    margin: 2rem 0;
+                    text-align: left;
+                    padding: 0 1rem;
+
+                    max-height: 60vh;
+                    overflow-y: auto;
+                    overflow-x: hidden;
+
+                    /* for scrollbar */
+                    margin-right: -1rem;
+                    padding-right: .5rem;
+                }
+                
+                .start-button {
+                    padding: 1rem 2rem;
+                    font-size: 1.1rem;
+                }
+            /* <% } %> */
+
+            article {
+                font-size: 1.1rem;
+                line-height: 1.8;
+            }
+                
+            article p {
+                text-indent: 2em;
+                margin-bottom: 1.5rem;
+                overflow: hidden;
+                word-wrap: break-word;
+            }
+
+            article img {
+                max-width: 100%;
+                display: block;
+                margin: 1rem auto;
+                border-radius: 8px;
+                box-shadow: var(--shadow);
+            }
+            
+            @media (max-width: 768px) {
+                .container {
+                    padding: .5rem;
+                }
+                
+                .main {
+                    padding: 1.5rem;
+                    margin: 0.5rem auto;
+                }
+                
+                h1 {
+                    font-size: 1.5rem;
+                }
+                
+                article {
+                    font-size: 1rem;
+                    line-height: 1.7;
+                }
+                
+                article p {
+                    text-indent: 1.5em;
+                    margin-bottom: 1.2rem;
+                }
+                
+                .navigation {
+                    flex-direction: column;
+                    gap: 1rem;
+                }
+                
+                .navigation button {
+                    width: 100%;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <% if(isChapterPage){ %>
+                <div class="main">
+                    <!-- 文章内容页 -->
+                    <h1><%= title %></h1>
+                    
+                    <div class="progress-bar">
+                        <div class="progress" id="reading-progress"></div>
+                    </div>
+                    
+                    <article id="content-article">
+                        <%- content %>
+                    </article>
+                    
+                    <div class="navigation">
+                        <% if(nextChapter){ %>
+                            <a href="?url=<%= encodeURIComponent(nextChapter) %>">
+                                <button>下一章</button>
+                            </a>
+                        <% } %>
+                    </div>
+                </div>
+                
+                <script>
+                    // 阅读进度跟踪
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const progressBar = document.getElementById('reading-progress');
+                        const content = document.getElementById('content-article');
+                        
+                        function updateProgress() {
+                            const windowHeight = window.innerHeight;
+                            const documentHeight = document.documentElement.scrollHeight;
+                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            const progress = (scrollTop / (documentHeight - windowHeight)) * 100;
+                            progressBar.style.width = progress + '%';
+                        }
+                        
+                        window.addEventListener('scroll', updateProgress);
+                        updateProgress();
+                        
+                        // 键盘翻页控制
+                        document.addEventListener('keydown', function(e) {
+                            // <% if(nextChapter){ %>
+                                if(e.key === 'ArrowRight')
+                                    window.location.href = '?url=<%= encodeURIComponent(nextChapter) %>';
+                            // <% } %>
+                        });
+
+                        // 双击翻页（移动端）
+                        let lastTap = 0;
+                        content.addEventListener('click', function(e) {
+                            const currentTime = new Date().getTime();
+                            const tapLength = currentTime - lastTap;
+                            
+                            if (tapLength < 300 && tapLength > 0) {
+                                // 双击事件
+                                const screenWidth = window.innerWidth;
+                                const clickX = e.clientX;
+                                
+                                // <% if(nextChapter){ %>
+                                    if (clickX > screenWidth / 2) {
+                                        // 点击屏幕右侧 - 下一章
+                                        window.location.href = '?url=<%= encodeURIComponent(nextChapter) %>';
+                                    }
+                                // <% } %>
+                            }
+                            
+                            lastTap = currentTime;
+                        });
+                    });
+                </script>
+            <% }else{ %>
+                <!-- 主页 -->
+                <div class="main">
+                    <% if(cover) { %>
+                        <div class="img-wrapper">
+                            <img src="<%= cover %>" alt="<%= title %>" class="cover-image" referrerpolicy="no-referrer">
+                        </div>
+                    <% } %>
+                    
+                    <div class="info">
+                        <h1>
+                            <%= title %>
+                            <% if(author) { %>
+                                <span>/ <%= author %></span>
+                            <% } %>
+                        </h1>
+                        
+                        <% if(summary) { %>
+                            <article class="summary">
+                                <p><%- summary %></p>
+                            </article>
+                        <% } %>
+                        
+                        <div class="navigation">
+                            <a href="?url=<%= encodeURIComponent(startOfContent) %>">
+                                <button class="start-button">开始阅读</button>
+                            </a>
+                            <button onclick="download()">下载</button>
+                        </div>
+                    </info>
+                </div>
+                <script>
+                    function download() {
+                        // <% if(currentURL) { %>
+                            const url = 'api/push-download?url=<%= encodeURIComponent(currentURL) %>';
+                            fetch(url).then(async res => alert(res.ok ? '推送成功,请到主页同步下载任务' : '失败:' + await res.text()));
+                        // <% } else { %>
+                            alert('该书籍暂不支持下载');
+                        // <% } %>
+                    }
+                </script>
+            <% } %>
+        </div>
+    </body>
+</html>

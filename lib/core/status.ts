@@ -1,0 +1,9 @@
+export enum Status {
+  QUEUED,
+  DOWNLOADING,
+  CONVERTING,
+  DONE,
+  ERROR,
+  WARNING,
+  CANCELLED,
+}
