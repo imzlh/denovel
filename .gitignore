@@ -5,16 +5,22 @@ tempDir/
 novels/
 ep/
 debug*
+# Runtime/config JSON files are ignored by default. Keep source manifests tracked.
 *.json
+!deno.json
+# Legacy root scripts may be ignored, but v2 modules under lib/ and src/ are source.
 ttxs.ts
+!lib/cloud/ttxs.ts
+!src/commands/ttxs.ts
 17c.ts
 back/
 lib/fanqie/
 *.exe
 webo/
+# Ignore generated cache directories/files, not the source cache store module.
 *cache*
+!lib/state/cache_store.ts
 downloads/*
-!deno.json
 node_modules/
 pnpm*
 npm*
@@ -22,6 +28,7 @@ yarn*
 *.lock
 *.nlp
 *.db*
+!lib/sites/www.dbxsd.com.t.ts
 error.html
 captcha.*
 test.*

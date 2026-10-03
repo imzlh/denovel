@@ -26,6 +26,52 @@ export async function getDocument(
   return await getDocumentWithContext(await getDefaultRuntimeContext(), url, options);
 }
 
+/** Compatibility helpers used by older site adapters migrated from v1. */
+export async function getSiteCookie(host: string, name?: string): Promise<string | undefined> {
+  if (name) return await getSiteCredential(host, name);
+  return (await getDefaultRuntimeContext()).cookies.getCookieHeader(host);
+}
+
+export async function setRawCookie(host: string, cookie: string): Promise<void> {
+  const ctx = await getDefaultRuntimeContext();
+  await ctx.cookies.setRawCookie(host, cookie);
+  mirrorRawCookie(host, cookie);
+}
+
+export async function forceSaveConfig(): Promise<void> {
+  // v2 writes every state mutation immediately; this is retained as a no-op
+  // for adapters that used the old JSON config flush hook.
+}
+
+export function openFile(path: string): void {
+  const command = Deno.build.os === "windows" ? ["cmd", "/c", "start", "", path] :
+    Deno.build.os === "darwin" ? ["open", path] : ["xdg-open", path];
+  try {
+    new Deno.Command(command[0], { args: command.slice(1), stdin: "null", stdout: "null", stderr: "null" }).spawn();
+  } catch {
+    // Opening a captcha is optional; headless environments may not provide a GUI.
+  }
+}
+
+export async function readline(promptText: string): Promise<string | undefined> {
+  await Deno.stdout.write(new TextEncoder().encode(`${promptText} `));
+  const chunks: Uint8Array[] = [];
+  const buffer = new Uint8Array(1024);
+  while (true) {
+    const count = await Deno.stdin.read(buffer);
+    if (count === null) return undefined;
+    const chunk = buffer.slice(0, count);
+    chunks.push(chunk);
+    const text = new TextDecoder().decode(concatBytes(chunks));
+    const end = text.search(/[\r\n]/u);
+    if (end >= 0) return text.slice(0, end);
+  }
+}
+
+export async function rpcNodeModule(_name: string, _payload: unknown): Promise<Response> {
+  throw new Error("External RPC modules are not configured in denovel v2");
+}
+
 function mirrorRawCookie(host: string, cookie: string): void {
   const normalizedHost = normalizeHost(host);
   const hostCookies = cookieMirror.get(normalizedHost) ?? new Map<string, string>();
@@ -120,4 +166,15 @@ function normalizeHost(host: string): string {
   } catch {
     return host.toLowerCase().replace(/^\./, "");
   }
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const size = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  const result = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
 }

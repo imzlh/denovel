@@ -22,13 +22,16 @@ async function getImages2(page: string) {
     const imgs = [];
     previousTitle = '';
     let next = page;
+    const visited = new Set<string>();
     do{
+        if (!next || visited.has(next)) break;
+        visited.add(next);
         previousTitle = title;
         const [images, title2, nextUrl] = await getImages(next);
         title = title2;
         imgs.push(...images);
-        next = nextUrl;
-    } while(page && similarTitle(previousTitle, title));
+        next = nextUrl ? new URL(nextUrl, next).href : '';
+    } while(next && similarTitle(previousTitle, title));
     return [
         imgs,
         title,

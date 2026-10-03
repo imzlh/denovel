@@ -63,9 +63,9 @@ function* geterateLinks(chapter: Chapter) {
     }
 }
 
-function nextUrl(chapter: Chapter){
-    const nextUrl = `https://manhuafree.com/manga/${chapter.slug}/${chapter.nextslug}`;
-    return nextUrl;
+function nextUrl(chapter: Chapter): string {
+    if (!chapter.nextslug || chapter.nextslug === "undefined" || chapter.nextslug === "null") return "";
+    return `https://manhuafree.com/manga/${chapter.slug}/${chapter.nextslug}`;
 }
 
 export default async function* main(page1: string) {

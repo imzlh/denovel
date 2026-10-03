@@ -2,6 +2,15 @@ import { CommandError } from "./lib/core/errors.ts";
 import { getCommand, listCommands } from "./src/commands/mod.ts";
 import { runShell } from "./src/shell.ts";
 
+// Compatibility exports for migrated site adapters that historically imported
+// helpers from the v1 root module.
+export { fetch2, getDocument, processContent, NoRetryError, sleep, getSiteCookie, setRawCookie, forceSaveConfig, openFile, readline, rpcNodeModule } from "./lib/core/mod.ts";
+export { defaultGetInfo } from "./lib/core/runtime_api.ts";
+export async function launchBrowser(url: URL, waitForFirstNavigation = true): Promise<unknown> {
+  const browser = await import("./src/core/browser.ts");
+  return await browser.launchBrowser(url, waitForFirstNavigation);
+}
+
 function showHelp(): void {
   console.log(`denovel v2
 

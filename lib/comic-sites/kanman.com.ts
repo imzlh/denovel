@@ -53,8 +53,8 @@ async function getEverything(url: string){
             const i = document.getElementById("backManga");
             const res = await fetch2(d, {
                 headers: {
-                    "Referer": "https://baozimh.org/",
-                    "Origin": "https://baozimh.org",
+                    "Referer": "https://kanman.com/",
+                    "Origin": "https://kanman.com",
                     "Accept": "application/json, text/plain, */*",
                     "Sec-fetch-mode": "cors",
                     "Sec-fetch-site": "cross-site",
@@ -83,9 +83,9 @@ function* geterateLinks(chapter: Chapter) {
     }
 }
 
-function nextUrl(chapter: Chapter){
-    const nextUrl = `https://baozimh.org/manga/${chapter.slug}/${chapter.nextslug}`;
-    return nextUrl;
+function nextUrl(chapter: Chapter): string {
+    if (!chapter.nextslug || chapter.nextslug === "undefined" || chapter.nextslug === "null") return "";
+    return `https://kanman.com/manga/${chapter.slug}/${chapter.nextslug}`;
 }
 
 export default async function* main(page1: string) {
@@ -105,8 +105,8 @@ export async function networkHandler(url: string | URL, options?: RequestInit){
             ...options,
             headers: {
                 ...(options?.headers || {}),
-                "Referer": "https://baozimh.org/",
-                "Origin": "https://baozimh.org",
+                "Referer": "https://kanman.com/",
+                "Origin": "https://kanman.com",
                 "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
             }
         });

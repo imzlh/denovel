@@ -2,13 +2,36 @@
   "tasks": {
     "check": "deno check main.ts",
     "help": "deno run -A --unstable-kv main.ts help",
-    "test": "deno test -A --unstable-kv tests"
+    "test": "deno test -A --unstable-kv tests",
+    "down": "deno run -A --unstable-kv main.ts downovel",
+    "comic": "deno run -A --unstable-kv main.ts downcomic",
+    "novel": "deno run -A --unstable-kv main.ts downovel",
+    "server": "deno run -A --unstable-kv main.ts server"
   },
-  "nodeModulesDir": "none",
+  "imports": {
+    "@std/fs": "jsr:@std/fs@1",
+    "@std/cli": "jsr:@std/cli@1",
+    "@std/path": "jsr:@std/path@1",
+    "zip": "jsr:@quentinadam/zip",
+    "dom": "jsr:@b-fuze/deno-dom",
+    "browser": "npm:puppeteer-real-browser",
+    "puppeteer": "npm:puppeteer@22",
+    "ejs": "npm:ejs",
+    "entities": "npm:entities",
+    "image-size": "npm:image-size",
+    "mime": "npm:mime",
+    "rehype-parse": "npm:rehype-parse",
+    "unified": "npm:unified",
+    "unist/visit": "npm:unist-util-visit",
+    "rehype-stringify": "npm:rehype-stringify",
+    "@/": "./"
+  },
+  "nodeModulesDir": "auto",
   "lock": false,
   "compilerOptions": {
     "types": ["./lib/core/globals.d.ts"]
   },
   "license": "MIT",
-  "version": "2.0.0"
+  "version": "2.0.0",
+  "unstable": ["ffi", "kv", "raw-imports"]
 }

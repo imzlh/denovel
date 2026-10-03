@@ -13,6 +13,7 @@ Options:
   -o, --outdir <dir>      Output directory
   -s, --sleep <sec>       Max sleep interval between pages
   -c, --cover <url>       Cover URL
+  -m, --no-multi           Download comic images serially
   -d, --data-dir <dir>    v2 data directory`);
     return;
   }
@@ -29,6 +30,7 @@ Options:
       outdir: args.outdir,
       cover: args.cover,
       sleepSec: args.sleep ? Number.parseFloat(args.sleep) : undefined,
+      noMulti: args.noMulti,
     });
     console.log(`Saved: ${folder}`);
   } finally {
@@ -42,6 +44,7 @@ interface Args {
   outdir?: string;
   sleep?: string;
   cover?: string;
+  noMulti?: boolean;
   dataDir?: string;
 }
 
@@ -65,6 +68,10 @@ function parse(argv: string[]): Args {
       case "-c":
       case "--cover":
         args.cover = argv[++i];
+        break;
+      case "-m":
+      case "--no-multi":
+        args.noMulti = true;
         break;
       case "-d":
       case "--data-dir":

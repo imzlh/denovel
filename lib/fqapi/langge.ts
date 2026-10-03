@@ -2,7 +2,7 @@
  * https://api.langge.cf/user
  */
 
-import { readline } from "../../exe.ts";
+import { readline } from "../../lib/core/mod.ts";
 import { fetch2, getSiteCookie, setRawCookie } from "../../main.ts";
 
 const devUUID = 'ea7a2be2-10a6-4d0f-995e-ecc8ef680a7c';

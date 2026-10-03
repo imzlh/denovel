@@ -1,12 +1,13 @@
 import { CommandError } from "../../lib/core/errors.ts";
 import { createRuntimeContext } from "../../lib/core/context.ts";
-import { checkIsTraditional, downloadNovel } from "../../lib/core/novel.ts";
+import { checkIsTraditional, downloadNovel, resumeNovelFromFile } from "../../lib/core/novel.ts";
 import { hasHelp } from "../cli/args.ts";
 
 export async function run(argv: string[]): Promise<void> {
   if (hasHelp(argv)) {
     console.log(`Usage:
-  denovel downovel [options] <url>
+  denovel downovel [options] <url|txt-file>
+  denovel downovel --resume <txt-file>
 
 Options:
   -n, --name <name>       Book name when adapter cannot infer it
@@ -22,8 +23,8 @@ Options:
   }
 
   const args = parse(argv);
-  const url = args.url;
-  if (!url) throw new CommandError("downovel requires <url>", 2);
+  if (!args.url && !args.resume) throw new CommandError("downovel requires <url|txt-file> or --resume", 2);
+  if (args.url && args.resume) throw new CommandError("downovel accepts either <url> or --resume", 2);
   const ctx = await createRuntimeContext({
     dataDir: args.dataDir,
     outputDir: args.outdir,
@@ -32,16 +33,24 @@ Options:
     sleepSec: args.sleep ? Number.parseFloat(args.sleep) : undefined,
   });
   try {
-    const traditional = await checkIsTraditional(new URL(url));
-    const output = await downloadNovel(ctx, url, {
-      traditional,
-      bookName: args.name,
-      outdir: args.outdir,
-      translate: args.translate,
-      disableParted: args.parted,
-      sleepTime: args.sleep ? Number.parseFloat(args.sleep) : undefined,
-      disableOverwrite: args.noOverwrite,
-    });
+    const resumePath = args.resume ?? (args.url?.toLowerCase().endsWith(".txt") ? args.url : undefined);
+    const output = resumePath
+      ? await resumeNovelFromFile(ctx, resumePath, {
+        bookName: args.name,
+        outdir: args.outdir,
+        translate: args.translate,
+        disableParted: args.parted,
+        sleepTime: args.sleep ? Number.parseFloat(args.sleep) : undefined,
+      })
+      : await downloadNovel(ctx, args.url!, {
+        traditional: await checkIsTraditional(new URL(args.url!)),
+        bookName: args.name,
+        outdir: args.outdir,
+        translate: args.translate,
+        disableParted: args.parted,
+        sleepTime: args.sleep ? Number.parseFloat(args.sleep) : undefined,
+        disableOverwrite: args.noOverwrite,
+      });
     if (!output) throw new CommandError("download produced no output", 1);
   } finally {
     ctx.state.close();
@@ -56,6 +65,7 @@ export const command = {
 
 interface Args {
   url?: string;
+  resume?: string;
   name?: string;
   outdir?: string;
   sleep?: string;
@@ -75,6 +85,10 @@ function parse(argv: string[]): Args {
       case "-n":
       case "--name":
         args.name = argv[++i];
+        break;
+      case "--resume":
+        args.resume = argv[++i];
+        if (!args.resume) throw new CommandError("--resume requires a TXT file", 2);
         break;
       case "-o":
       case "--outdir":

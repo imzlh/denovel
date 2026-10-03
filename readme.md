@@ -1,11 +1,10 @@
-# denovel 超级下载器V1
+# denovel 超级下载器 V2
 
-![ico](static/denovel.webp)
+![ico](src/assets/static/denovel.webp)
 
 下载各个盗版网站/正版网站web版的小说/漫画程序<br>
 同时也有各种周边工具，如转epub、格式化、查找等<br>
 写了主要是给自己用的，欢迎大家补充<br>
-进阶玩法（自己添加网页，很简单的教程）: [教程](docs/advanced.md)
 
 # 特色
  - 强大的爬取功能，伪造标头/类浏览器Cookie持久化/原生JS eval
@@ -35,14 +34,24 @@
  - sfacg漫画(manhua.sfacg.com)
  - 拷贝漫画(www.mangacopy.com)
 
-# 预览
-![首页](docs/image.png)
-![content API](docs/image-2.png)
-![终端漫画下载](docs/image-3.png)
-![densh 二进制](docs/image-4.png)
+## 命令行
 
-# 怎么用？
-文档搬迁到[Github Pages](https://imzlh.github.io/denovel/)
+```text
+deno task help
+deno run -A --unstable-kv main.ts downovel <小说URL>
+deno run -A --unstable-kv main.ts downovel <已有TXT文件>
+deno run -A --unstable-kv main.ts downovel --resume <已有TXT文件>
+deno run -A --unstable-kv main.ts downcomic <漫画URL>
+deno run -A --unstable-kv main.ts 2epub <TXT文件或目录>
+deno run -A --unstable-kv main.ts cbz2img <CBZ文件或目录>
+deno run -A --unstable-kv main.ts server
+```
+
+漫画下载默认输出带 `ComicInfo.xml` 的 CBZ 分章文件，支持包子漫画、DM5、看漫画、拷贝漫画和 SFACG 等适配器。
+
+小说 TXT 会保存最后章节地址。再次把 TXT 作为参数传给 `downovel`，或使用 `--resume`，会自动删除旧 metadata 并从上次章节继续抓取；请求失败或没有新章节时会恢复原文件。
+
+运行 `deno task check` 和 `deno task test` 可检查项目。
 
 2025 iz copyright(c) MIT License
 程序初衷是自用，请不要用于违法用途
