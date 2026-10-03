@@ -32,7 +32,7 @@
  - 包子漫画(baozimh.org www.baozimhcn.com manhuafree.com)
  - dm5漫画人 (tel.dm5.com)
  - sfacg漫画(manhua.sfacg.com)
- - 拷贝漫画(www.mangacopy.com)
+ - <del>拷贝漫画(www.mangacopy.com)</del> 现在需要登录了，可以去github找，有现成的下载器
 
 ## 命令行
 
